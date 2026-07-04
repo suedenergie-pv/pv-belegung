@@ -55,6 +55,15 @@ export function orientationKey(plane: PlaneOrientation): string {
 export function buildPlanCalc(input: StringPlanInput): PlanCalc {
   const params = resolveParams(input.params);
   const inverter = input.inverter;
+  if (
+    inverter.maxInputCurrentPerMpptA.length !== inverter.mpptCount ||
+    inverter.maxShortCircuitCurrentPerMpptA.length !== inverter.mpptCount ||
+    inverter.stringsPerMppt.length !== inverter.mpptCount
+  ) {
+    throw new Error(
+      `WR ${inverter.id}: MPPT-Arrays müssen Länge ${inverter.mpptCount} (mpptCount) haben — Katalogfehler.`,
+    );
+  }
   const moduleById = new Map(input.moduleTypes.map((m) => [m.id, m]));
   const planeById = new Map(input.planes.map((p) => [p.id, p]));
 

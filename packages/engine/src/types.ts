@@ -34,10 +34,14 @@ export interface InverterType {
   mpptCount: number;
   mpptVoltageRange: [number, number]; // [Vmin, Vmax] pro MPPT
   startupVoltageV: number;
-  maxInputCurrentPerMpptA: number; // R6
-  maxShortCircuitCurrentPerMpptA: number; // R7
+  /**
+   * Je MPPT (Länge = mpptCount, Index 0 = MPPT 1) — reale WR haben ungleiche
+   * MPPTs (SPEC §6 Schema-Update 04.07.2026, z. B. Sungrow SH-T 32/32/16 A).
+   */
+  maxInputCurrentPerMpptA: number[]; // R6
+  maxShortCircuitCurrentPerMpptA: number[]; // R7
   maxDcAcRatio: number; // Überbelegungsgrenze lt. Hersteller, sonst Default 1.35
-  stringsPerMppt: number;
+  stringsPerMppt: number[]; // je MPPT
   /** Speicher-Kompatibilität als Flag-Liste (SPEC §6; v1 ohne Rechenlogik). */
   compatibleBatteries: string[];
   /**

@@ -11,11 +11,11 @@ function ok(rule: RuleId, message: string): RuleResult[] {
   return [{ rule, status: 'ok', message }];
 }
 
-/** R6: Σ Imp der parallelen Strings ≤ maxInputCurrentPerMpptA */
+/** R6: Σ Imp der parallelen Strings ≤ maxInputCurrentPerMpptA[mppt] (Limit je MPPT, SPEC §6) */
 export function checkR6(calc: PlanCalc): RuleResult[] {
-  const limit = calc.inverter.maxInputCurrentPerMpptA;
   const fails: RuleResult[] = [];
   for (const mppt of calc.mppts) {
+    const limit = calc.inverter.maxInputCurrentPerMpptA[mppt.mpptIndex - 1]!;
     const sumImp = mppt.strings.reduce((sum, s) => sum + s.impA, 0);
     if (sumImp > limit) {
       fails.push({
@@ -24,19 +24,21 @@ export function checkR6(calc: PlanCalc): RuleResult[] {
         mpptIndex: mppt.mpptIndex,
         message:
           `MPPT ${mppt.mpptIndex}: Betriebsstrom ${fmt(sumImp)} A (${mppt.strings.length} parallele ` +
-          `Strings) > max. Eingangsstrom ${fmt(limit)} A.`,
+          `Strings) > max. Eingangsstrom ${fmt(limit)} A dieses MPPTs.`,
       });
     }
   }
-  return fails.length > 0 ? fails : ok('R6', `Betriebsstrom aller MPPTs ≤ ${fmt(limit)} A.`);
+  return fails.length > 0
+    ? fails
+    : ok('R6', 'Betriebsstrom aller MPPTs innerhalb der jeweiligen Eingangsstrom-Grenze.');
 }
 
-/** R7: Σ Isc × 1,25 ≤ maxShortCircuitCurrentPerMpptA */
+/** R7: Σ Isc × 1,25 ≤ maxShortCircuitCurrentPerMpptA[mppt] (Limit je MPPT, SPEC §6) */
 export function checkR7(calc: PlanCalc): RuleResult[] {
-  const limit = calc.inverter.maxShortCircuitCurrentPerMpptA;
   const factor = calc.params.iscSafetyFactor;
   const fails: RuleResult[] = [];
   for (const mppt of calc.mppts) {
+    const limit = calc.inverter.maxShortCircuitCurrentPerMpptA[mppt.mpptIndex - 1]!;
     const sumIsc = mppt.strings.reduce((sum, s) => sum + s.iscA, 0);
     const demand = sumIsc * factor;
     if (demand > limit) {
@@ -45,12 +47,12 @@ export function checkR7(calc: PlanCalc): RuleResult[] {
         status: 'fail',
         mpptIndex: mppt.mpptIndex,
         message:
-          `MPPT ${mppt.mpptIndex}: Kurzschlussstrom ${fmt(sumIsc,2)} A × ${fmt(factor, 2)} = ` +
-          `${fmt(demand, 2)} A > zulässige ${fmt(limit)} A.`,
+          `MPPT ${mppt.mpptIndex}: Kurzschlussstrom ${fmt(sumIsc, 2)} A × ${fmt(factor, 2)} = ` +
+          `${fmt(demand, 2)} A > zulässige ${fmt(limit)} A dieses MPPTs.`,
       });
     }
   }
   return fails.length > 0
     ? fails
-    : ok('R7', `Kurzschlussstrom (×${fmt(factor, 2)}) aller MPPTs ≤ ${fmt(limit)} A.`);
+    : ok('R7', `Kurzschlussstrom (×${fmt(factor, 2)}) aller MPPTs innerhalb der jeweiligen Grenze.`);
 }
