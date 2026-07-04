@@ -16,13 +16,9 @@ gegenrechnen (z. B. pro Familie eine Klasse) statt aller 918 Zeilen — Filter:
 
 ## Fachliche Entscheidungen (Genrih)
 
-### 2. Huawei SUN2000-M1: Einsatzfrage ⚠️
+### ~~2. Huawei SUN2000-M1~~ ✅ entschieden 05.07.2026: raus aus dem Katalog
 
-Datenblatt: nur 11 A Eingangsstrom / 15 A Kurzschluss pro MPPT — UNTER dem
-Imp aller drei Katalogmodule (13,29–15,16 A). Engine meldet konsequent
-FAIL(R6, R7). Datenblatt-Fußnote: mit Optimierern (ein Optimierer pro Modul)
-bis 20 kWp zulässig — Optimierer sind aber nicht im Datenmodell. Bleibt der
-M1 im Katalog (z. B. für Bestand/Optimierer-Projekte) oder raus?
+Grund: 11 A/15 A pro MPPT unter den Modulströmen. Datenblatt bleibt im Repo.
 
 ### 3. EcoFlow PowerOcean Plus PV1: 19 A Kurzschluss PRO STRING
 
@@ -71,7 +67,5 @@ Katalogeintrag, Kompatibilitätsmatrix WR↔BYD offen.
 
 ## Kleinkram
 
-- Speicher-IDs im Katalog (`compatibleBatteries`): ecoflow-powerocean-lfp,
-  sungrow-sbh, sungrow-sbr, sigenstor-bat, huawei-luna2000-s1 — Zuordnung
-  WR→Speicher aus den Datenblättern (Sungrow SH: „Lithium-Ionen 100–700 V"
-  ohne Modellnennung → SBH/SBR angenommen, da im Sortiment; bestätigen).
+- ~~Speicher-Zuordnung Sungrow~~ ✅ 05.07.2026: Sungrow SH → **SBR** (bestätigt).
+  Aktive Speicher-IDs: ecoflow-powerocean-lfp, sungrow-sbr, sigenstor-bat.

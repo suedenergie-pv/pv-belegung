@@ -205,13 +205,13 @@ interface InverterType {
 | Sigenergy Sigen Hybrid TP2 | 3 / 4 / 5 / 6 / 8 / 10 / 12 kW | 1100 V | 160–1000 V / 180 V | 2; ab 10 kW: MPPT2 mit 2 Strings | 16/22 A; MPPT2 ab 10 kW 32/44 A | 2,0 |
 | Sigenergy SigenStor EC (Energy Controller) | 5–30 kW (10 Klassen) | 1100 V | 160–1000 V / 180 V | 2 (≤8 kW) / 3 (10–15) / 4 (17–30), je 1 String | 16 A / 20 A | 1,6 |
 | Sungrow SH15/20/25T | 15 / 20 / 25 kW | 1000 V | 150–950 V / 180 V | 3: 2/2/1 Strings | 32/32/16 A · SC 40/40/20 A | 2,0 |
-| Huawei SUN2000-3–10KTL-M1 | 3 / 4 / 5 / 6 / 8 / 10 kW | 1100 V | 140–980 V / 200 V | 2 × 1 | **11 A / 15 A** ⚠️ | 1,5 |
+| ~~Huawei SUN2000-3–10KTL-M1~~ | — | — | — | — | **11 A / 15 A** | — |
 
-⚠️ **Huawei M1:** 11 A Eingangsstrom pro MPPT liegt UNTER dem Imp aller drei Katalogmodule (13,29–15,16 A) → R6 schlägt bei jedem String an; zusätzlich 15 A Kurzschlussgrenze < 17,81–20,0 A Anforderung (R7). Einsatzfrage (Optimierer? andere Variante?) → Genrih.
+~~⚠️ Huawei M1~~ **Entschieden 05.07.2026 (Genrih): Huawei M1 NICHT im Katalog.** 11 A Eingangsstrom pro MPPT liegt unter dem Imp aller drei Katalogmodule (13,29–15,16 A), 15 A Kurzschlussgrenze < 17,81–20,0 A Anforderung → jeder String fiele durch R6/R7. Datenblatt bleibt im Repo für den Fall einer High-Current-Variante.
 
 ⚠️ **PowerOcean Plus PV1:** Datenblatt nennt 19 A Kurzschlussstrom **pro String** (2 Strings = 38 A je MPPT). Jolywood fordert 20,0 A pro String — Engine prüft R7 nur auf MPPT-Ebene (Summe ≤ 38 A), die Per-String-Grenze ist NICHT abgedeckt (siehe OFFENE_FRAGEN).
 
-Speicher (nur Flag, Datenblätter im Repo): EcoFlow PowerOcean LFP · Sungrow SBH / SBR · SigenStor BAT · Huawei LUNA2000-S1.
+Speicher (nur Flag, Datenblätter im Repo): EcoFlow PowerOcean LFP · Sungrow **SBR** (bestätigt 05.07.2026; SBH-Datenblatt liegt bei, wird aber nicht verknüpft) · SigenStor BAT.
 
 Hinweis aus der Marktrealität: Module mit Imp ≈ 13 A+ erfordern bei manchen Herstellern (Sungrow, SMA, Huawei, SolarEdge) die High-Current-Variante. Genau dafür existiert `maxInputCurrentPerMpptA` als harte Prüfung.
 

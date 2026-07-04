@@ -83,8 +83,9 @@ describe('WR-Katalog (SPEC §6.1, PDF-verifiziert)', () => {
     return wr;
   };
 
-  it('enthält keine Dummy-Einträge mehr und 34 Klassen (SPEC §6.1)', () => {
-    expect(INVERTERS).toHaveLength(34);
+  it('enthält keine Dummy-Einträge mehr und 28 Klassen (SPEC §6.1; Huawei M1 raus, 05.07.2026)', () => {
+    expect(INVERTERS).toHaveLength(28);
+    expect(INVERTERS.some((wr) => wr.manufacturer === 'Huawei')).toBe(false);
     for (const wr of INVERTERS) {
       expect(wr.isDummy ?? false).toBe(false);
       expect(wr.mpptCount).toBe(wr.stringsPerMppt.length);
@@ -104,17 +105,7 @@ describe('WR-Katalog (SPEC §6.1, PDF-verifiziert)', () => {
     expect(wr.maxInputCurrentPerMpptA).toEqual([32, 32, 16]);
     expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([40, 40, 20]);
     expect(wr.maxDcAcRatio).toBeCloseTo(2.0, 6); // 50.000 Wp / 25.000 W
-  });
-
-  it('Huawei SUN2000-10KTL-M1 — 11 A / 15 A pro MPPT (⚠️ SPEC §6.1)', () => {
-    const wr = byId('huawei-sun2000-10ktl-m1');
-    expect(wr.acPowerKw).toBe(10);
-    expect(wr.maxDcVoltageV).toBe(1100);
-    expect(wr.mpptVoltageRange).toEqual([140, 980]);
-    expect(wr.startupVoltageV).toBe(200);
-    expect(wr.maxInputCurrentPerMpptA).toEqual([11, 11]);
-    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([15, 15]);
-    expect(wr.maxDcAcRatio).toBeCloseTo(1.5, 6); // 15.000 Wp / 10.000 W
+    expect(wr.compatibleBatteries).toEqual(['sungrow-sbr']); // bestätigt 05.07.2026
   });
 
   it('EcoFlow PowerOcean 12K — Datenblatt 20241226', () => {

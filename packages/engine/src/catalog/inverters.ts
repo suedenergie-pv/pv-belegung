@@ -104,6 +104,7 @@ function sigenstorEc(klasse: string, acPowerKw: number, mpptCount: number): Inve
  * Sungrow SH15/20/25T (3-phasiger Hybrid, High-Current: max. 16 A pro Strang).
  * Quelle: Datenblatt_Sungrow_sh15-20-25t.pdf. MPPTs: 2/2/1 Strings, 32/32/16 A, SC 40/40/20 A.
  * Max. PV = 2,0 × AC. Einschaltspannung 180 V (MPPT-Bereich ab 150 V).
+ * Speicher: SBR (bestätigt Genrih 05.07.2026; Datenblatt nennt nur „Lithium-Ionen 100–700 V").
  */
 function sungrowShT(klasse: string, acPowerKw: number): InverterType {
   return {
@@ -119,34 +120,14 @@ function sungrowShT(klasse: string, acPowerKw: number): InverterType {
     maxShortCircuitCurrentPerMpptA: [40, 40, 20],
     maxDcAcRatio: 2.0,
     stringsPerMppt: [2, 2, 1],
-    compatibleBatteries: ['sungrow-sbh', 'sungrow-sbr'],
+    compatibleBatteries: ['sungrow-sbr'],
     hasShadeManagement: false,
   };
 }
 
-/**
- * Huawei SUN2000-3–10KTL-M1 (3-phasig). Quelle: SUN2000-3-10KTL-M1.pdf.
- * ⚠️ Nur 11 A Eingangsstrom / 15 A Kurzschluss pro MPPT — unter dem Imp aller
- * Katalogmodule (R6/R7 schlagen an, siehe SPEC §6.1). Empf. max. PV = 1,5 × AC.
- */
-function huaweiKtlM1(kw: number): InverterType {
-  return {
-    id: `huawei-sun2000-${kw}ktl-m1`,
-    name: `Huawei SUN2000-${kw}KTL-M1`,
-    manufacturer: 'Huawei',
-    acPowerKw: kw,
-    maxDcVoltageV: 1100,
-    mpptCount: 2,
-    mpptVoltageRange: [140, 980],
-    startupVoltageV: 200,
-    maxInputCurrentPerMpptA: [11, 11],
-    maxShortCircuitCurrentPerMpptA: [15, 15],
-    maxDcAcRatio: 1.5,
-    stringsPerMppt: [1, 1],
-    compatibleBatteries: ['huawei-luna2000-s1'],
-    hasShadeManagement: false,
-  };
-}
+// Huawei SUN2000-3–10KTL-M1: NICHT im Katalog (Entscheidung Genrih 05.07.2026).
+// Grund: nur 11 A Eingangs-/15 A Kurzschlussstrom pro MPPT — unter dem Imp aller
+// Katalogmodule, jeder String fällt durch R6/R7. Datenblatt bleibt im Repo.
 
 export const INVERTERS: InverterType[] = [
   // EcoFlow PowerOcean (Main-Marke)
@@ -182,11 +163,4 @@ export const INVERTERS: InverterType[] = [
   sungrowShT('SH15T', 15),
   sungrowShT('SH20T', 20),
   sungrowShT('SH25T', 25),
-  // Huawei
-  huaweiKtlM1(3),
-  huaweiKtlM1(4),
-  huaweiKtlM1(5),
-  huaweiKtlM1(6),
-  huaweiKtlM1(8),
-  huaweiKtlM1(10),
 ];
