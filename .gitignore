@@ -4,3 +4,6 @@ dist/
 kalibrierung-engine-output.md
 *.tsbuildinfo
 .DS_Store
+
+# Next.js
+.next/
