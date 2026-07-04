@@ -1,0 +1,410 @@
+# SPEC — Belegungs- & Stringplan-Tool (Arbeitstitel: „Belegungsplaner")
+
+**Status:** v0.1 — Planungsstand 04.07.2026
+**Owner:** Genrih Porchatschow, SüdEnergie
+**Kanonisches Dokument.** Dieses File ist die Single Source of Truth für alle Claude-Code-Sessions zu diesem Projekt. Änderungen an Scope, Regeln oder Datenmodell werden HIER eingepflegt, bevor Code angefasst wird.
+
+---
+
+## 1. Zweck
+
+Internes Web-Tool, mit dem Vertriebler und Niederlassungsleiter selbstständig **grobe Dachbelegungen und Stringpläne** erstellen und als strukturierten Datensatz ins Ticketsystem exportieren. Ziel: Entlastung des einzigen Projektleiters, der aktuell alle Planungen für Hauptsitz + 2 Niederlassungen stemmt.
+
+Leitprinzip UX: **idiotensicher = Auswahl wegnehmen, nicht erklären.** Dropdowns aus Fixkatalog, Buttons statt Freitext, ungültige Ergebnisse können gar nicht erst entstehen.
+
+### 1.1 Was das Tool NICHT ist (harte Grenze)
+
+- **Kein Ertragsrechner.** Keine kWh-Simulation, kein Meteonorm, keine Verschattungsanalyse. Ertrag und finale Auslegung bleiben in PV*SOL (Lizenz vorhanden).
+- **Kein PV*SOL-Klon.** Keine allgemeine Komponenten-Datenbank, keine Klimadaten. Nur der eigene Fixkatalog (§5, §6).
+- **Keine 3D-Rekonstruktion.** Siehe §3. Das ist der Punkt, an dem SolarEdge Designer regelmäßig scheitert (Fallback „flache Box") — wir bauen das Problem gar nicht erst.
+- **Kein Standsicherheits- oder Elektro-Nachweis.** Output ist eine Vorplanung, die der PL in PV*SOL finalisiert.
+- Satelliten-Auto-Erkennung eigener Bauart, echtes 3D-Modelling, Fassadenmodul: NICHT in v1 (siehe §15 Versionsplan).
+
+### 1.2 Output pro Projekt
+
+1. Dachplan (Draufsicht pro Fläche + zusammengesetzte Gesamtansicht, §11)
+2. Modulbelegung (Anzahl, Ausrichtung, Position)
+3. Stringplan (Strings pro MPPT, validiert gegen Regelwerk §7)
+4. Grobe Anlagengröße (kWp = Modulanzahl × Pmax)
+5. JSON-Export ins Ticketsystem (§13)
+
+---
+
+## 2. Nutzer & Rollen
+
+| Rolle | Darf |
+|---|---|
+| Vertrieb / NL-Leiter | Projekte anlegen, Dach erfassen, belegen, Stringplan generieren, exportieren |
+| Projektleiter | Alles + eskalierte Projekte übernehmen |
+| Admin (Genrih) | Katalog pflegen, Normwerte ändern |
+
+Katalogdaten (Module, WR, Speicher) und Auslegungstemperaturen sind für Vertrieb **read-only**. Änderung nur durch Admin.
+
+---
+
+## 3. Architektur-Grundsätze (nicht verhandelbar)
+
+1. **Keine 3D-Rekonstruktion.** Dachflächen sind unabhängige Ebenen: `Polygon (2D in Flächenebene) + Neigung + Azimut`. Ob die Ebenen zusammen ein wasserdichtes Gebäude ergeben, ist für Engine und Renderer irrelevant.
+2. **Semantik kommt vom User, nicht vom Solver.** Knicke und Gauben werden DEKLARIERT (§4.2, §4.3), niemals aus Geometrie erraten. Damit ist das Problem bestimmt statt unterbestimmt.
+3. **Renderer = Kompositor, niemals Solver.** Die Gesamtansicht wird aus deklarierten Ebenen + Kanten + Katalog-Gauben ZUSAMMENGESETZT (2.5D, isometrische Projektion). Es gibt keinen Berechnungsschritt, der scheitern und in einen Fallback laufen kann.
+4. **String-Engine ist deterministisch.** Reines Regelwerk + Datenblatt-Mathematik. Kein LLM, keine Heuristik im Rechenpfad. Testbar, erklärbar, kalibrierbar.
+5. **Modulgrößen im Plan kommen AUSSCHLIESSLICH aus mm-Maßen × Maßstab.** Niemals aus CSS-/Layout-Verhalten. (Lesson learned: identische viewBoxen renderten ohne fixen Container unterschiedlich groß.)
+6. **Kalibrierungs-Gate vor UI-Bau** (§14). Gleiche Regel wie beim Statik-Vorprüfungstool: erst wenn die Engine gegen PV*SOL validiert ist, wird UI gebaut.
+
+---
+
+## 4. Datenmodell Dach
+
+### 4.1 Dachfläche (`RoofPlane`)
+
+```ts
+interface RoofPlane {
+  id: string;
+  polygon: Point2D[];        // 2D-Koordinaten IN der Flächenebene, Meter (wahre Maße, NICHT Draufsicht-verkürzt)
+  pitchDeg: number;          // Neigung, 0–75, Pflicht
+  azimuthDeg: number;        // 0 = Nord, 90 = Ost, 180 = Süd, 270 = West
+  source: 'solar_api' | 'manual' | 'solar_api_edited';
+  exclusions: Exclusion[];   // Gauben-Footprints, Hindernisse (§4.3, §4.4)
+  sharedEdges: SharedEdge[]; // deklarierte Knicke/Grate (§4.2)
+  flags: Flag[];             // §10
+}
+```
+
+**Verkürzungskorrektur (kritisch):** Kommt die Geometrie aus Draufsicht (Luftbild-Trace oder Solar-API-Footprint), MUSS die Kante in Falllinie durch `cos(pitch)` geteilt werden, bevor sie ins `polygon` geschrieben wird. Traufkante (horizontal) bleibt unverändert. Bei 45° Neigung sind sonst ~29 % Sparrenlänge weg → ~40 % zu wenig Module. Kanonische Regel: **im Datenmodell stehen immer wahre Maße**, Verkürzung existiert nur beim Import und beim Draufsicht-Rendering.
+
+### 4.2 Knick (`SharedEdge`)
+
+User zieht eine Linie durch eine Fläche → Tool splittet in zwei `RoofPlane`s mit gemeinsamer Kante, fragt Neigung für beide ab (Vorbelegung aus Solar-API-Segmenten, falls vorhanden).
+
+```ts
+interface SharedEdge {
+  planeA: string; planeB: string;
+  edgeA: [Point2D, Point2D];  // Kante in Ebene A
+  edgeB: [Point2D, Point2D];  // korrespondierende Kante in Ebene B
+  kind: 'ridge' | 'break' | 'valley';  // First, Knick (Mansard), Kehle
+}
+```
+
+Kanten ohne deklarierten Nachbarn werden im Kompositor mit dezenter Linie gerendert — kein Fehler, kein Solver-Eingriff.
+
+### 4.3 Gaube (`Dormer`) — parametrisch, KEIN Freihand-Polygon
+
+Gauben kommen aus einem Katalog (Schlepp-, Sattel-, Flachdachgaube — deckt im Allgäu ~95 % ab). User wählt Typ, stempelt auf Mutterfläche, zieht Breite/Position. Freihand-Gauben sind verboten: eine Katalog-Gaube kann geometrisch nicht kaputt sein.
+
+```ts
+interface Dormer {
+  id: string;
+  parentPlane: string;
+  type: 'shed' | 'gable' | 'flat';   // Schlepp / Sattel / Flach
+  widthM: number; depthM: number; positionOnPlane: Point2D;
+  clearanceM: number;                 // Abstandszone ums Footprint, Default 0.30
+  belegbar: boolean;                  // Default false; wenn true → erzeugt eigene kleine RoofPlane
+}
+```
+
+Eine Gaube erzeugt automatisch: (a) Ausschlusspolygon inkl. Clearance auf der Mutterfläche für die Belegungslogik, (b) einen 3D-Katalogkörper für den Kompositor.
+
+### 4.4 Hindernis (`Exclusion`)
+
+Kamin, Dachfenster, SAT, Entlüfter: Rechteck/Kreis auf der Fläche + Clearance (Default 0.30 m). Nur Ausschluss, kein Renderkörper nötig (v1: einfacher grauer Block im Render).
+
+---
+
+## 5. Modulkatalog
+
+Fixkatalog, gepflegt vom Admin. 2 Hersteller, 3 Modultypen (Update 04.07.2026 abends: beide Aiko-Varianten im Einsatz, §5.1). Geometrie nahezu identisch, **Elektrik nicht** — die Typen sind trotz fast gleicher Hülle KEINE austauschbaren Bausteine (WR-Eingangsstrom-Prüfung!).
+
+```ts
+interface ModuleType {
+  id: string;
+  name: string;
+  lengthMm: number; widthMm: number; heightMm: number; weightKg: number;
+  cells: number;
+  // Elektrik @ STC — Quelle: Hersteller-Datenblatt, Version dokumentieren
+  pmaxW: number;
+  vocV: number; iscA: number; vmpV: number; impA: number;
+  tempCoeffVocPctPerK: number;   // negativ
+  tempCoeffPmaxPctPerK: number;  // negativ
+  maxSystemVoltageV: number;     // 1500
+  maxSeriesFuseA: number;
+  // Rendering
+  renderSymbol: 'jolywood_niwa_black' | 'aiko_abc';  // §11.2
+}
+```
+
+### 5.1 Initialbestand — BEIDE MODULE BESTÄTIGT ✅
+
+**Jolywood:** Fork aufgelöst 04.07.2026 per Zellzählung am Modul (6 Spalten × 16 Reihen = 96 Zellen) → **JW-HD96N-R2-460** („Niwa Black Series", n-Type bifazial Dual-Glass Transparent Black). Quelle: Hersteller-Datenblatt Version 2025.01 (PDF ins Repo `/docs/datenblaetter/`). Hero-Artikel 1103 ↔ Katalog-id verknüpfen; Typbezeichnung in Hero nachtragen (Feld war leer).
+**Aiko:** BEIDE Varianten im Einsatz (bestätigt Genrih 04.07.2026 abends): Gen3 Neostar 3S+54 **AIKO-A460-MCE54Db** (Doppelglas; Datenblatt DSDr_EN_2405_V1.5 im Repo) UND Neostar 2N **AIKO-A460-MAH54Mw** (Einzelglas; Datenblatt DS_DE_2407_V1.3 im Repo). Beide als eigene Katalogeinträge — Elektrik unterschiedlich, nicht austauschbar.
+**Alt-Modul (Bestandsanlagen):** JW-HD108N-R3, höchste Klasse 455 W — Voc 39,37 V / Isc 14,21 A / Vmp 33,87 V / Imp 13,43 A, TK −0,300/−0,250/+0,045 %/K, Fuse 30 A, 21,2 kg, 108 Zellen. Als optionaler dritter Katalogeintrag `jw-hd108n-r3-455` für Erweiterungen (Entscheidung Genrih).
+
+| Feld | Jolywood JW-HD96N-R2-460 ✅ | Aiko A460-MCE54Db Gen3 ✅ | Aiko A460-MAH54Mw (Neostar 2N) ✅ |
+|---|---|---|---|
+| id | `jw-hd96n-r2-460` | `aiko-a460-mce54db` | `aiko-a460-mah54mw` |
+| Hero-Artikelnr. | 1103 | TODO | TODO |
+| Maße | 1762 × 1134 × 30 mm | 1762 × 1134 × 30 mm | 1757 × 1134 × 30 mm |
+| Gewicht | 24,6 kg | 24,5 kg | 21,5 kg |
+| Zellen | 96 (6×16) | 108 (6×18) | 108 (6×18) |
+| Glas | 2,0/2,0 mm | 2,0/2,0 mm | Einzelglas 3,2 mm |
+| Pmax | 460 W | 460 W | 460 W |
+| Vmp / Imp | 30,34 V / 15,16 A | 33,80 V / 13,62 A | 34,62 V / 13,29 A |
+| Voc / Isc | 35,31 V / **16,00 A** ⚡ | 40,40 V / 14,58 A | 41,06 V / 14,25 A |
+| TK Pmax / Voc / Isc | −0,280 / −0,250 / +0,045 %/K | −0,26 / −0,22 / +0,05 %/K | −0,26 / −0,22 / +0,05 %/K |
+| Max. Systemspg. / Fuse | 1500 V DC / 35 A | 1500 V DC / 25 A | 1500 V DC / 25 A |
+| Bifazialität | 80 % | — | — |
+| renderSymbol | `jolywood_niwa_black` (6×16) | `aiko_abc` (6×18) | `aiko_abc` (6×18) |
+
+⚡ **Hohe Modulströme sind der Haupt-Filter der WR-Auswahl.** Jolywood: 16,00 × 1,25 = **20,0 A** Kurzschluss-Anforderung pro String am MPPT; Aiko: 14,58 × 1,25 = 18,2 A. Viele Standard-MPPTs fallen durch — High-Current-Varianten (Sungrow, Huawei) explizit im WR-Katalog kennzeichnen. R6/R7 schlagen häufiger an als die Spannungsregeln.
+
+Rechen-Referenzen für das Kalibrierungs-Gate (−15 °C / +70 °C):
+- Jolywood: Voc_cold `35,31 × 1,10 ≈ 38,84 V` → 1000-V-WR: max. 25 Module/String; Vmp_hot `30,34 × 0,874 ≈ 26,52 V`
+- Aiko MCE54Db: Voc_cold `40,40 × 1,088 ≈ 43,96 V` → 1000-V-WR: max. 22 Module/String; Vmp_hot `33,80 × 0,883 ≈ 29,85 V`
+- Aiko MAH54Mw: Voc_cold `41,06 × 1,088 ≈ 44,67 V` → 1000-V-WR: max. 22 Module/String; Vmp_hot `34,62 × 0,883 ≈ 30,57 V`
+
+⚠️ **HARTE REGEL:** Elektrische Werte kommen ausschließlich aus dem exakten Datenblatt der verbauten Serie/Wattklasse (PDF im Repo, Version dokumentiert). Kein Wert aus dem Gedächtnis, keiner Extrapolation aus Nachbar-Wattklassen, keinem Chat-Verlauf, keiner Websuche ohne Datenblatt-PDF als Quelle. ✅ Aufgelöst 04.07.2026 abends: beide Aiko-Datenblätter (MCE54Db DSDr_EN_2405_V1.5 + MAH54Mw DS_DE_2407_V1.3) liegen in `docs/datenblaetter/`, alle Katalogwerte gegen die PDFs verifiziert.
+
+---
+
+## 6. Wechselrichter- & Speicherkatalog
+
+Gleiche Fixkatalog-Logik. Herstellerbestand (Stand 04.07.2026):
+
+| Hersteller | Rolle | Anmerkung |
+|---|---|---|
+| **EcoFlow** | Main-Marke (WR + Speicher) | Hybrid-Systeme; MPPT-Stromgrenzen gegen Isc 16 A prüfen! |
+| Sungrow | WR | High-Current-Variante (SH-RT/RS „HV" vs. Standard) pro Modell kennzeichnen |
+| SigEnergy | WR + Speicher (SigenStor) | modulares Stack-System, MPPT-Daten je Leistungsklasse |
+| Huawei | WR | High-Current-Frage wie Sungrow |
+| BYD | nur Speicher (gelegentlich) | Battery-Box an Fremd-WR — Kompatibilitätsmatrix WR↔Speicher nötig |
+
+**TODO Genrih: konkrete Modell-/Leistungsklassenliste liefern** (pro WR: MPPT-Anzahl, Spannungsfenster, max. Eingangs-/Kurzschlussstrom aus Datenblatt). Speicher sind für die String-Engine v1 nur ein Kompatibilitäts-Flag am WR (`compatibleBatteries: string[]`), keine eigene Rechenlogik — DC-Speicher-Strings sind v2.
+
+```ts
+interface InverterType {
+  id: string; name: string; manufacturer: string;
+  acPowerKw: number;
+  maxDcVoltageV: number;          // absolute Grenze (Winter-Voc!)
+  mpptCount: number;
+  mpptVoltageRange: [number, number];  // [Vmin, Vmax] pro MPPT
+  startupVoltageV: number;
+  maxInputCurrentPerMpptA: number;     // Isc-Prüfung — Aiko 14,25 A schlägt hier ggf. an!
+  maxShortCircuitCurrentPerMpptA: number;
+  maxDcAcRatio: number;                // Überbelegungsgrenze lt. Hersteller, sonst Default 1.35
+  stringsPerMppt: number;
+}
+```
+
+Hinweis aus der Marktrealität: Module mit Imp ≈ 13 A+ erfordern bei manchen Herstellern (Sungrow, SMA, Huawei, SolarEdge) die High-Current-Variante. Genau dafür existiert `maxInputCurrentPerMpptA` als harte Prüfung.
+
+---
+
+## 7. String-Engine — Regelwerk
+
+Reine Datenblatt-Mathematik. Auslegungstemperaturen (Admin-konfigurierbar, Defaults konservativ für Allgäu):
+
+- `T_min = −15 °C` (Winter, Leerlauf morgens)
+- `T_cell_max = +70 °C` (Sommer, Volllast)
+- STC-Referenz 25 °C
+
+### Berechnungen
+
+```
+Voc_cold  = Voc_STC × (1 + tkVoc/100 × (T_min − 25))       // z.B. −0,29 %/K, −15 °C → Faktor ~1,116
+Vmp_hot   = Vmp_STC × (1 + tkPmax/100 × (T_cell_max − 25)) // Näherung über TK Pmax; konservativ
+```
+
+### Regeln (alle müssen bestehen, sonst ist der Plan UNGÜLTIG und nicht exportierbar)
+
+| # | Regel | Prüfung |
+|---|---|---|
+| R1 | Max. DC-Spannung | `n × Voc_cold ≤ maxDcVoltageV` |
+| R2 | Systemspannung Modul | `n × Voc_cold ≤ module.maxSystemVoltageV` |
+| R3 | MPPT-Fenster unten | `n × Vmp_hot ≥ mpptVmin` |
+| R4 | MPPT-Fenster oben | `n × Vmp_STC ≤ mpptVmax` |
+| R5 | Anlaufspannung | `n × Vmp_hot ≥ startupVoltageV` |
+| R6 | Eingangsstrom | `Σ Imp der parallelen Strings ≤ maxInputCurrentPerMpptA` |
+| R7 | Kurzschlussstrom | `Σ Isc × 1,25 ≤ maxShortCircuitCurrentPerMpptA` |
+| R8 | Gleiche Stringlänge pro MPPT | parallele Strings am selben MPPT: identische Modulanzahl |
+| R9 | Eine Ausrichtung pro MPPT | Module unterschiedlicher `RoofPlane`-Azimut/Neigung nicht am selben MPPT (Ausnahme: WR mit Schatten-Management, Flag pro WR-Katalogeintrag) |
+| R10 | Kein Modul-Mix im String | ein String = ein `ModuleType` |
+| R11 | DC:AC-Ratio | `kWp_gesamt / acPowerKw ≤ maxDcAcRatio` (Warnung ab 1,2, hart bei Katalogwert) |
+
+**Fehlerdarstellung:** immer konkret mit Zahlen. Beispiel: „24 Module gehen nicht: Winter-Voc 1.052 V > WR-Maximum 1.000 V. Maximal 22 Module pro String." Niemals nur „ungültig".
+
+### 7.1 Auto-Stringplan (v1.5)
+
+Rule-based Solver, KEIN LLM: (1) gültige Stringlängen `n` je Modul×WR enumerieren (R1–R5), (2) Modulbestand pro Fläche auf MPPTs verteilen unter R6–R11, (3) Lösungen ranken (wenigste Strings, ausgeglichenste MPPT-Last). Deterministisch, jede Lösung erklärt sich über die Regeln.
+
+---
+
+## 8. Geometrie-Quellen
+
+### 8.1 Primär: Google Solar API
+
+- `buildingInsights` liefert pro Dachsegment `pitchDegrees`, `azimuthDegrees`, Fläche, Bounding Box → direkt in `RoofPlane` (mit Verkürzungskorrektur §4.1). 10.000 Calls/Monat frei.
+- `dataLayers` (DSM, RGB) nur gezielt — kleineres Freikontingent (1.000/Monat), teurer.
+- Coverage Deutschland großteils MEDIUM (0,25 m/px), ländlich teils BASE oder nichts → Fallback ist Pflicht-Feature, kein Nice-to-have.
+- Bildalter beachten: Imagery kann Jahre alt sein. Hinweis im UI: „Luftbild vom {imageryDate} — Dach seitdem verändert? → manuell korrigieren."
+
+**⛔ GATE-0 (vor jedem Bau von §8.1):** Test-Call mit EEA-Billing-Account. Seit 08.07.2025 gelten die EEA-Terms; bestimmte Solar-API-Inhalte werden im EEA nicht mehr ausgeliefert — real prüfen, was `buildingInsights` und `dataLayers` für 2–3 echte Allgäu-Adressen zurückgeben. Ergebnis in §16 dokumentieren. Kein Code gegen angenommene Responses.
+
+**⛔ Verboten:** Screenshots von google.com/maps als Planungsgrundlage oder in Kundenoutputs (Maps-TOS: keine derivativen Werke). Nur API-Daten im lizenzierten Rahmen.
+
+### 8.2 Workflow „korrigieren statt konstruieren"
+
+1. Adresse → Solar-API-Segmente als editierbare Overlays
+2. Vertriebler korrigiert: Segment löschen, Ecke ziehen, Gaube stempeln, Knick ziehen
+3. Kein/schlechtes Ergebnis → Fallback: Flächen manuell anlegen (Polygon zeichnen ODER Aufmaß-Maße eingeben, Neigung/Azimut per Dropdown/Buttons)
+4. Vorhandene Aufmaß-Maße überschreiben IMMER getracte Werte (Override-Feld pro Kante)
+
+### 8.3 Eskalation (Pflicht-Feature)
+
+Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert Projekt als eskaliert. Anspruch des Tools sind 80 % Standarddächer, nicht 100 % — ehrliche Eskalation statt falscher Plan.
+
+---
+
+## 9. Belegungslogik
+
+- Raster pro `RoofPlane`: Modulmaß (aus Katalog, mm) + Ausrichtung hoch/quer (Button) + Reihen-/Spaltenabstand (Default 20 mm Klemmfuge, Admin-konfigurierbar)
+- Randabstände: Default 0,30 m zu Traufe/First/Ortgang (Admin-konfigurierbar; Hinweis auf Wind-Randzonen als v2-Thema, v1 = pauschaler Rand)
+- Ausschlüsse (Gauben-Footprints + Clearance, Hindernisse) werden ausgespart
+- Manuelles Nacharbeiten: einzelne Module per Klick deaktivieren/aktivieren
+- kWp = Σ aktive Module × Pmax
+
+---
+
+## 10. Flag-System („gelb anmalen")
+
+**v1 (deterministisch, billig):**
+- Solar-API-Segmente überlappen sich oder lassen Lücken → gelb
+- Mini-Segment (< 4 m²) innerhalb großer Fläche → gelb + Dialog: „Gaube? Knick? Ignorieren?"
+- Unplausibles Seitenverhältnis, Neigung 0° bei offensichtlichem Steildach-Kontext → gelb
+- Fläche ohne Neigungsangabe → Belegung blockiert bis Eingabe
+
+**v2 (hinter GATE-0):** DSM-Residuen — Ebene pro Segment fitten, Höhenabweichungen lokalisieren → unerkannte Gauben/Knicke gemessen statt geraten. Nur wenn `dataLayers` unter EEA-Terms das DSM liefert.
+
+---
+
+## 11. Rendering
+
+### 11.1 Ansichten
+
+- **v1:** Draufsicht pro Fläche (2D-Plan, wahre Maße, Modulraster, Dachfarbe) + zusammengesetzte Gesamtansicht als 2.5D-Isometrie (Kompositor: Ebenen an deklarierten Kanten, Gauben als Katalogkörper gestempelt). Stilisiert, nicht fotoreal — bewusster Premium-Look, umgeht Bildlizenz und Bildalter.
+- Kein Tilt/3D-Hover (konsistent mit Website-Designsystem).
+
+### 11.2 Modul-Symbole (SVG `<symbol>` / `<use>`, freigegeben 04.07.2026)
+
+Ein Symbol pro Modultyp, N-fach instanziert, Neigungs-Transform pro Fläche. Niemals Geometrie pro Modul duplizieren.
+
+**Gemeinsam:** Rahmen außen `#0e0e10`→`#141416` (2 Stufen), Glasfläche `#08090b`, Rahmenkontur innen 1 px, dezenter diagonaler Glanz-Polygon (weiß, opacity ~0.025), Seitenverhältnis 1762:1134.
+
+**`jolywood_niwa_black`** (Zellen tiefschwarz = identisch Aiko, NUR Linien silbern). **Raster final: 6×16** (HD96N-R2 bestätigt). Referenz-SVG v4 hat 18 Reihen — bei Code-Übernahme auf 16 Reihen / 15 Zwischenlinien anpassen; Raster wird aus `cells` im Katalog abgeleitet, nicht hartkodiert:
+- Horizontale Verbinderlinien zwischen Zellreihen (Anzahl = Reihen − 1 = 15): `#5a5e66`, 0.7 px, opacity 0.85
+- Mittelfuge (Halbzellen-Trennung): Balken `#54585f`, ~1 % Modulhöhe, opacity 0.9 — auffälligstes Element
+- Vertikale SMBB-Drähte in den Zellen: `#3f424a`, 0.3 px, opacity 0.55, 5 je Zellspalte
+- Spaltengrenzen fast schwarz `#101114` (real kaum sichtbar)
+
+**`aiko_abc`** (All Back Contact, keine Frontkontakte):
+- Homogen schwarz, Zellkanten nur minimal angedeutet: `#121316`, 0.5 px
+- Mittellinie minimal betont `#15161a`, 0.8 px
+- KEINE silbernen Linien, keine Drähte
+
+**Level-of-Detail:** unterhalb Schwellwert (Modul < ~40 px Rendergröße) vereinfachte Variante — Jolywood: schwarz + Mittelfuge + Reihenlinien reduziert; Aiko: flat black + Rahmen. Farbunterschied trägt die Erkennbarkeit.
+
+Referenz-SVGs: siehe Chat „Belegungstool" 04.07.2026, Widget `modul_grafiken_jolywood_vs_aiko_v4_silberlinien`. Bei Übernahme in Code: 1:1 als Symbol-Defs portieren.
+
+### 11.3 Dachfarben
+
+Swatch-Auswahl pro `RoofPlane` (Sales-Feature, null Einfluss auf Engine): Ziegelrot (Ton), Anthrazit (Beton/engobiert), Schiefer/Schwarz, Grau (Blech/Bitumen). Full-Black-Wirkung auf Anthrazit vs. Ziegelrot ist Teil des Verkaufsmoments — Dachfarbe × Modul-Look immer gemeinsam rendern.
+
+### 11.4 Fassadenfarbe
+
+**NICHT v1.** Draufsicht-Daten enthalten keine Fassaden. Späteres eigenes Modul (Kundenfoto-Upload + Segmentierung, v2+). Nicht an die Dach-Pipeline flanschen.
+
+---
+
+## 12. Tech-Stack (Vorschlag, konsistent mit Bestand)
+
+- Frontend: Next.js 14 + Tailwind (wie Website-Projekt), Canvas/SVG für Plan-Editor
+- Backend: Node.js/Express (wie Ticketsystem), SQLite reicht für Katalog + Projekte
+- Hosting: bestehender IONOS VPS, Subdomain unter `intern.suedenergie-pv.de` oder eigene
+- Auth: Session-Auth wie Ticketsystem, idealerweise gemeinsame User-Basis
+- CI: internes Dashboard-CI (Inter, `#e8603a`, weiße Cards auf `#f4f6f8`) — NICHT das dunkle Website-CI
+
+---
+
+## 13. Export → Ticketsystem
+
+Ein Klick erzeugt Ticket in `tickets_projektierung` mit Payload:
+
+```json
+{
+  "tool": "belegungsplaner",
+  "version": "1.0",
+  "projekt": { "adresse": "...", "kunde": "...", "erfasser": "user_id" },
+  "geometrieQuelle": "solar_api | manual | solar_api_edited",
+  "flaechen": [
+    { "id": "p1", "neigungDeg": 38, "azimutDeg": 182, "flaecheM2": 54.2,
+      "module": { "typ": "jw-hd108n-r3-460", "anzahl": 24, "ausrichtung": "hoch" } }
+  ],
+  "wechselrichter": { "typ": "...", "anzahl": 1 },
+  "strings": [
+    { "mppt": 1, "flaeche": "p1", "module": 12, "vocColdV": 0, "vmpHotV": 0 }
+  ],
+  "kwp": 11.04,
+  "regelPruefung": { "bestanden": true, "regeln": { "R1": "ok", "...": "..." } },
+  "flags": [], "eskaliert": false,
+  "renderPngUrl": "..."
+}
+```
+
+Ticket-Kategorie: neue Kategorie „Vorplanung Vertrieb" (V3-Datenmodell des Ticketsystems: `user_categories` beachten — bekannter Bug!). PL macht daraus die PV*SOL-Detailauslegung. Feldnamen ASCII snake_case, kompatibel als spätere CRM-Keys (gleiche Konvention wie Objektaufnahme-PDF).
+
+---
+
+## 14. ⛔ KALIBRIERUNGS-GATE (Pflicht vor UI-Bau)
+
+Analog Statik-Vorprüfung. **Kein UI-Code, bevor die String-Engine dieses Gate besteht.**
+
+1. Testmatrix definieren: alle Katalogmodule × alle Katalog-WR × Stringlängen (min, mitte, max, max+1) × T_min/T_cell_max → mindestens ~30 Fälle, davon gezielt Grenzfälle (max+1 MUSS durchfallen)
+2. Jeden Fall in PV*SOL (vorhandene Lizenz) nachstellen: zulässige Stringlängen, Voc bei −15 °C, MPPT-Prüfungen
+3. Abgleich: Engine-Ergebnis == PV*SOL-Ergebnis für JEDEN Fall. Abweichung → Ursache klären (Temperaturmodell? Datenblattwert? Rundung?), fixen, Matrix komplett neu laufen lassen
+4. Matrix + Ergebnisse als `kalibrierung.md` neben dieser SPEC einchecken
+
+Zusätzlich blockierend:
+- **GATE-0** (§8.1): EEA-Test-Call Solar API, bevor Geometrie-Import gebaut wird
+- Modulkatalog vollständig (R3-Datenblattwerte ⚠️ aus §5.1 geschlossen)
+- WR-Katalog befüllt (§6 TODO)
+
+---
+
+## 15. Versionsplan
+
+| Version | Inhalt |
+|---|---|
+| **v1** | Manuelle + Solar-API-Geometrie, Knick/Gaube-Deklaration, Belegung, String-Engine mit Regelwerk, Flags (Geometrie-Heuristiken), 2D-Plan + 2.5D-Gesamtansicht, Dachfarben, JSON-Export, Eskalations-Button |
+| **v1.5** | Auto-Stringplan (Rule-Solver, §7.1), Render-Export als PNG/PDF fürs Angebot, LoD-Feinschliff |
+| **v2** | DSM-Residuen-Flags (hinter GATE-0), Fassadenmodul (Kundenfoto), Wind-Randzonen statt Pauschalrand, CRM-Anbindung statt/neben Ticketsystem |
+
+---
+
+## 16. Offene Punkte / TODO
+
+| # | Punkt | Wer | Blockiert |
+|---|---|---|---|
+| 1 | ~~Jolywood-Fork~~ ✅ aufgelöst 04.07. per Zellzählung (6×16 = 96) → HD96N-R2-460, Werte final in §5.1. Rest: Typbezeichnung in Hero-Artikel 1103 nachtragen | Genrih (Hero-Pflege) | — |
+| 2 | ~~Aiko~~ ✅ erledigt 04.07. abends — BEIDE Varianten im Einsatz: A460-MCE54Db (Doppelglas) + A460-MAH54Mw (Einzelglas), Werte in §5.1, beide Datenblätter im Repo. Offen nur: Hero-Artikelnummern | Genrih (Hero-Pflege) | — |
+| 3 | WR-Marken ✅ (EcoFlow, Sungrow, SigEnergy, Huawei, BYD-Speicher) — offen: konkrete Modelle + MPPT-Datenblattwerte, insbes. max. Eingangs-/Kurzschlussstrom (Aiko verlangt 18,2 A, HD96N ggf. 20 A) | Genrih | §6, Kalibrierung |
+| 4 | GATE-0: Solar-API-Test-Call mit EEA-Account, Response dokumentieren | Genrih/Claude Code | §8, §10 v2 |
+| 5 | Schneelast-/Wind-Randzonen: v1 bewusst Pauschalrand — mit Statik-Tool-Erkenntnissen später zusammenführen? | Genrih | nein (v2) |
+| 6 | Ticketsystem: Kategorie „Vorplanung Vertrieb" + `user_categories`-Bug vorher fixen | Genrih | §13 |
+| 7 | Auslegungstemperatur T_min: −15 °C Default fürs Allgäu bestätigen oder verschärfen (Höhenlagen) | Genrih | Kalibrierung |
+
+---
+
+## 17. Claude-Code-Handoff-Regeln
+
+- Diese SPEC.md liegt im Repo-Root, dazu `CLAUDE.md` mit Verweis hierauf (gleiches Muster wie Statik-Tool)
+- Reihenfolge: Katalog-Datenmodell → String-Engine + Tests → Kalibrierung (§14) → Geometrie-Import → Belegung → Renderer → Export → UI-Politur
+- Engine-Code ohne Tests wird nicht gemerged; jede Regel R1–R11 hat mindestens einen Pass- und einen Fail-Testfall
+- Bei Widerspruch zwischen Chat-Verlauf und dieser SPEC gilt die SPEC. Bei Lücken: fragen, nicht raten.
