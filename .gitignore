@@ -1,4 +1,6 @@
 node_modules/
 dist/
+# generiert von `npm run kalibrierung` — jederzeit reproduzierbar
+kalibrierung-engine-output.md
 *.tsbuildinfo
 .DS_Store
