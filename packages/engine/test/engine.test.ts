@@ -31,8 +31,8 @@ describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
     expect(res.strings).toHaveLength(2);
     expect(res.strings[0]!.vocColdV).toBeCloseTo(12 * 43.9552, 3);
     expect(res.strings[0]!.vmpHotV).toBeCloseTo(12 * 29.8454, 2);
-    // Ergebnis enthält für jede der 11 Regeln mindestens einen Eintrag
-    expect(new Set(res.results.map((r) => r.rule)).size).toBe(11);
+    // Ergebnis enthält für jede der 12 Regeln mindestens einen Eintrag
+    expect(new Set(res.results.map((r) => r.rule)).size).toBe(12);
   });
 
   it('mehrfach ungültiger Plan meldet alle verletzten Regeln konkret', () => {

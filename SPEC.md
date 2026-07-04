@@ -191,6 +191,7 @@ interface InverterType {
   startupVoltageV: number;
   maxInputCurrentPerMpptA: number[];     // je MPPT — R6 (Imp-Summe)
   maxShortCircuitCurrentPerMpptA: number[]; // je MPPT — R7 (Isc ×1,25)
+  maxShortCircuitCurrentPerStringA?: number[]; // je MPPT, optional — R12; nur wo Datenblatt Per-String-Wert nennt (PO Plus PV1: 19 A)
   maxDcAcRatio: number;                // Überbelegungsgrenze lt. Hersteller, sonst Default 1.35
   stringsPerMppt: number[];            // je MPPT
 }
@@ -209,7 +210,7 @@ interface InverterType {
 
 ~~⚠️ Huawei M1~~ **Entschieden 05.07.2026 (Genrih): Huawei M1 NICHT im Katalog.** 11 A Eingangsstrom pro MPPT liegt unter dem Imp aller drei Katalogmodule (13,29–15,16 A), 15 A Kurzschlussgrenze < 17,81–20,0 A Anforderung → jeder String fiele durch R6/R7. Datenblatt bleibt im Repo für den Fall einer High-Current-Variante.
 
-⚠️ **PowerOcean Plus PV1:** Datenblatt nennt 19 A Kurzschlussstrom **pro String** (2 Strings = 38 A je MPPT). Jolywood fordert 20,0 A pro String — Engine prüft R7 nur auf MPPT-Ebene (Summe ≤ 38 A), die Per-String-Grenze ist NICHT abgedeckt (siehe OFFENE_FRAGEN).
+⚠️ **PowerOcean Plus PV1:** Datenblatt nennt 19 A Kurzschlussstrom **pro String** (2 Strings = 38 A je MPPT). Jolywood fordert 20,0 A pro String → ~~Regel-Lücke~~ **seit 05.07.2026 durch R12 abgedeckt** (`maxShortCircuitCurrentPerStringA: [19, 24, 24]`); die Engine verbietet Jolywood an PV1 mit konkreter Meldung.
 
 Speicher (nur Flag, Datenblätter im Repo): EcoFlow PowerOcean LFP · Sungrow **SBR** (bestätigt 05.07.2026; SBH-Datenblatt liegt bei, wird aber nicht verknüpft) · SigenStor BAT.
 
@@ -247,6 +248,9 @@ Vmp_hot   = Vmp_STC × (1 + tkPmax/100 × (T_cell_max − 25)) // Näherung übe
 | R9 | Eine Ausrichtung pro MPPT | Module unterschiedlicher `RoofPlane`-Azimut/Neigung nicht am selben MPPT (Ausnahme: WR mit Schatten-Management, Flag pro WR-Katalogeintrag) |
 | R10 | Kein Modul-Mix im String | ein String = ein `ModuleType` |
 | R11 | DC:AC-Ratio | `kWp_gesamt / acPowerKw ≤ maxDcAcRatio` (Warnung ab 1,2, hart bei Katalogwert) |
+| R12 | Kurzschlussstrom je String-Eingang | `Isc × 1,25 ≤ maxShortCircuitCurrentPerStringA[mppt]`; fehlt der Datenblattwert, gilt die MPPT-Grenze (R7) als Fallback. NEU 05.07.2026 |
+
+**R12 (ergänzt 05.07.2026, Genrih):** Manche WR begrenzen den Kurzschlussstrom zusätzlich PRO STRING-EINGANG (PowerOcean Plus PV1: 19 A je Stecker bei 38 A je MPPT). Da der Stringstrom NICHT von der Modulanzahl abhängt, ist die Konsequenz eines R12-Fehlers immer: **anderer Modultyp oder anderer Eingang** — die Fehlermeldung sagt das explizit.
 
 **Fehlerdarstellung:** immer konkret mit Zahlen. Beispiel: „24 Module gehen nicht: Winter-Voc 1.052 V > WR-Maximum 1.000 V. Maximal 22 Module pro String." Niemals nur „ungültig".
 

@@ -60,7 +60,8 @@ NEU 04.07. abends (beide Aiko-Varianten im Einsatz, SPEC §5.1): Fälle D1–D9 
 ## Abnahme
 
 - [ ] Alle Fälle Match = ✅
-- [ ] Jede Regel R1–R11 mindestens einmal als Ursache eines erwarteten FAIL abgedeckt
+- [ ] Jede Regel R1–R12 mindestens einmal als Ursache eines erwarteten FAIL abgedeckt
+      (R12: Jolywood × PowerOcean Plus, Fälle B1/B3/B4 an PV1 — erwartetes FAIL(R12))
 - [ ] PV*SOL-Version dokumentiert
 - [ ] Ergebnis-Commit referenziert Engine-Commit-Hash: `________`
 

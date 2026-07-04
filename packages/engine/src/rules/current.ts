@@ -56,3 +56,38 @@ export function checkR7(calc: PlanCalc): RuleResult[] {
     ? fails
     : ok('R7', `Kurzschlussstrom (×${fmt(factor, 2)}) aller MPPTs innerhalb der jeweiligen Grenze.`);
 }
+
+/**
+ * R12: Isc × 1,25 ≤ Kurzschlussgrenze PRO STRING-EINGANG (SPEC §7, ergänzt 05.07.2026).
+ * Explizite Datenblattwerte aus maxShortCircuitCurrentPerStringA; sonst gilt die
+ * MPPT-Grenze (R7) als Fallback. Der Stringstrom hängt NICHT von der Modulanzahl
+ * ab — ein R12-Fehler bedeutet immer: anderer Modultyp oder anderer Eingang.
+ */
+export function checkR12(calc: PlanCalc): RuleResult[] {
+  const factor = calc.params.iscSafetyFactor;
+  const fails: RuleResult[] = [];
+  for (const mppt of calc.mppts) {
+    const limit =
+      calc.inverter.maxShortCircuitCurrentPerStringA?.[mppt.mpptIndex - 1] ??
+      calc.inverter.maxShortCircuitCurrentPerMpptA[mppt.mpptIndex - 1]!;
+    for (const s of mppt.strings) {
+      const demand = s.iscA * factor;
+      if (demand > limit) {
+        const typ = s.uniformType?.name ?? s.moduleTypeIds.join(', ');
+        fails.push({
+          rule: 'R12',
+          status: 'fail',
+          mpptIndex: mppt.mpptIndex,
+          stringId: s.id,
+          message:
+            `MPPT ${mppt.mpptIndex}, String ${s.id}: Kurzschlussstrom ${fmt(s.iscA, 2)} A × ` +
+            `${fmt(factor, 2)} = ${fmt(demand, 2)} A > zulässige ${fmt(limit)} A je String-Eingang. ` +
+            `${typ} ist an diesem Eingang nicht zulässig — die Modulanzahl im String ändert den Strom nicht.`,
+        });
+      }
+    }
+  }
+  return fails.length > 0
+    ? fails
+    : ok('R12', `Kurzschlussstrom (×${fmt(factor, 2)}) aller Strings innerhalb der String-Eingangsgrenzen.`);
+}

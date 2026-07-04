@@ -58,7 +58,9 @@ export function buildPlanCalc(input: StringPlanInput): PlanCalc {
   if (
     inverter.maxInputCurrentPerMpptA.length !== inverter.mpptCount ||
     inverter.maxShortCircuitCurrentPerMpptA.length !== inverter.mpptCount ||
-    inverter.stringsPerMppt.length !== inverter.mpptCount
+    inverter.stringsPerMppt.length !== inverter.mpptCount ||
+    (inverter.maxShortCircuitCurrentPerStringA !== undefined &&
+      inverter.maxShortCircuitCurrentPerStringA.length !== inverter.mpptCount)
   ) {
     throw new Error(
       `WR ${inverter.id}: MPPT-Arrays müssen Länge ${inverter.mpptCount} (mpptCount) haben — Katalogfehler.`,

@@ -40,6 +40,12 @@ export interface InverterType {
    */
   maxInputCurrentPerMpptA: number[]; // R6
   maxShortCircuitCurrentPerMpptA: number[]; // R7
+  /**
+   * R12 (optional, je MPPT): Kurzschlussgrenze PRO STRING-EINGANG — nur setzen,
+   * wo das Datenblatt sie explizit nennt (PO Plus PV1: 19 A je Stecker).
+   * Fehlt der Wert, nutzt R12 die MPPT-Grenze (R7) als Fallback.
+   */
+  maxShortCircuitCurrentPerStringA?: number[];
   maxDcAcRatio: number; // Überbelegungsgrenze lt. Hersteller, sonst Default 1.35
   stringsPerMppt: number[]; // je MPPT
   /** Speicher-Kompatibilität als Flag-Liste (SPEC §6; v1 ohne Rechenlogik). */
@@ -100,7 +106,7 @@ export interface StringPlanInput {
 }
 
 export const RULE_IDS = [
-  'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'R11',
+  'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'R11', 'R12',
 ] as const;
 export type RuleId = (typeof RULE_IDS)[number];
 

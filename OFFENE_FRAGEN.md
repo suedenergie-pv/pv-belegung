@@ -20,20 +20,23 @@ gegenrechnen (z. B. pro Familie eine Klasse) statt aller 918 Zeilen — Filter:
 
 Grund: 11 A/15 A pro MPPT unter den Modulströmen. Datenblatt bleibt im Repo.
 
-### 3. EcoFlow PowerOcean Plus PV1: 19 A Kurzschluss PRO STRING
+### ~~3. PO Plus PV1: 19 A pro String~~ ✅ erledigt 05.07.2026: R12 gebaut
 
-Datenblatt nennt für PV1 „19×2 A" — also 19 A je String (38 A je MPPT).
-Jolywood fordert 20,0 A pro String. R7 prüft nur die MPPT-Summe (≤ 38 A) →
-die Per-String-Grenze wird NICHT geprüft. Soll eine Per-String-Regel ergänzt
-werden (SPEC §7 erweitern)? Bis dahin: Jolywood an PO-Plus-PV1 manuell meiden.
+Neue Regel R12 (SPEC §7): Isc × 1,25 ≤ Kurzschlussgrenze je String-Eingang;
+ohne expliziten Datenblattwert gilt die MPPT-Grenze als Fallback. Jolywood an
+PO-Plus-PV1 wird jetzt mit konkreter Meldung („Modultyp an diesem Eingang
+nicht zulässig") abgewiesen. Explizite Per-String-Werte bisher nur bei PO Plus
+— falls Handbücher von Sungrow SH-T (MPPT1/2) oder Sigen TP2 (MPPT2) eigene
+Per-String-Kurzschlusswerte nennen, nachtragen.
 
-### 4. Regel-Lücken: stringsPerMppt + max. Leistung pro MPPT
+### 4. Regel-Lücken: stringsPerMppt + max. Leistung pro MPPT + Imp pro String
 
-Keine Regel R1–R11 prüft (a) die Stringanzahl pro MPPT (physische Eingänge;
-Parallelschaltung per Y-Stecker wäre elektrisch möglich) und (b) die max.
-DC-Leistung pro MPPT (z. B. PowerOcean 5–8 kW je MPPT, PO Plus PV1 20 kW).
-PV*SOL prüft beides → wird bei der Kalibrierung als Abweichung auffallen.
-Regeln ergänzen (R12/R13)?
+Keine Regel prüft bisher (a) die Stringanzahl pro MPPT (physische Eingänge;
+Parallelschaltung per Y-Stecker wäre elektrisch möglich), (b) die max.
+DC-Leistung pro MPPT (z. B. PowerOcean 5–8 kW je MPPT, PO Plus PV1 20 kW),
+(c) den Betriebsstrom PRO STRING (Sungrow: „max. 16 A pro Strang" — Jolywood
+Imp 15,16 A passt knapp). PV*SOL prüft (a)+(b) → fällt ggf. bei der
+Kalibrierung als Abweichung auf. Regeln ergänzen (R13+)?
 
 ### 5. Sigen Hybrid SP2 (einphasig, 2,0–6,0 kW) weggelassen
 

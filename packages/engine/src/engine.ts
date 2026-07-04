@@ -1,5 +1,5 @@
 import { buildPlanCalc } from './plan';
-import { checkR6, checkR7 } from './rules/current';
+import { checkR12, checkR6, checkR7 } from './rules/current';
 import { checkR11 } from './rules/ratio';
 import { checkR10, checkR8, checkR9 } from './rules/topology';
 import { checkR1, checkR2, checkR3, checkR4, checkR5 } from './rules/voltage';
@@ -26,6 +26,7 @@ export function checkStringPlan(input: StringPlanInput): StringPlanResult {
     ...checkR9(calc),
     ...checkR10(calc),
     ...checkR11(calc),
+    ...checkR12(calc),
   ];
 
   const rank: Record<RuleStatus, number> = { ok: 0, warn: 1, fail: 2 };

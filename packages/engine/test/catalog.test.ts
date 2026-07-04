@@ -125,6 +125,7 @@ describe('WR-Katalog (SPEC §6.1, PDF-verifiziert)', () => {
     expect(wr.stringsPerMppt).toEqual([2, 1, 1]);
     expect(wr.maxInputCurrentPerMpptA).toEqual([32, 16, 16]);
     expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([38, 24, 24]);
+    expect(wr.maxShortCircuitCurrentPerStringA).toEqual([19, 24, 24]); // R12: „19×2" lt. Datenblatt
     expect(wr.maxDcAcRatio).toBeCloseTo(40000 / 29900, 6);
   });
 
