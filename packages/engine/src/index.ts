@@ -14,11 +14,7 @@ export {
   JOLYWOOD_JW_HD96N_R2_460,
   MODULES,
 } from './catalog/modules';
-export {
-  DUMMY_WR_HIGHCURRENT_12K,
-  DUMMY_WR_STANDARD_10K,
-  INVERTERS,
-} from './catalog/inverters';
+export { INVERTERS } from './catalog/inverters';
 export { resolveParams, vocColdV, vmpHotV } from './temperature';
 export { maxModulesPerString, minModulesPerString } from './stringlimits';
 export { buildPlanCalc, orientationKey } from './plan';

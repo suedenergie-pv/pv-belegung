@@ -76,13 +76,85 @@ describe('Modulkatalog (SPEC §5.1, PDF-verifiziert)', () => {
   });
 });
 
-describe('WR-Katalog (SPEC §6)', () => {
-  it('enthält bisher NUR klar markierte Dummy-Einträge (Modellliste = SPEC §6 TODO)', () => {
-    expect(INVERTERS.length).toBeGreaterThan(0);
+describe('WR-Katalog (SPEC §6.1, PDF-verifiziert)', () => {
+  const byId = (id: string) => {
+    const wr = INVERTERS.find((w) => w.id === id);
+    if (!wr) throw new Error(`WR ${id} fehlt im Katalog`);
+    return wr;
+  };
+
+  it('enthält keine Dummy-Einträge mehr und 34 Klassen (SPEC §6.1)', () => {
+    expect(INVERTERS).toHaveLength(34);
     for (const wr of INVERTERS) {
-      expect(wr.isDummy).toBe(true);
-      expect(wr.name).toContain('DUMMY');
-      expect(wr.manufacturer).toBe('DUMMY');
+      expect(wr.isDummy ?? false).toBe(false);
+      expect(wr.mpptCount).toBe(wr.stringsPerMppt.length);
+      expect(wr.mpptCount).toBe(wr.maxInputCurrentPerMpptA.length);
+      expect(wr.mpptCount).toBe(wr.maxShortCircuitCurrentPerMpptA.length);
     }
+  });
+
+  it('Sungrow SH25T — Datenblatt Version 3', () => {
+    const wr = byId('sungrow-sh25t');
+    expect(wr.acPowerKw).toBe(25);
+    expect(wr.maxDcVoltageV).toBe(1000);
+    expect(wr.mpptVoltageRange).toEqual([150, 950]);
+    expect(wr.startupVoltageV).toBe(180);
+    expect(wr.mpptCount).toBe(3);
+    expect(wr.stringsPerMppt).toEqual([2, 2, 1]);
+    expect(wr.maxInputCurrentPerMpptA).toEqual([32, 32, 16]);
+    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([40, 40, 20]);
+    expect(wr.maxDcAcRatio).toBeCloseTo(2.0, 6); // 50.000 Wp / 25.000 W
+  });
+
+  it('Huawei SUN2000-10KTL-M1 — 11 A / 15 A pro MPPT (⚠️ SPEC §6.1)', () => {
+    const wr = byId('huawei-sun2000-10ktl-m1');
+    expect(wr.acPowerKw).toBe(10);
+    expect(wr.maxDcVoltageV).toBe(1100);
+    expect(wr.mpptVoltageRange).toEqual([140, 980]);
+    expect(wr.startupVoltageV).toBe(200);
+    expect(wr.maxInputCurrentPerMpptA).toEqual([11, 11]);
+    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([15, 15]);
+    expect(wr.maxDcAcRatio).toBeCloseTo(1.5, 6); // 15.000 Wp / 10.000 W
+  });
+
+  it('EcoFlow PowerOcean 12K — Datenblatt 20241226', () => {
+    const wr = byId('ecoflow-po-12k');
+    expect(wr.acPowerKw).toBe(12);
+    expect(wr.mpptVoltageRange).toEqual([200, 850]);
+    expect(wr.startupVoltageV).toBe(160);
+    expect(wr.maxInputCurrentPerMpptA).toEqual([16, 16]);
+    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([24, 24]);
+    expect(wr.maxDcAcRatio).toBeCloseTo(16000 / 12000, 6);
+  });
+
+  it('EcoFlow PowerOcean Plus 29K9 — heterogene MPPTs (PV1 doppelt)', () => {
+    const wr = byId('ecoflow-pop-29k9');
+    expect(wr.acPowerKw).toBe(29.9);
+    expect(wr.mpptCount).toBe(3);
+    expect(wr.stringsPerMppt).toEqual([2, 1, 1]);
+    expect(wr.maxInputCurrentPerMpptA).toEqual([32, 16, 16]);
+    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([38, 24, 24]);
+    expect(wr.maxDcAcRatio).toBeCloseTo(40000 / 29900, 6);
+  });
+
+  it('Sigen Hybrid 12.0 TP2 — MPPT2 mit 2 Strings (16/32 A, 22/44 A)', () => {
+    const wr = byId('sigen-hybrid-12-0-tp2');
+    expect(wr.maxDcVoltageV).toBe(1100);
+    expect(wr.mpptVoltageRange).toEqual([160, 1000]);
+    expect(wr.startupVoltageV).toBe(180);
+    expect(wr.stringsPerMppt).toEqual([1, 2]);
+    expect(wr.maxInputCurrentPerMpptA).toEqual([16, 32]);
+    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([22, 44]);
+    expect(wr.maxDcAcRatio).toBe(2.0);
+  });
+
+  it('SigenStor EC — MPPT-Anzahl je Leistungsklasse (2/3/4)', () => {
+    expect(byId('sigenstor-ec-8-0-tp').mpptCount).toBe(2);
+    expect(byId('sigenstor-ec-15-0-tp').mpptCount).toBe(3);
+    expect(byId('sigenstor-ec-30-0-tp').mpptCount).toBe(4);
+    const wr = byId('sigenstor-ec-30-0-tp');
+    expect(wr.maxInputCurrentPerMpptA).toEqual([16, 16, 16, 16]);
+    expect(wr.maxShortCircuitCurrentPerMpptA).toEqual([20, 20, 20, 20]);
+    expect(wr.maxDcAcRatio).toBeCloseTo(1.6, 6); // 48.000 Wp / 30.000 W
   });
 });

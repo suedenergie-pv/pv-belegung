@@ -1,15 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { DUMMY_WR_HIGHCURRENT_12K, DUMMY_WR_STANDARD_10K } from '../src/catalog/inverters';
 import { checkStringPlan } from '../src/engine';
 import { mkInput, mkString, mppt, testInverter } from './helpers';
 
 const JW = 'jw-hd96n-r2-460';
 const MCE = 'aiko-a460-mce54db';
 
+// Fixture analog eines High-Current-WR (frei erfunden, nur für Tests)
+const highCurrentFixture = () =>
+  testInverter({
+    acPowerKw: 12,
+    maxDcVoltageV: 1100,
+    mpptVoltageRange: [150, 1000],
+    startupVoltageV: 150,
+    maxInputCurrentPerMpptA: [32, 32],
+    maxShortCircuitCurrentPerMpptA: [44, 44],
+    maxDcAcRatio: 1.5,
+  });
+
 describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
-  it('gültiger Plan: 2 × 12 Aiko MCE54Db am Dummy-Standard-WR → alle Regeln ok', () => {
+  it('gültiger Plan: 2 × 12 Aiko MCE54Db am Standard-Fixture-WR → alle Regeln ok', () => {
     const res = checkStringPlan(
-      mkInput(DUMMY_WR_STANDARD_10K, [
+      mkInput(testInverter(), [
         mppt(1, mkString('S1', MCE, 12)),
         mppt(2, mkString('S2', MCE, 12)),
       ]),
@@ -27,7 +38,7 @@ describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
   it('mehrfach ungültiger Plan meldet alle verletzten Regeln konkret', () => {
     // MPPT 1: 26er- und 25er-Jolywood-String parallel → R1 (26er), R6, R7, R8; gesamt R11
     const res = checkStringPlan(
-      mkInput(DUMMY_WR_STANDARD_10K, [mppt(1, mkString('S1', JW, 26), mkString('S2', JW, 25))]),
+      mkInput(testInverter(), [mppt(1, mkString('S1', JW, 26), mkString('S2', JW, 25))]),
     );
     expect(res.valid).toBe(false);
     expect(res.regeln.R1).toBe('fail');
@@ -43,9 +54,9 @@ describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
   });
 
   it('Warnung (R11 ≥ 1,2) macht den Plan NICHT ungültig', () => {
-    // 32 × Jolywood am High-Current-Dummy: 14,72 kWp / 12 kW = 1,23
+    // 32 × Jolywood am High-Current-Fixture: 14,72 kWp / 12 kW = 1,23
     const res = checkStringPlan(
-      mkInput(DUMMY_WR_HIGHCURRENT_12K, [
+      mkInput(highCurrentFixture(), [
         mppt(1, mkString('S1', JW, 16)),
         mppt(2, mkString('S2', JW, 16)),
       ]),
