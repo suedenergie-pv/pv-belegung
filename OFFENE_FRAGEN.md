@@ -1,62 +1,77 @@
 # OFFENE FRAGEN
 
-Stand: 2026-07-04 abends. Erledigt seit letztem Stand: SPEC.md + kalibrierung.md
-liegen im Repo; Aiko-Widerspruch aufgelöst (BEIDE Varianten im Einsatz, beide
-Datenblätter verifiziert in `docs/datenblaetter/`); Engine R1–R11 + Testrunner
-gebaut, 42 Tests grün.
+Stand: 2026-07-04 spät. Erledigt: SPEC + kalibrierung.md im Repo; beide
+Aiko-Varianten geklärt und verifiziert; Engine R1–R11 + Testrunner gebaut;
+**WR-Katalog Heimbereich bis 30 kWp geseedet** (34 Klassen, 6 Familien, alle
+Werte aus den Datenblatt-PDFs, SPEC §6.1). 48 Tests grün.
 
-## Blockiert die Kalibrierung (SPEC §14)
+## Für die Kalibrierung (SPEC §14)
 
-### 1. WR-Modellliste fehlt (SPEC §6 TODO, §16 #3) — WICHTIGSTER PUNKT
+### 1. PV*SOL-Gegenrechnung machen (Genrih) — das Gate selbst
 
-Der Katalog enthält nur 2 klar markierte DUMMY-WR (frei erfundene Werte).
-Benötigt pro Modell: MPPT-Anzahl, Spannungsfenster, Anlaufspannung, max.
-Eingangs-/Kurzschlussstrom pro MPPT, max. DC:AC — aus dem Hersteller-Datenblatt.
-Achtung Ströme: Jolywood verlangt 20,0 A, Aiko MCE 18,23 A, Aiko MAH 17,81 A
-pro String (×1,25) — High-Current-Varianten kennzeichnen.
+`npm run kalibrierung` erzeugt `kalibrierung-engine-output.md` mit allen
+Fällen (34 WR × 3 Module × 9 Fälle). Empfehlung: repräsentative Teilmenge
+gegenrechnen (z. B. pro Familie eine Klasse) statt aller 918 Zeilen — Filter:
+`npm run kalibrierung -- sh25t`. PV*SOL-Version dokumentieren!
 
-### 2. PV*SOL-Version dokumentieren (kalibrierung.md)
+## Fachliche Entscheidungen (Genrih)
 
-Beim ersten Gegenrechnen Release-Stand eintragen.
+### 2. Huawei SUN2000-M1: Einsatzfrage ⚠️
 
-## Entscheidungen für Genrih (nicht blockierend)
+Datenblatt: nur 11 A Eingangsstrom / 15 A Kurzschluss pro MPPT — UNTER dem
+Imp aller drei Katalogmodule (13,29–15,16 A). Engine meldet konsequent
+FAIL(R6, R7). Datenblatt-Fußnote: mit Optimierern (ein Optimierer pro Modul)
+bis 20 kWp zulässig — Optimierer sind aber nicht im Datenmodell. Bleibt der
+M1 im Katalog (z. B. für Bestand/Optimierer-Projekte) oder raus?
 
-### 3. Feldname des R9-Ausnahme-Flags
+### 3. EcoFlow PowerOcean Plus PV1: 19 A Kurzschluss PRO STRING
 
-SPEC §7 R9 nennt eine Ausnahme „WR mit Schatten-Management (Flag pro
-WR-Katalogeintrag)", definiert aber keinen Feldnamen. Gewählt:
-`hasShadeManagement` in `InverterType`. OK oder umbenennen (dann auch in SPEC §6
-nachtragen)?
+Datenblatt nennt für PV1 „19×2 A" — also 19 A je String (38 A je MPPT).
+Jolywood fordert 20,0 A pro String. R7 prüft nur die MPPT-Summe (≤ 38 A) →
+die Per-String-Grenze wird NICHT geprüft. Soll eine Per-String-Regel ergänzt
+werden (SPEC §7 erweitern)? Bis dahin: Jolywood an PO-Plus-PV1 manuell meiden.
 
-### 4. `stringsPerMppt` hat keine zugeordnete Regel
+### 4. Regel-Lücken: stringsPerMppt + max. Leistung pro MPPT
 
-SPEC §6 definiert das Feld, aber keine Regel R1–R11 prüft die Stringanzahl pro
-MPPT (physische Eingänge). Aktuell: reines Datenfeld, keine Prüfung. Soll eine
-harte Prüfung ergänzt werden (→ SPEC §7 erweitern, z. B. „R12")?
+Keine Regel R1–R11 prüft (a) die Stringanzahl pro MPPT (physische Eingänge;
+Parallelschaltung per Y-Stecker wäre elektrisch möglich) und (b) die max.
+DC-Leistung pro MPPT (z. B. PowerOcean 5–8 kW je MPPT, PO Plus PV1 20 kW).
+PV*SOL prüft beides → wird bei der Kalibrierung als Abweichung auffallen.
+Regeln ergänzen (R12/R13)?
 
-### 5. Alt-Modul jw-hd108n-r3-455 seeden?
+### 5. Sigen Hybrid SP2 (einphasig, 2,0–6,0 kW) weggelassen
 
-SPEC §5.1 nennt es als „optionaler dritter Katalogeintrag (Entscheidung
-Genrih)" — NICHT geseedet. Zusätzlich fehlt das passende Datenblatt: das PDF
-`4330_Jolywood-JW-HD108N-445W-Full-Black.pdf` im Repo ist die **445-W-Klasse**,
-die SPEC-Werte sind die 455-W-Klasse (HD108N-R3) → als Quelle unzulässig
-(exaktes Serien-/Wattklassen-Datenblatt nötig). Bei „ja": R3-455-Datenblatt
-liefern. Das 445er-PDF ggf. aus dem Repo entfernen (gehört zu keinem
-Katalogeintrag)?
+Das TP2-Datenblatt enthält auch die einphasige SP2-Serie (maxDC 600 V,
+MPPT 50–550 V). Nicht geseedet (Annahme: Heimbereich = dreiphasig).
+Bei Bedarf sagen — Werte liegen im PDF vor.
 
-### 6. Hero-Artikelnummern Aiko
+### 6. Feldname des R9-Ausnahme-Flags
 
-Beide Aiko-Einträge haben in SPEC §5.1 noch „TODO" als Hero-Artikelnr.
-(Jolywood = 1103). Nachtragen, sobald in Hero angelegt.
+`hasShadeManagement` gewählt (SPEC §7 R9 nennt das Flag ohne Namen). Aktuell
+bei ALLEN 34 WR `false` — kein Datenblatt nennt explizit Schatten-Management
+im R9-Sinn. Pro WR bestätigen/ändern.
 
-### 7. T_min −15 °C bestätigen (SPEC §16 #7)
+### 7. Alt-Modul jw-hd108n-r3-455 seeden?
 
-Default fürs Allgäu ist −15 °C — für Höhenlagen bestätigen oder verschärfen.
-(Engine: Admin-konfigurierbar über `DesignParams`.)
+SPEC §5.1 „Entscheidung Genrih" — nicht geseedet. Passendes R3-455-Datenblatt
+fehlt (das 4330er-PDF im Repo ist die 445-W-Klasse → als Quelle unzulässig).
 
-## Kleinkram / redaktionell
+### 8. Hero-Artikelnummern Aiko (beide Varianten)
 
-- SPEC §6 Interface-Kommentar „Isc-Prüfung — Aiko 14,25 A schlägt hier ggf.
-  an!" am Feld `maxInputCurrentPerMpptA`: 14,25 A ist der **Isc der MAH54Mw**,
-  das Feld prüft aber den Betriebsstrom (Imp, R6); die Isc-Prüfung ist R7 auf
-  `maxShortCircuitCurrentPerMpptA`. Formulierung bei Gelegenheit präzisieren.
+SPEC §5.1 noch „TODO" (Jolywood = 1103).
+
+### 9. T_min −15 °C bestätigen (SPEC §16 #7)
+
+Für Höhenlagen bestätigen oder verschärfen (Engine: konfigurierbar).
+
+### 10. BYD-Speicher
+
+SPEC §6: „BYD nur Speicher (gelegentlich)" — kein Datenblatt geliefert, kein
+Katalogeintrag, Kompatibilitätsmatrix WR↔BYD offen.
+
+## Kleinkram
+
+- Speicher-IDs im Katalog (`compatibleBatteries`): ecoflow-powerocean-lfp,
+  sungrow-sbh, sungrow-sbr, sigenstor-bat, huawei-luna2000-s1 — Zuordnung
+  WR→Speicher aus den Datenblättern (Sungrow SH: „Lithium-Ionen 100–700 V"
+  ohne Modellnennung → SBH/SBR angenommen, da im Sortiment; bestätigen).

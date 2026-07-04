@@ -77,6 +77,11 @@ function buildCases(letter: string, moduleType: ModuleType, wr: InverterType): C
   const run = (mppts: StringPlanInput['mppts']): string =>
     verdict(checkStringPlan(mkInput(wr, mppts)));
 
+  // Für Parallel-Fälle den MPPT mit den meisten Strings wählen; hat der WR
+  // nirgends ≥ 2 Strings, ist Parallelschaltung nur per Y-Stecker möglich (Fußnote ²).
+  const bestMpptIdx = wr.stringsPerMppt.indexOf(Math.max(...wr.stringsPerMppt)) + 1;
+  const parallelFussnote = Math.max(...wr.stringsPerMppt) < 2 ? '²' : '';
+
   const rows: CaseRow[] = [];
 
   rows.push({
@@ -130,22 +135,25 @@ function buildCases(letter: string, moduleType: ModuleType, wr: InverterType): C
   rows.push({
     nr: `${letter}6`,
     besetzung: `${nMitte}`,
-    strings: '2 parallel',
+    strings: `2 parallel (MPPT ${bestMpptIdx})${parallelFussnote}`,
     pruefziel: 'Stromsumme',
     erwartung: 'PASS/FAIL(R6/R7) je WR',
     engine: run([
-      { mpptIndex: 1, strings: [mkString('S1', id, nMitte), mkString('S2', id, nMitte)] },
+      { mpptIndex: bestMpptIdx, strings: [mkString('S1', id, nMitte), mkString('S2', id, nMitte)] },
     ]),
   });
 
   rows.push({
     nr: `${letter}7`,
     besetzung: `${nMitte} + ${nMitte - 1}`,
-    strings: '2 parallel, ungleich',
+    strings: `2 parallel, ungleich (MPPT ${bestMpptIdx})${parallelFussnote}`,
     pruefziel: 'Stringlängen-Gleichheit',
     erwartung: 'FAIL(R8)',
     engine: run([
-      { mpptIndex: 1, strings: [mkString('S1', id, nMitte), mkString('S2', id, nMitte - 1)] },
+      {
+        mpptIndex: bestMpptIdx,
+        strings: [mkString('S1', id, nMitte), mkString('S2', id, nMitte - 1)],
+      },
     ]),
   });
 
@@ -175,17 +183,18 @@ function buildCases(letter: string, moduleType: ModuleType, wr: InverterType): C
     ]),
   });
 
-  // Maximal mögliche DC-Leistung: alle MPPTs × stringsPerMppt × n_max
+  // Maximal mögliche DC-Leistung: alle MPPTs × jeweilige Stringanzahl × n_max
   const vollbelegung = Array.from({ length: wr.mpptCount }, (_, i) => ({
     mpptIndex: i + 1,
-    strings: Array.from({ length: wr.stringsPerMppt }, (_, k) =>
+    strings: Array.from({ length: wr.stringsPerMppt[i]! }, (_, k) =>
       mkString(`S${i + 1}.${k + 1}`, id, nMax),
     ),
   }));
-  const kwpVoll = (wr.mpptCount * wr.stringsPerMppt * nMax * moduleType.pmaxW) / 1000;
+  const totalStrings = wr.stringsPerMppt.reduce((a, b) => a + b, 0);
+  const kwpVoll = (totalStrings * nMax * moduleType.pmaxW) / 1000;
   rows.push({
     nr: `${letter}9`,
-    besetzung: `${wr.mpptCount * wr.stringsPerMppt} × ${nMax} = ${fmt(kwpVoll, 2)} kWp`,
+    besetzung: `${totalStrings} × ${nMax} = ${fmt(kwpVoll, 2)} kWp`,
     strings: 'alle MPPTs voll',
     pruefziel: 'Überbelegung DC:AC',
     erwartung: 'FAIL(R11)',
@@ -252,11 +261,22 @@ function main(): void {
   out.push(
     '¹ Bei WR mit Schatten-Management ist der Ausrichtungs-Mix zulässig (SPEC §7 R9-Ausnahme) — Engine meldet dann PASS.',
   );
+  out.push(
+    '² WR hat an keinem MPPT ≥ 2 String-Eingänge — Parallelschaltung nur per Y-Stecker; Fall elektrisch trotzdem gerechnet.',
+  );
   out.push('');
 
-  for (const wr of INVERTERS) {
+  // Optionaler Filter: npm run kalibrierung -- <id-teilstring>, z. B. "sh25t" oder "ecoflow"
+  const filter = (process.argv[2] ?? '').toLowerCase();
+  const wrList = filter ? INVERTERS.filter((wr) => wr.id.includes(filter)) : INVERTERS;
+  if (filter) {
+    out.push(`**Filter aktiv:** \`${filter}\` → ${wrList.length} von ${INVERTERS.length} WR.`);
+    out.push('');
+  }
+
+  for (const wr of wrList) {
     out.push(
-      `## WR: ${wr.name} (maxDC ${fmt(wr.maxDcVoltageV)} V · MPPT ${fmt(wr.mpptVoltageRange[0])}–${fmt(wr.mpptVoltageRange[1])} V · Start ${fmt(wr.startupVoltageV)} V · maxIn ${fmt(wr.maxInputCurrentPerMpptA)} A · maxSC ${fmt(wr.maxShortCircuitCurrentPerMpptA)} A · DC:AC ≤ ${fmt(wr.maxDcAcRatio, 2)})${wr.isDummy ? ' ⚠️ DUMMY' : ''}`,
+      `## WR: ${wr.name} (maxDC ${fmt(wr.maxDcVoltageV)} V · MPPT ${fmt(wr.mpptVoltageRange[0])}–${fmt(wr.mpptVoltageRange[1])} V · Start ${fmt(wr.startupVoltageV)} V · maxIn ${wr.maxInputCurrentPerMpptA.map((a) => fmt(a)).join('/')} A · maxSC ${wr.maxShortCircuitCurrentPerMpptA.map((a) => fmt(a)).join('/')} A · Strings ${wr.stringsPerMppt.join('/')} · DC:AC ≤ ${fmt(wr.maxDcAcRatio, 2)})${wr.isDummy ? ' ⚠️ DUMMY' : ''}`,
     );
     out.push('');
     for (const moduleType of MODULES) {
