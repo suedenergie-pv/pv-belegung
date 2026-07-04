@@ -177,7 +177,9 @@ Gleiche Fixkatalog-Logik. Herstellerbestand (Stand 04.07.2026):
 | Huawei | WR | High-Current-Frage wie Sungrow |
 | BYD | nur Speicher (gelegentlich) | Battery-Box an Fremd-WR — Kompatibilitätsmatrix WR↔Speicher nötig |
 
-**TODO Genrih: konkrete Modell-/Leistungsklassenliste liefern** (pro WR: MPPT-Anzahl, Spannungsfenster, max. Eingangs-/Kurzschlussstrom aus Datenblatt). Speicher sind für die String-Engine v1 nur ein Kompatibilitäts-Flag am WR (`compatibleBatteries: string[]`), keine eigene Rechenlogik — DC-Speicher-Strings sind v2.
+~~TODO Genrih: konkrete Modell-/Leistungsklassenliste liefern~~ ✅ **erledigt 04.07.2026 abends** — Datenblätter im Repo (`docs/datenblaetter/`), Modellliste unten. Speicher sind für die String-Engine v1 nur ein Kompatibilitäts-Flag am WR (`compatibleBatteries: string[]`), keine eigene Rechenlogik — DC-Speicher-Strings sind v2.
+
+**Schema-Update 04.07.2026 abends:** Die realen Datenblätter (Sungrow SH-T: 32/32/16 A; Sigen Hybrid 10/12 TP2: 16/32 A; PowerOcean Plus: 32/16/16 A) haben **je MPPT unterschiedliche** Strom- und Stringwerte → `stringsPerMppt`, `maxInputCurrentPerMpptA`, `maxShortCircuitCurrentPerMpptA` sind Arrays der Länge `mpptCount` (Index 0 = MPPT 1).
 
 ```ts
 interface InverterType {
@@ -187,12 +189,29 @@ interface InverterType {
   mpptCount: number;
   mpptVoltageRange: [number, number];  // [Vmin, Vmax] pro MPPT
   startupVoltageV: number;
-  maxInputCurrentPerMpptA: number;     // Isc-Prüfung — Aiko 14,25 A schlägt hier ggf. an!
-  maxShortCircuitCurrentPerMpptA: number;
+  maxInputCurrentPerMpptA: number[];     // je MPPT — R6 (Imp-Summe)
+  maxShortCircuitCurrentPerMpptA: number[]; // je MPPT — R7 (Isc ×1,25)
   maxDcAcRatio: number;                // Überbelegungsgrenze lt. Hersteller, sonst Default 1.35
-  stringsPerMppt: number;
+  stringsPerMppt: number[];            // je MPPT
 }
 ```
+
+### 6.1 Modellliste Heimbereich bis 30 kWp (Stand 04.07.2026, alle Werte aus Datenblatt-PDFs im Repo)
+
+| Familie | Klassen (AC) | maxDC | MPPT-Fenster / Start | MPPTs × Strings | maxIn / maxSC je MPPT | DC:AC lt. DB |
+|---|---|---|---|---|---|---|
+| EcoFlow PowerOcean (EF HD-P3-…-S1) | 6 / 8 / 10 / 12 kW | 1000 V | 200–850 V / 160 V | 2 × 1 | 16 A / 24 A | 1,67 / 1,5 / 1,4 / 1,33 |
+| EcoFlow PowerOcean Plus (EF HD-P3-…-S1) | 15 / 20 / 25 / 29,9 kW | 1000 V | 200–850 V / 160 V | 3: PV1 2 Strings, PV2/PV3 je 1 | PV1 32/38 A · PV2/3 16/24 A | 2,0 / 1,75 / 1,6 / 1,34 |
+| Sigenergy Sigen Hybrid TP2 | 3 / 4 / 5 / 6 / 8 / 10 / 12 kW | 1100 V | 160–1000 V / 180 V | 2; ab 10 kW: MPPT2 mit 2 Strings | 16/22 A; MPPT2 ab 10 kW 32/44 A | 2,0 |
+| Sigenergy SigenStor EC (Energy Controller) | 5–30 kW (10 Klassen) | 1100 V | 160–1000 V / 180 V | 2 (≤8 kW) / 3 (10–15) / 4 (17–30), je 1 String | 16 A / 20 A | 1,6 |
+| Sungrow SH15/20/25T | 15 / 20 / 25 kW | 1000 V | 150–950 V / 180 V | 3: 2/2/1 Strings | 32/32/16 A · SC 40/40/20 A | 2,0 |
+| Huawei SUN2000-3–10KTL-M1 | 3 / 4 / 5 / 6 / 8 / 10 kW | 1100 V | 140–980 V / 200 V | 2 × 1 | **11 A / 15 A** ⚠️ | 1,5 |
+
+⚠️ **Huawei M1:** 11 A Eingangsstrom pro MPPT liegt UNTER dem Imp aller drei Katalogmodule (13,29–15,16 A) → R6 schlägt bei jedem String an; zusätzlich 15 A Kurzschlussgrenze < 17,81–20,0 A Anforderung (R7). Einsatzfrage (Optimierer? andere Variante?) → Genrih.
+
+⚠️ **PowerOcean Plus PV1:** Datenblatt nennt 19 A Kurzschlussstrom **pro String** (2 Strings = 38 A je MPPT). Jolywood fordert 20,0 A pro String — Engine prüft R7 nur auf MPPT-Ebene (Summe ≤ 38 A), die Per-String-Grenze ist NICHT abgedeckt (siehe OFFENE_FRAGEN).
+
+Speicher (nur Flag, Datenblätter im Repo): EcoFlow PowerOcean LFP · Sungrow SBH / SBR · SigenStor BAT · Huawei LUNA2000-S1.
 
 Hinweis aus der Marktrealität: Module mit Imp ≈ 13 A+ erfordern bei manchen Herstellern (Sungrow, SMA, Huawei, SolarEdge) die High-Current-Variante. Genau dafür existiert `maxInputCurrentPerMpptA` als harte Prüfung.
 
@@ -394,7 +413,7 @@ Zusätzlich blockierend:
 |---|---|---|---|
 | 1 | ~~Jolywood-Fork~~ ✅ aufgelöst 04.07. per Zellzählung (6×16 = 96) → HD96N-R2-460, Werte final in §5.1. Rest: Typbezeichnung in Hero-Artikel 1103 nachtragen | Genrih (Hero-Pflege) | — |
 | 2 | ~~Aiko~~ ✅ erledigt 04.07. abends — BEIDE Varianten im Einsatz: A460-MCE54Db (Doppelglas) + A460-MAH54Mw (Einzelglas), Werte in §5.1, beide Datenblätter im Repo. Offen nur: Hero-Artikelnummern | Genrih (Hero-Pflege) | — |
-| 3 | WR-Marken ✅ (EcoFlow, Sungrow, SigEnergy, Huawei, BYD-Speicher) — offen: konkrete Modelle + MPPT-Datenblattwerte, insbes. max. Eingangs-/Kurzschlussstrom (Aiko verlangt 18,2 A, HD96N ggf. 20 A) | Genrih | §6, Kalibrierung |
+| 3 | ~~WR-Modelle~~ ✅ erledigt 04.07. abends — Heimbereich bis 30 kWp in §6.1, Datenblätter im Repo, Katalog geseedet. Offen: Huawei-M1-Einsatzfrage (11 A!), BYD-Kompatibilitätsmatrix | Genrih | — |
 | 4 | GATE-0: Solar-API-Test-Call mit EEA-Account, Response dokumentieren | Genrih/Claude Code | §8, §10 v2 |
 | 5 | Schneelast-/Wind-Randzonen: v1 bewusst Pauschalrand — mit Statik-Tool-Erkenntnissen später zusammenführen? | Genrih | nein (v2) |
 | 6 | Ticketsystem: Kategorie „Vorplanung Vertrieb" + `user_categories`-Bug vorher fixen | Genrih | §13 |
