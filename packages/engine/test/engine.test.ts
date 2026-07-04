@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+import { DUMMY_WR_HIGHCURRENT_12K, DUMMY_WR_STANDARD_10K } from '../src/catalog/inverters';
+import { checkStringPlan } from '../src/engine';
+import { mkInput, mkString, mppt, testInverter } from './helpers';
+
+const JW = 'jw-hd96n-r2-460';
+const MCE = 'aiko-a460-mce54db';
+
+describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
+  it('gültiger Plan: 2 × 12 Aiko MCE54Db am Dummy-Standard-WR → alle Regeln ok', () => {
+    const res = checkStringPlan(
+      mkInput(DUMMY_WR_STANDARD_10K, [
+        mppt(1, mkString('S1', MCE, 12)),
+        mppt(2, mkString('S2', MCE, 12)),
+      ]),
+    );
+    expect(res.valid).toBe(true);
+    expect(Object.values(res.regeln).every((s) => s === 'ok')).toBe(true);
+    expect(res.kwp).toBeCloseTo(11.04, 6);
+    expect(res.strings).toHaveLength(2);
+    expect(res.strings[0]!.vocColdV).toBeCloseTo(12 * 43.9552, 3);
+    expect(res.strings[0]!.vmpHotV).toBeCloseTo(12 * 29.8454, 2);
+    // Ergebnis enthält für jede der 11 Regeln mindestens einen Eintrag
+    expect(new Set(res.results.map((r) => r.rule)).size).toBe(11);
+  });
+
+  it('mehrfach ungültiger Plan meldet alle verletzten Regeln konkret', () => {
+    // MPPT 1: 26er- und 25er-Jolywood-String parallel → R1 (26er), R6, R7, R8; gesamt R11
+    const res = checkStringPlan(
+      mkInput(DUMMY_WR_STANDARD_10K, [mppt(1, mkString('S1', JW, 26), mkString('S2', JW, 25))]),
+    );
+    expect(res.valid).toBe(false);
+    expect(res.regeln.R1).toBe('fail');
+    expect(res.regeln.R6).toBe('fail');
+    expect(res.regeln.R7).toBe('fail');
+    expect(res.regeln.R8).toBe('fail');
+    expect(res.regeln.R11).toBe('fail'); // 23,46 kWp an 10 kW
+    expect(res.regeln.R2).toBe('ok');
+    // SPEC §7: niemals nur „ungültig" — jede Fail-Meldung enthält Zahlen
+    for (const r of res.results.filter((x) => x.status === 'fail')) {
+      expect(r.message).toMatch(/\d/);
+    }
+  });
+
+  it('Warnung (R11 ≥ 1,2) macht den Plan NICHT ungültig', () => {
+    // 32 × Jolywood am High-Current-Dummy: 14,72 kWp / 12 kW = 1,23
+    const res = checkStringPlan(
+      mkInput(DUMMY_WR_HIGHCURRENT_12K, [
+        mppt(1, mkString('S1', JW, 16)),
+        mppt(2, mkString('S2', JW, 16)),
+      ]),
+    );
+    expect(res.valid).toBe(true);
+    expect(res.regeln.R11).toBe('warn');
+    expect(res.dcAcRatio).toBeCloseTo(1.2267, 3);
+  });
+
+  it('Strukturfehler werfen statt Regelergebnis (ungültige Eingaben, SPEC §1)', () => {
+    expect(() =>
+      checkStringPlan(mkInput(testInverter(), [mppt(3, mkString('S1', JW, 10))])),
+    ).toThrow(/MPPT-Index 3/);
+    expect(() =>
+      checkStringPlan(mkInput(testInverter(), [mppt(1, mkString('S1', 'gibt-es-nicht', 5))])),
+    ).toThrow(/Unbekannter Modultyp/);
+    expect(() =>
+      checkStringPlan(mkInput(testInverter(), [mppt(1, { id: 'S1', modules: [] })])),
+    ).toThrow(/keine Module/);
+    expect(() =>
+      checkStringPlan(mkInput(testInverter(), [mppt(1, mkString('S1', JW, 5, 'fremde-flaeche'))])),
+    ).toThrow(/Unbekannte Dachfläche/);
+  });
+});
