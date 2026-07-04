@@ -1,7 +1,51 @@
 'use client';
 
 import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
-import { DACHFARBEN, type Flaeche } from '../lib/model';
+import { DACHFARBEN, type Dachfarbe, type Flaeche } from '../lib/model';
+
+/**
+ * Dach-Texturen als SVG-Pattern in ECHTEN Maßen (Meter, userSpaceOnUse) —
+ * Tonziegel ~30×33 cm, Betonziegel ~30×42 cm, Stehfalz ~53 cm Falzabstand.
+ * Dachfarbe × Modul-Look ist Teil des Verkaufsmoments (SPEC §11.3).
+ */
+function DachPattern({ id, farbe }: { id: string; farbe: Dachfarbe }) {
+  if (farbe.art === 'ziegel') {
+    return (
+      <pattern id={id} width={0.3} height={0.33} patternUnits="userSpaceOnUse">
+        <rect width={0.3} height={0.33} fill={farbe.fill} />
+        <path
+          d="M 0 0.30 Q 0.075 0.35 0.15 0.30 Q 0.225 0.35 0.3 0.30"
+          fill="none"
+          stroke={farbe.dunkel}
+          strokeWidth={0.025}
+        />
+        <line x1={0.15} y1={0.02} x2={0.15} y2={0.3} stroke={farbe.dunkel} strokeWidth={0.01} opacity={0.45} />
+      </pattern>
+    );
+  }
+  if (farbe.art === 'blech') {
+    return (
+      <pattern id={id} width={0.53} height={1} patternUnits="userSpaceOnUse">
+        <rect width={0.53} height={1} fill={farbe.fill} />
+        <line x1={0.03} y1={0} x2={0.03} y2={1} stroke={farbe.dunkel} strokeWidth={0.025} />
+        <line x1={0.06} y1={0} x2={0.06} y2={1} stroke="#ffffff" strokeWidth={0.008} opacity={0.25} />
+      </pattern>
+    );
+  }
+  // Betonziegel / engobiert: rechteckige Pfannen, halbversetzt
+  return (
+    <pattern id={id} width={0.6} height={0.84} patternUnits="userSpaceOnUse">
+      <rect width={0.6} height={0.84} fill={farbe.fill} />
+      {/* Reihe 1 */}
+      <line x1={0} y1={0.4} x2={0.6} y2={0.4} stroke={farbe.dunkel} strokeWidth={0.03} />
+      <line x1={0.3} y1={0} x2={0.3} y2={0.4} stroke={farbe.dunkel} strokeWidth={0.012} opacity={0.6} />
+      {/* Reihe 2, halbversetzt */}
+      <line x1={0} y1={0.82} x2={0.6} y2={0.82} stroke={farbe.dunkel} strokeWidth={0.03} />
+      <line x1={0} y1={0.42} x2={0} y2={0.82} stroke={farbe.dunkel} strokeWidth={0.012} opacity={0.6} />
+      <line x1={0.6} y1={0.42} x2={0.6} y2={0.82} stroke={farbe.dunkel} strokeWidth={0.012} opacity={0.6} />
+    </pattern>
+  );
+}
 
 /**
  * Draufsicht einer Dachfläche (SPEC §11.1). Koordinatensystem = Meter
@@ -21,9 +65,11 @@ function ModulSymbol({ id, modul, wMm, hMm }: { id: string; modul: ModuleType; w
   for (let i = 1; i < reihen; i++) {
     const pos = (i * L) / reihen;
     const mitte = reihen % 2 === 0 && i === reihen / 2;
-    const stroke = istJolywood ? (mitte ? '#54585f' : '#5a5e66') : mitte ? '#15161a' : '#121316';
-    const width = istJolywood ? (mitte ? 16 : 3) : mitte ? 5 : 2;
-    const opacity = istJolywood ? (mitte ? 0.9 : 0.85) : 0.8;
+    // dezent halten — der einzelne Modulrahmen muss das Bild dominieren,
+    // sonst verschmelzen die Zellreihen benachbarter Module zu „Streifen"
+    const stroke = istJolywood ? (mitte ? '#54585f' : '#42454d') : mitte ? '#15161a' : '#121316';
+    const width = istJolywood ? (mitte ? 14 : 2.5) : mitte ? 5 : 2;
+    const opacity = istJolywood ? (mitte ? 0.8 : 0.5) : 0.7;
     laengsLinien.push(
       laengsHorizontal ? (
         <line key={i} x1={pos} y1={inset} x2={pos} y2={hMm - inset} stroke={stroke} strokeWidth={width} opacity={opacity} />
@@ -48,7 +94,8 @@ function ModulSymbol({ id, modul, wMm, hMm }: { id: string; modul: ModuleType; w
 
   return (
     <symbol id={id} viewBox={`0 0 ${wMm} ${hMm}`}>
-      <rect width={wMm} height={hMm} rx={14} fill="#0e0e10" />
+      {/* Rahmen bewusst sichtbar (heller als Glas), damit jedes Modul einzeln lesbar ist */}
+      <rect width={wMm} height={hMm} rx={14} fill="#1c1f24" />
       <rect x={inset} y={inset} width={wMm - 2 * inset} height={hMm - 2 * inset} rx={6} fill="#08090b" />
       {laengsLinien}
       {spaltenLinien}
@@ -71,6 +118,7 @@ export function DachSvg({
   const H = flaeche.hoeheM;
   const farbe = DACHFARBEN.find((d) => d.id === flaeche.dachfarbe) ?? DACHFARBEN[1];
   const symId = `sym-${flaeche.id}-${flaeche.ausrichtung}-${modul.id}`;
+  const patId = `pat-${flaeche.id}-${farbe.id}`;
   const mB = raster.modulBreiteM;
   const mH = raster.modulHoeheM;
 
@@ -82,8 +130,9 @@ export function DachSvg({
       <svg viewBox={`0 0 ${B} ${H}`} className="block h-full w-full" preserveAspectRatio="xMidYMid meet">
         <defs>
           <ModulSymbol id={symId} modul={modul} wMm={mB * 1000} hMm={mH * 1000} />
+          <DachPattern id={patId} farbe={farbe} />
         </defs>
-        <rect width={B} height={H} fill={farbe.fill} />
+        <rect width={B} height={H} fill={`url(#${patId})`} />
         <rect
           x={raster.randM}
           y={raster.randM}

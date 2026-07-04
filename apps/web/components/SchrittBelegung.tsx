@@ -58,7 +58,7 @@ export function SchrittBelegung({
                   })
                 }
               >
-                Quer
+                ▭ Quer
               </ToggleButton>
               <ToggleButton
                 aktiv={f.ausrichtung === 'hoch'}
@@ -71,7 +71,7 @@ export function SchrittBelegung({
                   })
                 }
               >
-                Hochkant
+                ▯ Hochkant
               </ToggleButton>
 
               <div className="ml-auto flex gap-1.5">

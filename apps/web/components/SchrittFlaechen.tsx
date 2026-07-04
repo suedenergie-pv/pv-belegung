@@ -131,19 +131,25 @@ export function SchrittFlaechen({
           </div>
 
           <div className="mt-4">
-            <span className="mb-1 block text-sm font-medium text-slate-600">Dachfarbe</span>
-            <div className="flex gap-2">
+            <span className="mb-1 block text-sm font-medium text-slate-600">Dacheindeckung</span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {DACHFARBEN.map((d) => (
                 <button
                   key={d.id}
                   type="button"
-                  title={d.name}
                   onClick={() => setFlaeche(f.id, { dachfarbe: d.id })}
-                  className={`h-12 w-12 rounded-xl border-2 transition ${
-                    f.dachfarbe === d.id ? 'border-akzent ring-2 ring-akzent/40' : 'border-white shadow'
+                  className={`flex h-14 items-center gap-2 rounded-xl border-2 bg-white px-3 text-left transition ${
+                    f.dachfarbe === d.id
+                      ? 'border-akzent ring-2 ring-akzent/30'
+                      : 'border-slate-200 hover:border-slate-300'
                   }`}
-                  style={{ backgroundColor: d.fill }}
-                />
+                >
+                  <span
+                    className="inline-block h-8 w-8 shrink-0 rounded-lg"
+                    style={{ backgroundColor: d.fill }}
+                  />
+                  <span className="text-xs font-medium leading-tight text-slate-700">{d.name}</span>
+                </button>
               ))}
             </div>
           </div>

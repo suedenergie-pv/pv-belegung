@@ -16,12 +16,13 @@ import {
  */
 
 export const DACHFARBEN = [
-  { id: 'ziegelrot', name: 'Ziegelrot', fill: '#a34a31' },
-  { id: 'anthrazit', name: 'Anthrazit', fill: '#3d4249' },
-  { id: 'schiefer', name: 'Schiefer', fill: '#25272b' },
-  { id: 'grau', name: 'Blech/Grau', fill: '#8b9199' },
+  { id: 'ziegelrot', name: 'Tonziegel rot', fill: '#a34a31', dunkel: '#7e3620', art: 'ziegel' },
+  { id: 'anthrazit', name: 'Betonziegel anthrazit', fill: '#3d4249', dunkel: '#2b2f35', art: 'beton' },
+  { id: 'schiefer', name: 'Engobiert schwarz', fill: '#26282c', dunkel: '#17181b', art: 'beton' },
+  { id: 'grau', name: 'Blech (Stehfalz)', fill: '#8b9199', dunkel: '#6e747d', art: 'blech' },
 ] as const;
 export type DachfarbeId = (typeof DACHFARBEN)[number]['id'];
+export type Dachfarbe = (typeof DACHFARBEN)[number];
 
 export interface Flaeche {
   id: string;
