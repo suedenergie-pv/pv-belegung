@@ -385,9 +385,9 @@ Ticket-Kategorie: neue Kategorie „Vorplanung Vertrieb" (V3-Datenmodell des Tic
 
 ---
 
-## 14. ⛔ KALIBRIERUNGS-GATE (Pflicht vor UI-Bau)
+## 14. ⛔ KALIBRIERUNGS-GATE (Pflicht vor Produktiveinsatz)
 
-Analog Statik-Vorprüfung. **Kein UI-Code, bevor die String-Engine dieses Gate besteht.**
+**Update 05.07.2026 (Genrih, Owner-Entscheidung):** UI-Bau VOR der Kalibrierung freigegeben — Genrih ist nicht der PL und hat keinen PV*SOL-Zugang; die Gegenrechnung macht der PL, sobald verfügbar. Einordnung: Das Tool ist primär ein VERTRIEBstool (Belegung + kWp + Optik), der Stringplan ist ein optionaler Zusatz. Statt Banner-Mechanik: dezenter, permanenter Hinweis im UI („Vorplanung Vertrieb — keine Fachplanung, finale Auslegung durch PL/PV*SOL") und `hinweis`-Feld im Export-Payload. Die Kalibrierungsmatrix bleibt bestehen und wird vom PL abgearbeitet, sobald verfügbar.
 
 1. Testmatrix definieren: alle Katalogmodule × alle Katalog-WR × Stringlängen (min, mitte, max, max+1) × T_min/T_cell_max → mindestens ~30 Fälle, davon gezielt Grenzfälle (max+1 MUSS durchfallen)
 2. Jeden Fall in PV*SOL (vorhandene Lizenz) nachstellen: zulässige Stringlängen, Voc bei −15 °C, MPPT-Prüfungen

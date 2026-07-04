@@ -2,9 +2,12 @@
   "name": "pv-belegung",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "kalibrierung": "npm run kalibrierung -w @pv-belegung/engine"

@@ -17,6 +17,8 @@ export {
 export { INVERTERS } from './catalog/inverters';
 export { resolveParams, vocColdV, vmpHotV } from './temperature';
 export { maxModulesPerString, minModulesPerString } from './stringlimits';
+export { berechneRaster, DEFAULT_FUGE_M, DEFAULT_RAND_M } from './belegung';
+export type { BelegungInput, BelegungRaster, ModulPosition } from './belegung';
 export { buildPlanCalc, orientationKey } from './plan';
 export type { MpptCalc, PlanCalc, StringCalc } from './plan';
 export { checkStringPlan } from './engine';
