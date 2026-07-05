@@ -1,7 +1,12 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { belegungsCheck, type Ecken, type Punkt } from '../lib/foto-geometrie';
+import {
+  belegungsCheck,
+  sortiereEcken,
+  traufeWechseln,
+  type Punkt,
+} from '../lib/foto-geometrie';
 import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche } from '../lib/model';
 
 /**
@@ -114,7 +119,11 @@ export function FotoHintergrund({
       }
       setModus('ecken');
     } else {
-      onFoto({ ...foto, eckenPx: neu as Ecken, traufePx: null });
+      onFoto({
+        ...foto,
+        eckenPx: sortiereEcken(neu as [Punkt, Punkt, Punkt, Punkt]),
+        traufePx: null,
+      });
     }
     setPunkte([]);
   };
@@ -156,6 +165,16 @@ export function FotoHintergrund({
                 }}
               >
                 Dachfläche neu markieren
+              </button>
+            )}
+            {foto.eckenPx && (
+              <button
+                type="button"
+                className={knopfKlasse}
+                title="Falls die falsche Kante als Traufe angenommen wurde: Zuordnung weiterdrehen"
+                onClick={() => onFoto({ ...foto, eckenPx: traufeWechseln(foto.eckenPx!) })}
+              >
+                ↻ Traufe wechseln
               </button>
             )}
             {foto.pxProM !== undefined && (
@@ -276,9 +295,10 @@ export function FotoHintergrund({
           {modus === 'ecken' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               <strong>Dachfläche markieren:</strong> die 4 Ecken der Fläche anklicken —{' '}
-              <strong>Traufe links → Traufe rechts → First rechts → First links</strong>. Die
-              Module werden perspektivisch exakt eingepasst (auch bei schräg aufgenommenem Foto).
-              Danach läuft der Belegungs-Check gegen die eingegebenen Maße
+              <strong>Reihenfolge egal</strong>, die unterste Kante wird als Traufe angenommen
+              (danach ggf. „↻ Traufe wechseln"). Die Module werden perspektivisch exakt
+              eingepasst (auch bei schräg aufgenommenem Foto). Danach läuft der Belegungs-Check
+              gegen die eingegebenen Maße
               {foto.pxProM === undefined ? ' — dafür vorher „Ziegel zählen"' : ''}.
             </p>
           ) : (

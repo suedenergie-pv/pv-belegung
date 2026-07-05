@@ -97,6 +97,46 @@ function laenge(a: Punkt, b: Punkt): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1]);
 }
 
+/**
+ * Sortiert 4 beliebig angeklickte Ecken in die kanonische Reihenfolge
+ * (Traufe links, Traufe rechts, First rechts, First links) — Klick-Reihenfolge
+ * und -Richtung sind damit egal. Annahme: die Traufe ist die im Bild unterste
+ * Kante (Standard bei Drohnenfotos von außen); passt das nicht, rotiert
+ * traufeWechseln() die Zuordnung weiter.
+ */
+export function sortiereEcken(punkte: [Punkt, Punkt, Punkt, Punkt]): Ecken {
+  const cx = (punkte[0][0] + punkte[1][0] + punkte[2][0] + punkte[3][0]) / 4;
+  const cy = (punkte[0][1] + punkte[1][1] + punkte[2][1] + punkte[3][1]) / 4;
+  // Ring um den Schwerpunkt: ergibt immer ein einfaches (kreuzungsfreies) Viereck
+  const ring = [...punkte].sort(
+    (a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx),
+  ) as [Punkt, Punkt, Punkt, Punkt];
+  // Traufe = Kante mit dem tiefsten Mittelpunkt (größtes y, Bildkoordinaten)
+  let traufeIdx = 0;
+  let tiefstesY = -Infinity;
+  for (let i = 0; i < 4; i++) {
+    const mitteY = (ring[i]![1] + ring[(i + 1) % 4]![1]) / 2;
+    if (mitteY > tiefstesY) {
+      tiefstesY = mitteY;
+      traufeIdx = i;
+    }
+  }
+  let a = ring[traufeIdx]!;
+  let b = ring[(traufeIdx + 1) % 4]!;
+  let c = ring[(traufeIdx + 2) % 4]!;
+  let d = ring[(traufeIdx + 3) % 4]!;
+  if (a[0] > b[0]) {
+    // Ring-Richtung umdrehen, damit die Traufe links→rechts läuft
+    [a, b, c, d] = [b, a, d, c];
+  }
+  return [a, b, c, d];
+}
+
+/** Rotiert die Kanten-Zuordnung weiter: die bisherige linke Seite wird zur Traufe. */
+export function traufeWechseln(e: Ecken): Ecken {
+  return [e[3], e[0], e[1], e[2]];
+}
+
 /** Einfacher Konvexitäts-/Reihenfolge-Test (alle Kreuzprodukte gleiches Vorzeichen). */
 export function eckenPlausibel(e: Ecken): boolean {
   const kreuz = (i: number): number => {

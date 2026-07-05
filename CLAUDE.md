@@ -64,7 +64,10 @@
    **Nachtrag 2 (05.07. spät): 4-Ecken-Homographie + Belegungs-Check** — Genrihs
    echtes Drohnenfoto war schräg aufgenommen (Dachfläche = Trapez), das alte
    Traufkanten-Parallelogramm passte sichtbar nicht. Jetzt: alle 4 Ecken
-   anklicken (`DachFoto.eckenPx`, Reihenfolge Traufe L→R, First R→L) →
+   anklicken (`DachFoto.eckenPx`; **Klick-Reihenfolge egal** — `sortiereEcken`
+   ordnet zum Ring, unterste Kante = Traufe-Annahme, „↻ Traufe wechseln"
+   rotiert die Zuordnung falls falsch; der Check erkennt Vertauschung sofort
+   an der Traufbreite) →
    `lib/foto-geometrie.ts` rechnet die Homographie, `DachSvg` zeichnet jedes
    Modul als projiziertes Viereck (pures SVG, kein CSS-3D). Alte
    `traufePx`-Stände rendern weiter über den Affin-Zweig. Nach dem Markieren
