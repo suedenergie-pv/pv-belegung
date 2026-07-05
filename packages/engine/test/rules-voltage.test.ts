@@ -4,7 +4,7 @@ import { checkR1, checkR2, checkR3, checkR4, checkR5 } from '../src/rules/voltag
 import { mkInput, mkString, mppt, testInverter } from './helpers';
 
 const JW = 'jw-hd96n-r2-460'; // Voc_cold ≈ 38,84 V · Vmp_hot ≈ 26,52 V · Vmp 30,34 V
-const MCE = 'aiko-a460-mce54db'; // Voc_cold ≈ 43,96 V · Vmp_hot ≈ 29,85 V
+const MCE = 'aiko-a485-mce54db'; // Voc_cold ≈ 44,50 V · Vmp_hot ≈ 30,29 V
 
 function calcOf(...args: Parameters<typeof mkInput>) {
   return buildPlanCalc(mkInput(...args));
@@ -42,12 +42,12 @@ describe('R2 — Systemspannung Modul (n × Voc_cold ≤ maxSystemVoltageV)', ()
 });
 
 describe('R3 — MPPT-Fenster unten (n × Vmp_hot ≥ mpptVmin)', () => {
-  it('PASS: 7 × Aiko MCE54Db (208,9 V ≥ 200 V)', () => {
+  it('PASS: 7 × Aiko MCE54Db (212,0 V ≥ 200 V)', () => {
     const res = checkR3(calcOf(testInverter(), [mppt(1, mkString('S1', MCE, 7))]));
     expect(res).toEqual([expect.objectContaining({ rule: 'R3', status: 'ok' })]);
   });
 
-  it('FAIL: 6 × Aiko MCE54Db (179,1 V < 200 V), Meldung nennt Minimum 7 — R5 isoliert ok', () => {
+  it('FAIL: 6 × Aiko MCE54Db (181,7 V < 200 V), Meldung nennt Minimum 7 — R5 isoliert ok', () => {
     const calc = calcOf(testInverter({ startupVoltageV: 100 }), [
       mppt(1, mkString('S1', MCE, 6)),
     ]);

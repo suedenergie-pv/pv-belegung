@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AIKO_A460_MAH54MW,
-  AIKO_A460_MCE54DB,
+  AIKO_A480_MAH54MW,
+  AIKO_A485_MCE54DB,
   JOLYWOOD_JW_HD96N_R2_460,
   MODULES,
 } from '../src/catalog/modules';
@@ -31,14 +31,14 @@ describe('Modulkatalog (SPEC §5.1, PDF-verifiziert)', () => {
     expect(m.renderSymbol).toBe('jolywood_niwa_black');
   });
 
-  it('Aiko A460-MCE54Db — Datenblatt DSDr_EN_2405_V1.5, Spalte A460', () => {
-    const m = AIKO_A460_MCE54DB;
-    expect(m.id).toBe('aiko-a460-mce54db');
-    expect(m.pmaxW).toBe(460);
-    expect(m.vocV).toBe(40.4);
-    expect(m.iscA).toBe(14.58);
-    expect(m.vmpV).toBe(33.8);
-    expect(m.impA).toBe(13.62);
+  it('Aiko A485-MCE54Db — Datenblatt DSDr_EN_2405_V1.5, Spalte A485', () => {
+    const m = AIKO_A485_MCE54DB;
+    expect(m.id).toBe('aiko-a485-mce54db');
+    expect(m.pmaxW).toBe(485);
+    expect(m.vocV).toBe(40.9);
+    expect(m.iscA).toBe(14.88);
+    expect(m.vmpV).toBe(34.3);
+    expect(m.impA).toBe(14.15);
     expect(m.tempCoeffVocPctPerK).toBe(-0.22);
     expect(m.tempCoeffPmaxPctPerK).toBe(-0.26);
     expect(m.maxSystemVoltageV).toBe(1500);
@@ -49,14 +49,14 @@ describe('Modulkatalog (SPEC §5.1, PDF-verifiziert)', () => {
     expect(m.renderSymbol).toBe('aiko_abc');
   });
 
-  it('Aiko A460-MAH54Mw — Datenblatt DS_DE_2407_V1.3, Spalte A460', () => {
-    const m = AIKO_A460_MAH54MW;
-    expect(m.id).toBe('aiko-a460-mah54mw');
-    expect(m.pmaxW).toBe(460);
-    expect(m.vocV).toBe(41.06);
-    expect(m.iscA).toBe(14.25);
-    expect(m.vmpV).toBe(34.62);
-    expect(m.impA).toBe(13.29);
+  it('Aiko A480-MAH54Mw — Datenblatt DS_DE_2407_V1.3, Spalte A480', () => {
+    const m = AIKO_A480_MAH54MW;
+    expect(m.id).toBe('aiko-a480-mah54mw');
+    expect(m.pmaxW).toBe(480);
+    expect(m.vocV).toBe(41.3);
+    expect(m.iscA).toBe(14.38);
+    expect(m.vmpV).toBe(34.86);
+    expect(m.impA).toBe(13.78);
     expect(m.tempCoeffVocPctPerK).toBe(-0.22);
     expect(m.tempCoeffPmaxPctPerK).toBe(-0.26);
     expect(m.maxSystemVoltageV).toBe(1500);
@@ -69,8 +69,8 @@ describe('Modulkatalog (SPEC §5.1, PDF-verifiziert)', () => {
 
   it('Katalog enthält genau die 3 bestätigten Module', () => {
     expect(MODULES.map((m) => m.id).sort()).toEqual([
-      'aiko-a460-mah54mw',
-      'aiko-a460-mce54db',
+      'aiko-a480-mah54mw',
+      'aiko-a485-mce54db',
       'jw-hd96n-r2-460',
     ]);
   });

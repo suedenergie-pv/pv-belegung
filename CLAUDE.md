@@ -26,7 +26,7 @@
 - Node.js/TypeScript, Tests mit vitest o.ä. Engine als eigenes Paket ohne UI-Abhängigkeiten.
 - Feldnamen ASCII snake_case in Exporten (SPEC §13), TypeScript-Interfaces wie in SPEC definiert.
 - Commits klein, jede Regel-Implementierung referenziert die Regelnummer (z.B. "R7: Kurzschlussstrom-Prüfung + Tests").
-- Erwartungswerte für Sanity-Checks: Jolywood Voc_cold ≈ 38,84 V, Aiko ≈ 43,96 V (SPEC §5.1). Weicht die Engine davon ab, ist die Engine falsch, nicht die SPEC.
+- Erwartungswerte für Sanity-Checks: Jolywood Voc_cold ≈ 38,84 V, Aiko MCE485 ≈ 44,50 V, Aiko MAH480 ≈ 44,93 V (SPEC §5.1). Weicht die Engine davon ab, ist die Engine falsch, nicht die SPEC.
 
 ## Kontakt-Punkte, die auf Genrih warten (nicht blockierend für Schritt 1–3)
 

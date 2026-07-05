@@ -9,8 +9,8 @@
 export * from './types';
 export { DEFAULT_DESIGN_PARAMS, STC_TEMP_C, DC_AC_WARN_RATIO } from './constants/auslegung';
 export {
-  AIKO_A460_MAH54MW,
-  AIKO_A460_MCE54DB,
+  AIKO_A480_MAH54MW,
+  AIKO_A485_MCE54DB,
   JOLYWOOD_JW_HD96N_R2_460,
   MODULES,
 } from './catalog/modules';

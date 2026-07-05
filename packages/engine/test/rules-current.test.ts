@@ -4,30 +4,30 @@ import { checkR12, checkR6, checkR7 } from '../src/rules/current';
 import { mkInput, mkString, mppt, testInverter } from './helpers';
 
 const JW = 'jw-hd96n-r2-460'; // Imp 15,16 A · Isc 16,00 A → ×1,25 = 20,00 A
-const MCE = 'aiko-a460-mce54db'; // Imp 13,62 A · Isc 14,58 A → ×1,25 = 18,23 A
-const MAH = 'aiko-a460-mah54mw'; // Imp 13,29 A · Isc 14,25 A → ×1,25 = 17,81 A
+const MCE = 'aiko-a485-mce54db'; // Imp 14,15 A · Isc 14,88 A → ×1,25 = 18,60 A
+const MAH = 'aiko-a480-mah54mw'; // Imp 13,78 A · Isc 14,38 A → ×1,25 = 17,98 A
 
 function calcOf(...args: Parameters<typeof mkInput>) {
   return buildPlanCalc(mkInput(...args));
 }
 
 describe('R6 — Eingangsstrom (Σ Imp paralleler Strings ≤ maxInputCurrentPerMpptA)', () => {
-  it('PASS: 1 × Aiko-MCE-String (13,62 A ≤ 16 A)', () => {
+  it('PASS: 1 × Aiko-MCE-String (14,15 A ≤ 16 A)', () => {
     const res = checkR6(calcOf(testInverter(), [mppt(1, mkString('S1', MCE, 10))]));
     expect(res).toEqual([expect.objectContaining({ rule: 'R6', status: 'ok' })]);
   });
 
-  it('FAIL: 2 parallele Aiko-MCE-Strings (27,24 A > 16 A)', () => {
+  it('FAIL: 2 parallele Aiko-MCE-Strings (28,30 A > 16 A)', () => {
     const res = checkR6(
       calcOf(testInverter(), [mppt(1, mkString('S1', MCE, 10), mkString('S2', MCE, 10))]),
     );
     expect(res).toEqual([expect.objectContaining({ rule: 'R6', status: 'fail', mpptIndex: 1 })]);
-    expect(res[0]!.message).toContain('27,2');
+    expect(res[0]!.message).toContain('28,3');
   });
 });
 
 describe('R7 — Kurzschlussstrom (Σ Isc × 1,25 ≤ maxShortCircuitCurrentPerMpptA)', () => {
-  it('PASS: 1 × Aiko-MAH-String (17,81 A ≤ 19 A)', () => {
+  it('PASS: 1 × Aiko-MAH-String (17,98 A ≤ 19 A)', () => {
     const res = checkR7(calcOf(testInverter(), [mppt(1, mkString('S1', MAH, 10))]));
     expect(res).toEqual([expect.objectContaining({ rule: 'R7', status: 'ok' })]);
   });
@@ -58,7 +58,7 @@ describe('R12 — Kurzschlussstrom je String-Eingang (SPEC §7, ergänzt 05.07.2
       maxShortCircuitCurrentPerStringA: [19, 24],
     });
 
-  it('PASS: Aiko MAH (17,81 A) am 19-A-String-Eingang', () => {
+  it('PASS: Aiko MAH (17,98 A) am 19-A-String-Eingang', () => {
     const res = checkR12(calcOf(poPlusArtig(), [mppt(1, mkString('S1', MAH, 10))]));
     expect(res).toEqual([expect.objectContaining({ rule: 'R12', status: 'ok' })]);
   });

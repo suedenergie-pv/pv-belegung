@@ -4,7 +4,7 @@ import { checkR10, checkR8, checkR9 } from '../src/rules/topology';
 import { mkInput, mkString, mppt, plane, testInverter } from './helpers';
 
 const JW = 'jw-hd96n-r2-460';
-const MCE = 'aiko-a460-mce54db';
+const MCE = 'aiko-a485-mce54db';
 
 function calcOf(...args: Parameters<typeof mkInput>) {
   return buildPlanCalc(mkInput(...args));

@@ -30,9 +30,9 @@ import type {
 
 /** Gruppenbuchstaben lt. kalibrierung.md (A/B/D; C = reale Projekte, macht der PL). */
 const GROUP_OF_MODULE: Record<string, string> = {
-  'aiko-a460-mce54db': 'A',
+  'aiko-a485-mce54db': 'A',
   'jw-hd96n-r2-460': 'B',
-  'aiko-a460-mah54mw': 'D',
+  'aiko-a480-mah54mw': 'D',
 };
 
 const PLANE_SUED: PlaneOrientation = { id: 'p-sued', azimuthDeg: 180, pitchDeg: 35 };

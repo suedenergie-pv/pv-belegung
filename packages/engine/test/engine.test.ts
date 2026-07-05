@@ -3,7 +3,7 @@ import { checkStringPlan } from '../src/engine';
 import { mkInput, mkString, mppt, testInverter } from './helpers';
 
 const JW = 'jw-hd96n-r2-460';
-const MCE = 'aiko-a460-mce54db';
+const MCE = 'aiko-a485-mce54db';
 
 // Fixture analog eines High-Current-WR (frei erfunden, nur für Tests)
 const highCurrentFixture = () =>
@@ -27,10 +27,10 @@ describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
     );
     expect(res.valid).toBe(true);
     expect(Object.values(res.regeln).every((s) => s === 'ok')).toBe(true);
-    expect(res.kwp).toBeCloseTo(11.04, 6);
+    expect(res.kwp).toBeCloseTo(11.64, 6);
     expect(res.strings).toHaveLength(2);
-    expect(res.strings[0]!.vocColdV).toBeCloseTo(12 * 43.9552, 3);
-    expect(res.strings[0]!.vmpHotV).toBeCloseTo(12 * 29.8454, 2);
+    expect(res.strings[0]!.vocColdV).toBeCloseTo(12 * 44.4992, 3);
+    expect(res.strings[0]!.vmpHotV).toBeCloseTo(12 * 30.2869, 2);
     // Ergebnis enthält für jede der 12 Regeln mindestens einen Eintrag
     expect(new Set(res.results.map((r) => r.rule)).size).toBe(12);
   });

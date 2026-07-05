@@ -32,21 +32,21 @@ export const JOLYWOOD_JW_HD96N_R2_460: ModuleType = {
 
 /**
  * Aiko Neostar 3S+54, Doppelglas 2,0+2,0 mm, N-Type ABC.
- * Quelle: Neostar-3S_Plus_54_AIKO-A-MCE54Db-460W-485W.pdf, DSDr_EN_2405_V1.5, Spalte A460.
+ * Quelle: Neostar-3S_Plus_54_AIKO-A-MCE54Db-460W-485W.pdf, DSDr_EN_2405_V1.5, Spalte A485.
  */
-export const AIKO_A460_MCE54DB: ModuleType = {
-  id: 'aiko-a460-mce54db',
-  name: 'Aiko Neostar 3S+54 A460-MCE54Db',
+export const AIKO_A485_MCE54DB: ModuleType = {
+  id: 'aiko-a485-mce54db',
+  name: 'Aiko Neostar 3S+54 A485-MCE54Db',
   lengthMm: 1762,
   widthMm: 1134,
   heightMm: 30,
   weightKg: 24.5,
   cells: 108, // 6×18
-  pmaxW: 460,
-  vocV: 40.4,
-  iscA: 14.58,
-  vmpV: 33.8,
-  impA: 13.62,
+  pmaxW: 485,
+  vocV: 40.9,
+  iscA: 14.88,
+  vmpV: 34.3,
+  impA: 14.15,
   tempCoeffVocPctPerK: -0.22,
   tempCoeffPmaxPctPerK: -0.26,
   maxSystemVoltageV: 1500,
@@ -56,21 +56,21 @@ export const AIKO_A460_MCE54DB: ModuleType = {
 
 /**
  * Aiko Neostar 2N, Einzelglas 3,2 mm, N-Type ABC.
- * Quelle: Neostar-2N_188-AIKO-A-MAH54Mw-450-485W_1757x1134x30mm_DS_DE_2407_V1.3.pdf, Spalte A460.
+ * Quelle: Neostar-2N_188-AIKO-A-MAH54Mw-450-485W_1757x1134x30mm_DS_DE_2407_V1.3.pdf, Spalte A480.
  */
-export const AIKO_A460_MAH54MW: ModuleType = {
-  id: 'aiko-a460-mah54mw',
-  name: 'Aiko Neostar 2N A460-MAH54Mw',
+export const AIKO_A480_MAH54MW: ModuleType = {
+  id: 'aiko-a480-mah54mw',
+  name: 'Aiko Neostar 2N A480-MAH54Mw',
   lengthMm: 1757,
   widthMm: 1134,
   heightMm: 30,
   weightKg: 21.5,
   cells: 108, // 6×18
-  pmaxW: 460,
-  vocV: 41.06,
-  iscA: 14.25,
-  vmpV: 34.62,
-  impA: 13.29,
+  pmaxW: 480,
+  vocV: 41.3,
+  iscA: 14.38,
+  vmpV: 34.86,
+  impA: 13.78,
   tempCoeffVocPctPerK: -0.22,
   tempCoeffPmaxPctPerK: -0.26,
   maxSystemVoltageV: 1500,
@@ -80,6 +80,6 @@ export const AIKO_A460_MAH54MW: ModuleType = {
 
 export const MODULES: ModuleType[] = [
   JOLYWOOD_JW_HD96N_R2_460,
-  AIKO_A460_MCE54DB,
-  AIKO_A460_MAH54MW,
+  AIKO_A485_MCE54DB,
+  AIKO_A480_MAH54MW,
 ];

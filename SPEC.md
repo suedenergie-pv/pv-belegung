@@ -135,31 +135,31 @@ interface ModuleType {
 ### 5.1 Initialbestand — BEIDE MODULE BESTÄTIGT ✅
 
 **Jolywood:** Fork aufgelöst 04.07.2026 per Zellzählung am Modul (6 Spalten × 16 Reihen = 96 Zellen) → **JW-HD96N-R2-460** („Niwa Black Series", n-Type bifazial Dual-Glass Transparent Black). Quelle: Hersteller-Datenblatt Version 2025.01 (PDF ins Repo `/docs/datenblaetter/`). Hero-Artikel 1103 ↔ Katalog-id verknüpfen; Typbezeichnung in Hero nachtragen (Feld war leer).
-**Aiko:** BEIDE Varianten im Einsatz (bestätigt Genrih 04.07.2026 abends): Gen3 Neostar 3S+54 **AIKO-A460-MCE54Db** (Doppelglas; Datenblatt DSDr_EN_2405_V1.5 im Repo) UND Neostar 2N **AIKO-A460-MAH54Mw** (Einzelglas; Datenblatt DS_DE_2407_V1.3 im Repo). Beide als eigene Katalogeinträge — Elektrik unterschiedlich, nicht austauschbar.
+**Aiko:** BEIDE Varianten im Einsatz (bestätigt Genrih 04.07.2026 abends; Wattklassen korrigiert 05.07.2026: verkauft werden 485 W bzw. 480 W, nicht 460 W): Gen3 Neostar 3S+54 **AIKO-A485-MCE54Db** (Doppelglas; Datenblatt DSDr_EN_2405_V1.5 im Repo, Spalte A485) UND Neostar 2N **AIKO-A480-MAH54Mw** (Einzelglas; Datenblatt DS_DE_2407_V1.3 im Repo, Spalte A480). Beide als eigene Katalogeinträge — Elektrik unterschiedlich, nicht austauschbar.
 **Alt-Modul (Bestandsanlagen):** JW-HD108N-R3, höchste Klasse 455 W — Voc 39,37 V / Isc 14,21 A / Vmp 33,87 V / Imp 13,43 A, TK −0,300/−0,250/+0,045 %/K, Fuse 30 A, 21,2 kg, 108 Zellen. Als optionaler dritter Katalogeintrag `jw-hd108n-r3-455` für Erweiterungen (Entscheidung Genrih).
 
-| Feld | Jolywood JW-HD96N-R2-460 ✅ | Aiko A460-MCE54Db Gen3 ✅ | Aiko A460-MAH54Mw (Neostar 2N) ✅ |
+| Feld | Jolywood JW-HD96N-R2-460 ✅ | Aiko A485-MCE54Db Gen3 ✅ | Aiko A480-MAH54Mw (Neostar 2N) ✅ |
 |---|---|---|---|
-| id | `jw-hd96n-r2-460` | `aiko-a460-mce54db` | `aiko-a460-mah54mw` |
+| id | `jw-hd96n-r2-460` | `aiko-a485-mce54db` | `aiko-a480-mah54mw` |
 | Hero-Artikelnr. | 1103 | TODO | TODO |
 | Maße | 1762 × 1134 × 30 mm | 1762 × 1134 × 30 mm | 1757 × 1134 × 30 mm |
 | Gewicht | 24,6 kg | 24,5 kg | 21,5 kg |
 | Zellen | 96 (6×16) | 108 (6×18) | 108 (6×18) |
 | Glas | 2,0/2,0 mm | 2,0/2,0 mm | Einzelglas 3,2 mm |
-| Pmax | 460 W | 460 W | 460 W |
-| Vmp / Imp | 30,34 V / 15,16 A | 33,80 V / 13,62 A | 34,62 V / 13,29 A |
-| Voc / Isc | 35,31 V / **16,00 A** ⚡ | 40,40 V / 14,58 A | 41,06 V / 14,25 A |
+| Pmax | 460 W | 485 W | 480 W |
+| Vmp / Imp | 30,34 V / 15,16 A | 34,30 V / 14,15 A | 34,86 V / 13,78 A |
+| Voc / Isc | 35,31 V / **16,00 A** ⚡ | 40,90 V / 14,88 A | 41,30 V / 14,38 A |
 | TK Pmax / Voc / Isc | −0,280 / −0,250 / +0,045 %/K | −0,26 / −0,22 / +0,05 %/K | −0,26 / −0,22 / +0,05 %/K |
 | Max. Systemspg. / Fuse | 1500 V DC / 35 A | 1500 V DC / 25 A | 1500 V DC / 25 A |
 | Bifazialität | 80 % | — | — |
 | renderSymbol | `jolywood_niwa_black` (6×16) | `aiko_abc` (6×18) | `aiko_abc` (6×18) |
 
-⚡ **Hohe Modulströme sind der Haupt-Filter der WR-Auswahl.** Jolywood: 16,00 × 1,25 = **20,0 A** Kurzschluss-Anforderung pro String am MPPT; Aiko: 14,58 × 1,25 = 18,2 A. Viele Standard-MPPTs fallen durch — High-Current-Varianten (Sungrow, Huawei) explizit im WR-Katalog kennzeichnen. R6/R7 schlagen häufiger an als die Spannungsregeln.
+⚡ **Hohe Modulströme sind der Haupt-Filter der WR-Auswahl.** Jolywood: 16,00 × 1,25 = **20,0 A** Kurzschluss-Anforderung pro String am MPPT; Aiko MCE485: 14,88 × 1,25 = 18,60 A; Aiko MAH480: 14,38 × 1,25 = 17,98 A. Viele Standard-MPPTs fallen durch — High-Current-Varianten (Sungrow, Huawei) explizit im WR-Katalog kennzeichnen. R6/R7 schlagen häufiger an als die Spannungsregeln.
 
 Rechen-Referenzen für das Kalibrierungs-Gate (−15 °C / +70 °C):
 - Jolywood: Voc_cold `35,31 × 1,10 ≈ 38,84 V` → 1000-V-WR: max. 25 Module/String; Vmp_hot `30,34 × 0,874 ≈ 26,52 V`
-- Aiko MCE54Db: Voc_cold `40,40 × 1,088 ≈ 43,96 V` → 1000-V-WR: max. 22 Module/String; Vmp_hot `33,80 × 0,883 ≈ 29,85 V`
-- Aiko MAH54Mw: Voc_cold `41,06 × 1,088 ≈ 44,67 V` → 1000-V-WR: max. 22 Module/String; Vmp_hot `34,62 × 0,883 ≈ 30,57 V`
+- Aiko MCE485: Voc_cold `40,90 × 1,088 ≈ 44,50 V` → 1000-V-WR: max. 22 Module/String; Vmp_hot `34,30 × 0,883 ≈ 30,29 V`
+- Aiko MAH480: Voc_cold `41,30 × 1,088 ≈ 44,93 V` → 1000-V-WR: max. 22 Module/String; Vmp_hot `34,86 × 0,883 ≈ 30,78 V`
 
 ⚠️ **HARTE REGEL:** Elektrische Werte kommen ausschließlich aus dem exakten Datenblatt der verbauten Serie/Wattklasse (PDF im Repo, Version dokumentiert). Kein Wert aus dem Gedächtnis, keiner Extrapolation aus Nachbar-Wattklassen, keinem Chat-Verlauf, keiner Websuche ohne Datenblatt-PDF als Quelle. ✅ Aufgelöst 04.07.2026 abends: beide Aiko-Datenblätter (MCE54Db DSDr_EN_2405_V1.5 + MAH54Mw DS_DE_2407_V1.3) liegen in `docs/datenblaetter/`, alle Katalogwerte gegen die PDFs verifiziert.
 
@@ -416,7 +416,7 @@ Zusätzlich blockierend:
 | # | Punkt | Wer | Blockiert |
 |---|---|---|---|
 | 1 | ~~Jolywood-Fork~~ ✅ aufgelöst 04.07. per Zellzählung (6×16 = 96) → HD96N-R2-460, Werte final in §5.1. Rest: Typbezeichnung in Hero-Artikel 1103 nachtragen | Genrih (Hero-Pflege) | — |
-| 2 | ~~Aiko~~ ✅ erledigt 04.07. abends — BEIDE Varianten im Einsatz: A460-MCE54Db (Doppelglas) + A460-MAH54Mw (Einzelglas), Werte in §5.1, beide Datenblätter im Repo. Offen nur: Hero-Artikelnummern | Genrih (Hero-Pflege) | — |
+| 2 | ~~Aiko~~ ✅ erledigt 04.07. abends, Wattklassen korrigiert 05.07. — BEIDE Varianten im Einsatz: A485-MCE54Db (Doppelglas) + A480-MAH54Mw (Einzelglas), Werte in §5.1, beide Datenblätter im Repo. Offen nur: Hero-Artikelnummern | Genrih (Hero-Pflege) | — |
 | 3 | ~~WR-Modelle~~ ✅ erledigt 04.07. abends — Heimbereich bis 30 kWp in §6.1, Datenblätter im Repo, Katalog geseedet. Offen: Huawei-M1-Einsatzfrage (11 A!), BYD-Kompatibilitätsmatrix | Genrih | — |
 | 4 | GATE-0: Solar-API-Test-Call mit EEA-Account, Response dokumentieren | Genrih/Claude Code | §8, §10 v2 |
 | 5 | Schneelast-/Wind-Randzonen: v1 bewusst Pauschalrand — mit Statik-Tool-Erkenntnissen später zusammenführen? | Genrih | nein (v2) |

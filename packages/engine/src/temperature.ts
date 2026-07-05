@@ -7,7 +7,7 @@ export function resolveParams(partial?: Partial<DesignParams>): DesignParams {
 
 /**
  * Voc_cold = Voc_STC × (1 + tkVoc/100 × (T_min − 25))   (SPEC §7)
- * Referenzen §5.1: Jolywood ≈ 38,84 V · Aiko MCE54Db ≈ 43,96 V · Aiko MAH54Mw ≈ 44,67 V
+ * Referenzen §5.1: Jolywood ≈ 38,84 V · Aiko MCE485 ≈ 44,50 V · Aiko MAH480 ≈ 44,93 V
  */
 export function vocColdV(
   module: ModuleType,
@@ -19,7 +19,7 @@ export function vocColdV(
 /**
  * Vmp_hot = Vmp_STC × (1 + tkPmax/100 × (T_cell_max − 25))   (SPEC §7)
  * Näherung über TK Pmax; konservativ.
- * Referenzen §5.1: Jolywood ≈ 26,52 V · Aiko MCE54Db ≈ 29,85 V · Aiko MAH54Mw ≈ 30,57 V
+ * Referenzen §5.1: Jolywood ≈ 26,52 V · Aiko MCE485 ≈ 30,29 V · Aiko MAH480 ≈ 30,78 V
  */
 export function vmpHotV(
   module: ModuleType,

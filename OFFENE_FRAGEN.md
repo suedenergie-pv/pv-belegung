@@ -1,9 +1,11 @@
 # OFFENE FRAGEN
 
-Stand: 2026-07-04 spät. Erledigt: SPEC + kalibrierung.md im Repo; beide
-Aiko-Varianten geklärt und verifiziert; Engine R1–R11 + Testrunner gebaut;
-**WR-Katalog Heimbereich bis 30 kWp geseedet** (34 Klassen, 6 Familien, alle
-Werte aus den Datenblatt-PDFs, SPEC §6.1). 48 Tests grün.
+Stand: 2026-07-05. Erledigt: SPEC + kalibrierung.md im Repo; beide
+Aiko-Varianten geklärt und verifiziert — **Wattklassen 05.07. korrigiert auf
+A485-MCE54Db (Isc ×1,25 = 18,60 A) und A480-MAH54Mw (17,98 A)**, Werte aus den
+PDF-Spalten A485/A480; Engine R1–R12 + Testrunner gebaut;
+**WR-Katalog Heimbereich bis 30 kWp geseedet** (28 Klassen, SPEC §6.1, alle
+Werte aus den Datenblatt-PDFs).
 
 ## Für die Kalibrierung (SPEC §14)
 
