@@ -57,12 +57,24 @@
    Hinweis: Foto muss ~senkrecht von oben sein (Nadir); Klickreihenfolge Traufe
    links→rechts, First oberhalb — sonst „Traufkante neu setzen".
    Getestet mit echtem Luftbild (Haus Darup, Wikimedia CC BY-SA — nicht im Repo).
-   **Nachtrag (Genrih-Idee, 05.07. abends): „Ziegel zählen"-Notnagel** — wenn die
-   Traufkante nicht frei sichtbar/bekannt ist: Strecke über n Ziegelbreiten
-   anklicken × Deckbreite (editierbar; Beton 30 cm quasi genormt, Ton 18–30 cm je
-   Modell, Blech-Falz 53 cm) → `DachFoto.pxProM` überschreibt den Maßstab, die
-   Traufklicks liefern dann nur noch Anker + Richtung. Nur QUER zur Falllinie
-   zählen (Deckbreite ist nicht neigungsverzerrt, die Decklänge schon + Lattung).
+   **Nachtrag (Genrih-Idee, 05.07. abends): „Ziegel zählen"-Notnagel** — Strecke
+   über n Ziegelbreiten anklicken × Deckbreite (editierbar; Beton 30 cm quasi
+   genormt, Ton 18–30 cm je Modell, Blech-Falz 53 cm) → `DachFoto.pxProM`.
+   Nur QUER zur Falllinie zählen (Deckbreite ist nicht neigungsverzerrt).
+   **Nachtrag 2 (05.07. spät): 4-Ecken-Homographie + Belegungs-Check** — Genrihs
+   echtes Drohnenfoto war schräg aufgenommen (Dachfläche = Trapez), das alte
+   Traufkanten-Parallelogramm passte sichtbar nicht. Jetzt: alle 4 Ecken
+   anklicken (`DachFoto.eckenPx`, Reihenfolge Traufe L→R, First R→L) →
+   `lib/foto-geometrie.ts` rechnet die Homographie, `DachSvg` zeichnet jedes
+   Modul als projiziertes Viereck (pures SVG, kein CSS-3D). Alte
+   `traufePx`-Stände rendern weiter über den Affin-Zweig. Nach dem Markieren
+   läuft automatisch der **Belegungs-Check** (deterministisch, kein LLM):
+   Foto-Maße (via Ziegel-Maßstab) vs. eingegebene Maße (>10 %/15 % → Warnung),
+   Ecken-Plausibilität, Perspektiv-Hinweis (First/Traufe-Verhältnis). „Maße aus
+   Foto übernehmen"-Knopf schreibt den Vorschlag in die Fläche. WICHTIG fürs
+   Verständnis: Die Homographie passt für JEDE eingegebene Größe — richtig
+   dimensioniert sind die Module nur bei korrekten Maßen, genau dafür ist der
+   Check da (Modulgrößen kommen weiter aus mm × Maßstab, SPEC §3.5).
 4. ✅ **Wizard-State in localStorage** (`pv-belegung-wizard-v1`): speichert Projekt +
    Schritt bei jeder Änderung, lädt nach Reload; migriert veraltete Modul-/WR-ids
    (wichtig nach der Aiko-Umbenennung); bei vollem Speicher Fallback ohne Fotos;

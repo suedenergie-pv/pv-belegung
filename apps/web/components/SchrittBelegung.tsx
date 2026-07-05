@@ -137,7 +137,7 @@ export function SchrittBelegung({
                 Fläche zu klein für dieses Modul (inkl. {Math.round(randVon(f) * 100)} cm
                 Randabstand).
               </p>
-            ) : f.foto && !f.foto.traufePx ? null : (
+            ) : f.foto && !f.foto.traufePx && !f.foto.eckenPx ? null : (
               <DachSvg
                 flaeche={f}
                 raster={raster}

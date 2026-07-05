@@ -1,6 +1,7 @@
 'use client';
 
 import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
+import { homographie, projPfad, type Punkt } from '../lib/foto-geometrie';
 import { DACHFARBEN, type Dachfarbe, type Flaeche } from '../lib/model';
 
 /**
@@ -166,6 +167,76 @@ export function DachSvg({
   );
 
   const foto = flaeche.foto;
+  if (foto?.eckenPx) {
+    // Perspektivischer Modus: 4 markierte Ecken → Homographie Fläche→Foto.
+    // Jedes Modul wird als projiziertes Viereck gezeichnet (LoD vereinfacht,
+    // SPEC §11.2) — Maße weiterhin aus dem Engine-Raster, nie aus dem Foto.
+    const h = homographie(B, H, foto.eckenPx);
+    if (h) {
+      const inset = 0.022; // Rahmen ~22 mm, wie im Detail-Symbol
+      const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
+        [x, y],
+        [x + w, y],
+        [x + w, y + hh],
+        [x, y + hh],
+      ];
+      return (
+        <div
+          className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
+          style={{
+            aspectRatio: `${foto.breitePx} / ${foto.hoehePx}`,
+            maxHeight: 480,
+            maxWidth: (480 * foto.breitePx) / foto.hoehePx,
+          }}
+        >
+          <svg
+            viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
+            className="block h-full w-full"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+            <path
+              d={projPfad(h, rechteck(raster.randM, raster.randM, B - 2 * raster.randM, H - 2 * raster.randM))}
+              fill="none"
+              stroke="rgba(255,255,255,0.35)"
+              strokeWidth={foto.breitePx * 0.0012}
+              strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
+            />
+            {raster.positionen.map((p) => {
+              const key = `${p.row}-${p.col}`;
+              const aus = flaeche.inaktiv.includes(key);
+              return (
+                <g
+                  key={key}
+                  opacity={aus ? 0.25 : 1}
+                  className={onToggle ? 'cursor-pointer' : undefined}
+                  onClick={onToggle ? () => onToggle(key) : undefined}
+                >
+                  <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="#1c1f24" />
+                  <path
+                    d={projPfad(
+                      h,
+                      rechteck(p.xM + inset, p.yM + inset, mB - 2 * inset, mH - 2 * inset),
+                    )}
+                    fill="#0a0b0e"
+                  />
+                  {aus && (
+                    <path
+                      d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth={foto.breitePx * 0.0015}
+                      strokeDasharray={`${foto.breitePx * 0.006} ${foto.breitePx * 0.004}`}
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      );
+    }
+  }
   if (foto?.traufePx) {
     // Drohnenfoto-Modus: Traufkante im Foto = Referenzstrecke mit wahrem Maß
     // breiteM → Maßstab px/m + Rotation. Sparrenrichtung um cos(Neigung)

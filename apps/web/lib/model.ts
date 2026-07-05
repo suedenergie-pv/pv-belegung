@@ -1,3 +1,4 @@
+import type { Ecken } from './foto-geometrie';
 import {
   MODULES,
   INVERTERS,
@@ -36,7 +37,16 @@ export interface DachFoto {
   dataUrl: string;
   breitePx: number;
   hoehePx: number;
-  /** Traufkante im Foto, Bild-px: [x1, y1, x2, y2] — erst linkes, dann rechtes Ende */
+  /**
+   * Alle 4 Ecken der Dachfläche im Foto (Traufe links, Traufe rechts,
+   * First rechts, First links) → perspektivisch exakte Platzierung per
+   * Homographie (foto-geometrie.ts), auch bei schräg aufgenommenen Fotos.
+   */
+  eckenPx?: Ecken;
+  /**
+   * Alt-Variante (nur Traufkante, affine Platzierung) — wird weiter
+   * gerendert, neue Markierungen erzeugen eckenPx.
+   */
   traufePx: [number, number, number, number] | null;
   /**
    * Optionaler Maßstab aus Ziegelzählung (Notnagel, wenn die Traufkante nicht
