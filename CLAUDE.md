@@ -28,6 +28,19 @@
 - Commits klein, jede Regel-Implementierung referenziert die Regelnummer (z.B. "R7: Kurzschlussstrom-Prüfung + Tests").
 - Erwartungswerte für Sanity-Checks: Jolywood Voc_cold ≈ 38,84 V, Aiko MCE485 ≈ 44,50 V, Aiko MAH480 ≈ 44,93 V (SPEC §5.1). Weicht die Engine davon ab, ist die Engine falsch, nicht die SPEC.
 
+## Screenshots & Verifikation im Dev-Betrieb
+
+- `preview_screenshot` hängt in diesem Setup regelmäßig (30-s-Timeout, 6/6 Fehlschläge
+  am 05.07.) — nach zwei Timeouts nicht weiter versuchen.
+- Stattdessen die feste Dev-Route `apps/web/app/api/debug-shot/route.ts` nutzen
+  (außerhalb von production aktiv): per `preview_eval` das SVG/Canvas als Base64-PNG
+  rendern und `fetch('/api/debug-shot', { method: 'POST', body: JSON.stringify({ b64, name }) })`
+  aufrufen. Die Datei landet in `.debug-shots/` (gitignored); der genaue Pfad steht in
+  der Antwort. Die Route NICHT löschen — das Löschen hinterließ Geister-Typen in
+  `.next/types` und brach den typecheck.
+- Nach dem Öffnen von Print-/Export-Dialogen nie screenshotten (Renderer friert ein);
+  `preview_eval` verwenden.
+
 ## Kontakt-Punkte, die auf Genrih warten (nicht blockierend für Schritt 1–3)
 
 - ~~WR-Modellliste~~ ✅ 04.07. geseedet (28 Klassen, §6.1; Huawei M1 bewusst raus)
