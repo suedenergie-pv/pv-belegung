@@ -1,6 +1,7 @@
 import {
   MODULES,
   INVERTERS,
+  DEFAULT_RAND_M,
   berechneRaster,
   checkStringPlan,
   type BelegungRaster,
@@ -24,6 +25,21 @@ export const DACHFARBEN = [
 export type DachfarbeId = (typeof DACHFARBEN)[number]['id'];
 export type Dachfarbe = (typeof DACHFARBEN)[number];
 
+/**
+ * Drohnenfoto als Belegungs-Hintergrund (eigenes Foto, lizenzrechtlich ok —
+ * Google-Maps-Screenshots bleiben verboten, SPEC §8.1). Bleibt lokal im Browser.
+ * Maßstab über Referenzstrecke: die Traufkante im Foto wird angeklickt, ihr
+ * wahres Maß ist breiteM (Aufmaß aus Schritt Dachflächen) → px/m + Rotation.
+ */
+export interface DachFoto {
+  /** Bild als Data-URL (beim Upload auf max. 1600 px verkleinert, JPEG) */
+  dataUrl: string;
+  breitePx: number;
+  hoehePx: number;
+  /** Traufkante im Foto, Bild-px: [x1, y1, x2, y2] — erst linkes, dann rechtes Ende */
+  traufePx: [number, number, number, number] | null;
+}
+
 export interface Flaeche {
   id: string;
   name: string;
@@ -35,8 +51,18 @@ export interface Flaeche {
   azimutDeg: number;
   dachfarbe: DachfarbeId;
   ausrichtung: 'hoch' | 'quer';
+  /** Randabstand zu Traufe/First/Ortgang, Meter (Default: Engine DEFAULT_RAND_M) */
+  randM?: number;
+  /** Drohnenfoto als Hintergrund (optional) */
+  foto?: DachFoto;
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
+}
+
+export { DEFAULT_RAND_M };
+
+export function randVon(f: Flaeche): number {
+  return f.randM ?? DEFAULT_RAND_M;
 }
 
 export interface UiStringDef {
@@ -107,6 +133,7 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
     hoeheM: f.hoeheM,
     module: modul,
     ausrichtung: f.ausrichtung,
+    randM: randVon(f),
   });
 }
 
@@ -173,6 +200,59 @@ export function zuordnungsHinweise(p: Projekt): { fehler: string[]; hinweise: st
 
 export const fmtDe = (v: number, digits = 2): string =>
   v.toLocaleString('de-DE', { maximumFractionDigits: digits });
+
+/**
+ * Wizard-Stand in localStorage (Nice-to-have lt. Übergabe 05.07.2026):
+ * geht sonst bei jedem Reload verloren. Kein Server-State — reines Browser-Feature.
+ */
+const STORAGE_KEY = 'pv-belegung-wizard-v1';
+
+export function speichereStand(projekt: Projekt, schritt: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ projekt, schritt }));
+  } catch {
+    // Speicher voll (Fotos!) — Notnagel: Stand ohne Fotos sichern
+    try {
+      const ohneFotos: Projekt = {
+        ...projekt,
+        flaechen: projekt.flaechen.map(({ foto: _foto, ...rest }) => rest),
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ projekt: ohneFotos, schritt }));
+    } catch {
+      // localStorage nicht verfügbar — Stand bleibt flüchtig
+    }
+  }
+}
+
+export function ladeStand(): { projekt: Projekt; schritt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const roh = window.localStorage.getItem(STORAGE_KEY);
+    if (!roh) return null;
+    const stand = JSON.parse(roh) as { projekt?: Projekt; schritt?: number };
+    if (!stand.projekt || !Array.isArray(stand.projekt.flaechen)) return null;
+    const projekt: Projekt = { ...neuesProjekt(), ...stand.projekt };
+    // Migration: gespeicherte Modul-/WR-ids können nach Katalog-Updates veraltet sein
+    if (!MODULES.some((m) => m.id === projekt.modulId)) projekt.modulId = MODULES[0]!.id;
+    if (projekt.wrId && !INVERTERS.some((w) => w.id === projekt.wrId)) {
+      projekt.wrId = null;
+      projekt.mppts = [];
+    }
+    return { projekt, schritt: stand.schritt ?? 0 };
+  } catch {
+    return null;
+  }
+}
+
+export function loescheStand(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // egal — dann war auch nichts gespeichert
+  }
+}
 
 /** Export-Payload nach SPEC §13 */
 export function bauePayload(p: Projekt, result: StringPlanResult | null): object {

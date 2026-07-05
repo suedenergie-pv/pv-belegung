@@ -1,8 +1,9 @@
 'use client';
 
-import { aktiveModule, fmtDe, modulById, rasterFuer, type Projekt } from '../lib/model';
+import { aktiveModule, fmtDe, modulById, randVon, rasterFuer, type Projekt } from '../lib/model';
 import { DACHFARBEN } from '../lib/model';
 import { DachSvg } from './DachSvg';
+import { FotoHintergrund } from './FotoHintergrund';
 import { Karte, KartenTitel, ToggleButton } from './ui';
 
 export function SchrittBelegung({
@@ -74,6 +75,30 @@ export function SchrittBelegung({
                 ▯ Hochkant
               </ToggleButton>
 
+              <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                Rand
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round(randVon(f) * 100)}
+                  onChange={(e) => {
+                    const cm = Number.parseInt(e.target.value, 10);
+                    if (!Number.isFinite(cm) || cm < 0) return;
+                    onChange({
+                      ...projekt,
+                      flaechen: projekt.flaechen.map((x) =>
+                        x.id === f.id ? { ...x, randM: cm / 100, inaktiv: [] } : x,
+                      ),
+                    });
+                  }}
+                  className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
+                />
+                cm
+              </label>
+
               <div className="ml-auto flex gap-1.5">
                 {DACHFARBEN.map((d) => (
                   <button
@@ -97,11 +122,22 @@ export function SchrittBelegung({
               </div>
             </div>
 
+            <FotoHintergrund
+              flaeche={f}
+              onFoto={(foto) =>
+                onChange({
+                  ...projekt,
+                  flaechen: projekt.flaechen.map((x) => (x.id === f.id ? { ...x, foto } : x)),
+                })
+              }
+            />
+
             {raster.positionen.length === 0 ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                Fläche zu klein für dieses Modul (inkl. 30 cm Randabstand).
+                Fläche zu klein für dieses Modul (inkl. {Math.round(randVon(f) * 100)} cm
+                Randabstand).
               </p>
-            ) : (
+            ) : f.foto && !f.foto.traufePx ? null : (
               <DachSvg
                 flaeche={f}
                 raster={raster}
@@ -124,8 +160,8 @@ export function SchrittBelegung({
               />
             )}
             <p className="mt-2 text-xs text-slate-400">
-              Module antippen zum Deaktivieren (Kamin, Fenster, SAT …). Randabstand 30 cm,
-              Klemmfuge 20 mm.
+              Module antippen zum Deaktivieren (Kamin, Fenster, SAT …). Randabstand{' '}
+              {Math.round(randVon(f) * 100)} cm, Klemmfuge 20 mm.
             </p>
           </Karte>
         );

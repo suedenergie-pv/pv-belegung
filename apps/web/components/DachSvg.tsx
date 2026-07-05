@@ -122,6 +122,87 @@ export function DachSvg({
   const mB = raster.modulBreiteM;
   const mH = raster.modulHoeheM;
 
+  // Belegung in Flächen-Koordinaten (Meter) — identisch für beide Hintergründe
+  const belegung = (
+    <>
+      <rect
+        x={raster.randM}
+        y={raster.randM}
+        width={B - 2 * raster.randM}
+        height={H - 2 * raster.randM}
+        fill="none"
+        stroke="rgba(255,255,255,0.3)"
+        strokeWidth={0.015}
+        strokeDasharray="0.12 0.1"
+      />
+      {raster.positionen.map((p) => {
+        const key = `${p.row}-${p.col}`;
+        const aus = flaeche.inaktiv.includes(key);
+        return (
+          <g
+            key={key}
+            opacity={aus ? 0.22 : 1}
+            className={onToggle ? 'cursor-pointer' : undefined}
+            onClick={onToggle ? () => onToggle(key) : undefined}
+          >
+            <use href={`#${symId}`} x={p.xM} y={p.yM} width={mB} height={mH} />
+            <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="transparent" />
+            {aus && (
+              <rect
+                x={p.xM}
+                y={p.yM}
+                width={mB}
+                height={mH}
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth={0.02}
+                strokeDasharray="0.08 0.06"
+              />
+            )}
+          </g>
+        );
+      })}
+    </>
+  );
+
+  const foto = flaeche.foto;
+  if (foto?.traufePx) {
+    // Drohnenfoto-Modus: Traufkante im Foto = Referenzstrecke mit wahrem Maß
+    // breiteM → Maßstab px/m + Rotation. Sparrenrichtung um cos(Neigung)
+    // verkürzt (Draufsicht-Projektion — reine Komposition, kein Solver).
+    const [x1, y1, x2, y2] = foto.traufePx;
+    const traufePxLaenge = Math.hypot(x2 - x1, y2 - y1);
+    const pxProM = traufePxLaenge / B;
+    const winkelDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+    const cosNeigung = Math.cos((flaeche.neigungDeg * Math.PI) / 180);
+    return (
+      <div
+        className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
+        style={{
+          aspectRatio: `${foto.breitePx} / ${foto.hoehePx}`,
+          maxHeight: 480,
+          maxWidth: (480 * foto.breitePx) / foto.hoehePx,
+        }}
+      >
+        <svg
+          viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
+          className="block h-full w-full"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <defs>
+            <ModulSymbol id={symId} modul={modul} wMm={mB * 1000} hMm={mH * 1000} />
+          </defs>
+          <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+          <g
+            transform={`translate(${x1} ${y1}) rotate(${winkelDeg}) scale(${pxProM}) scale(1 ${cosNeigung}) translate(0 ${-H})`}
+          >
+            {belegung}
+          </g>
+        </svg>
+      </div>
+    );
+  }
+
   return (
     <div
       className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -133,43 +214,7 @@ export function DachSvg({
           <DachPattern id={patId} farbe={farbe} />
         </defs>
         <rect width={B} height={H} fill={`url(#${patId})`} />
-        <rect
-          x={raster.randM}
-          y={raster.randM}
-          width={B - 2 * raster.randM}
-          height={H - 2 * raster.randM}
-          fill="none"
-          stroke="rgba(255,255,255,0.3)"
-          strokeWidth={0.015}
-          strokeDasharray="0.12 0.1"
-        />
-        {raster.positionen.map((p) => {
-          const key = `${p.row}-${p.col}`;
-          const aus = flaeche.inaktiv.includes(key);
-          return (
-            <g
-              key={key}
-              opacity={aus ? 0.22 : 1}
-              className={onToggle ? 'cursor-pointer' : undefined}
-              onClick={onToggle ? () => onToggle(key) : undefined}
-            >
-              <use href={`#${symId}`} x={p.xM} y={p.yM} width={mB} height={mH} />
-              <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="transparent" />
-              {aus && (
-                <rect
-                  x={p.xM}
-                  y={p.yM}
-                  width={mB}
-                  height={mH}
-                  fill="none"
-                  stroke="#ffffff"
-                  strokeWidth={0.02}
-                  strokeDasharray="0.08 0.06"
-                />
-              )}
-            </g>
-          );
-        })}
+        {belegung}
       </svg>
     </div>
   );

@@ -1,18 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittFlaechen } from '../components/SchrittFlaechen';
 import { SchrittProjekt } from '../components/SchrittProjekt';
 import { SchrittStrings } from '../components/SchrittStrings';
-import { neuesProjekt, type Projekt } from '../lib/model';
+import { ladeStand, loescheStand, neuesProjekt, speichereStand, type Projekt } from '../lib/model';
 
 const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Stringplan', 'Export'] as const;
 
 export default function Home() {
   const [projekt, setProjekt] = useState<Projekt>(neuesProjekt);
   const [schritt, setSchritt] = useState(0);
+  // localStorage erst nach dem Mount lesen (SSR-Hydration), danach jede Änderung sichern
+  const [geladen, setGeladen] = useState(false);
+
+  useEffect(() => {
+    const stand = ladeStand();
+    if (stand) {
+      setProjekt(stand.projekt);
+      setSchritt(stand.schritt);
+    }
+    setGeladen(true);
+  }, []);
+
+  useEffect(() => {
+    if (geladen) speichereStand(projekt, schritt);
+  }, [geladen, projekt, schritt]);
 
   const flaechenOk = projekt.flaechen.every(
     (f) =>
@@ -28,7 +43,7 @@ export default function Home() {
 
   return (
     <div className="space-y-5 pb-10">
-      <nav className="flex flex-wrap gap-2" aria-label="Schritte">
+      <nav className="flex flex-wrap items-center gap-2" aria-label="Schritte">
         {SCHRITTE.map((name, i) => (
           <button
             key={name}
@@ -45,6 +60,18 @@ export default function Home() {
             {i + 1}. {name}
           </button>
         ))}
+        <button
+          type="button"
+          className="ml-auto h-11 rounded-full px-4 text-sm font-medium text-slate-400 hover:text-red-500"
+          onClick={() => {
+            if (!window.confirm('Projekt verwerfen und neu beginnen?')) return;
+            loescheStand();
+            setProjekt(neuesProjekt());
+            setSchritt(0);
+          }}
+        >
+          Neu beginnen
+        </button>
       </nav>
 
       {schritt === 0 && <SchrittProjekt projekt={projekt} onChange={setProjekt} />}
