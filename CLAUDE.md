@@ -34,30 +34,36 @@
 - GATE-0: Solar-API-EEA-Testcall
 - Ticketsystem-Kategorie "Vorplanung Vertrieb" (+ user_categories-Bug)
 
-## Session-Übergabe 05.07.2026 (vorherige Session lief im falschen Ordner statik-check)
+## Session-Übergabe 05.07.2026 (2. Session — alle 4 Aufträge erledigt)
 
 **Stand:** Engine R1–R12 + Belegungsraster + Kalibrier-Testrunner (`npm run kalibrierung`)
-+ UI-Wizard `apps/web` fertig, 55 Tests grün, alles gepusht. Details: SPEC (v0.1 mit
-Updates 04./05.07.), `OFFENE_FRAGEN.md`. Dev-Server: `npm run dev` (launch.json liegt bei).
++ UI-Wizard `apps/web`, 55 Tests grün. Details: SPEC (v0.1 mit Updates 04./05.07.),
+`OFFENE_FRAGEN.md`. Dev-Server: `npm run dev` (launch.json liegt bei).
 
-**Offene Aufträge von Genrih (in dieser Reihenfolge):**
+**Alle 4 Aufträge von Genrih erledigt (05.07. nachmittags):**
 
-1. **Aiko-Wattklassen korrigieren** — verkauft werden 3S+54 = **A485-MCE54Db** und
-   2N = **A480-MAH54Mw** (nicht 460!). Werte aus den PDF-Spalten A485/A480 in
-   `docs/datenblaetter/` ziehen und ÜBERALL nachziehen: SPEC §5.1 (Tabelle, ids,
-   Rechen-Referenzen), kalibrierung.md, `modules.ts`, alle Tests, Runner-Gruppen,
-   OFFENE_FRAGEN-Stromwerte, Sanity-Zeile unten in dieser Datei.
-   Neue Rechen-Referenzen (−15 °C/+70 °C): MCE485 Voc_cold 40,90 × 1,088 ≈ 44,50 V,
-   Vmp_hot ≈ 30,29 V, Isc 14,88 → ×1,25 = 18,60 A; MAH480 41,30 × 1,088 ≈ 44,93 V,
-   Vmp_hot ≈ 30,78 V, Isc 14,38 → ×1,25 = 17,98 A. (Ein erster Edit wurde vom
-   System-Hickup unterbrochen — nichts davon ist schon umgesetzt.)
-2. **Randabstand einstellbar** machen (UI; Engine-`berechneRaster` hat den
-   `randM`-Parameter schon, Default 0,30 m bleibt).
-3. **Drohnenfoto als Belegungs-Hintergrund** (Genrih: farbiges Rechteck wirkt
-   „unseriös"): eigenes Foto hochladen (lizenzrechtlich ok, im Gegensatz zu
-   Maps-Screenshots), Maßstab über Referenzstrecke kalibrieren, Module drüber
-   rendern. Google-Maps-Screenshots bleiben verboten (§8.1); Solar-API erst nach GATE-0.
-4. Nice-to-have: Wizard-State in localStorage (geht bei Reload verloren).
+1. ✅ **Aiko-Wattklassen korrigiert** — Katalog jetzt **A485-MCE54Db** (`aiko-a485-mce54db`)
+   + **A480-MAH54Mw** (`aiko-a480-mah54mw`), Werte aus den PDF-Spalten A485/A480,
+   überall nachgezogen (SPEC §5.1, kalibrierung.md, modules.ts, Tests, Runner,
+   OFFENE_FRAGEN, Sanity-Zeile oben). Kalibrier-Output neu generiert.
+2. ✅ **Randabstand einstellbar** — cm-Feld je Dachfläche im Belegungs-Schritt,
+   `Flaeche.randM` → Engine-`berechneRaster`; Default 0,30 m bleibt.
+3. ✅ **Drohnenfoto als Belegungs-Hintergrund** — `FotoHintergrund.tsx`: Foto-Upload
+   (bleibt lokal, wird auf 1600 px JPEG verkleinert), Kalibrierung durch Anklicken
+   der **Traufkante** im Foto (Referenzstrecke = `breiteM` aus dem Aufmaß → Maßstab
+   px/m + Rotation, kein extra Eingabefeld nötig). `DachSvg` komponiert die Module
+   mit cos(Neigung)-Verkürzung in Sparrenrichtung über das Foto (Draufsicht-
+   Projektion, reiner Kompositor). Maps-Screenshots bleiben verboten (§8.1).
+   Hinweis: Foto muss ~senkrecht von oben sein (Nadir); Klickreihenfolge Traufe
+   links→rechts, First oberhalb — sonst „Traufkante neu setzen".
+4. ✅ **Wizard-State in localStorage** (`pv-belegung-wizard-v1`): speichert Projekt +
+   Schritt bei jeder Änderung, lädt nach Reload; migriert veraltete Modul-/WR-ids
+   (wichtig nach der Aiko-Umbenennung); bei vollem Speicher Fallback ohne Fotos;
+   „Neu beginnen"-Knopf in der Schrittleiste.
+
+**Offen / Ideen für nächste Session:** PV*SOL-Gegenrechnung (das Gate, Genrih),
+Hero-Artikelnummern Aiko, OFFENE_FRAGEN #4 (R13+: stringsPerMppt / kW je MPPT /
+Imp je String), evtl. Foto-Feinpositionierung (Verschieben/Nudgen nach Kalibrierung).
 
 **Arbeitsweise (von Genrih so gewollt):** Das ist primär ein VERTRIEBstool —
 Belegung/kWp/Optik zuerst, Stringplan ist „Spielerei" (optionaler Schritt), kein
