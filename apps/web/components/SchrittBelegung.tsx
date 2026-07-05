@@ -124,10 +124,10 @@ export function SchrittBelegung({
 
             <FotoHintergrund
               flaeche={f}
-              onFoto={(foto) =>
+              onPatch={(patch) =>
                 onChange({
                   ...projekt,
-                  flaechen: projekt.flaechen.map((x) => (x.id === f.id ? { ...x, foto } : x)),
+                  flaechen: projekt.flaechen.map((x) => (x.id === f.id ? { ...x, ...patch } : x)),
                 })
               }
             />

@@ -12,8 +12,13 @@ import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche } from '../lib/model';
  * Notnagel „Ziegel zählen": ist die Traufkante nicht frei sichtbar/bekannt,
  * liefert eine Strecke über n Ziegel × Deckbreite den Maßstab (Deckbreite ist
  * quer zur Falllinie, also nicht neigungsverzerrt). Die Traufklicks brauchen
- * dann nur noch Richtung + linken Ankerpunkt — die Endpunkte müssen nicht
- * exakt sitzen.
+ * dann nur noch Richtung + linken Ankerpunkt.
+ *
+ * „Maße aus Foto messen" (braucht den Ziegel-Maßstab): 3 Klicks — Traufe
+ * links, Traufe rechts, Punkt auf dem First — übernehmen Traufbreite und
+ * Sparrenlänge in die Fläche. Sparrenlänge = Foto-Abstand ÷ cos(Neigung)
+ * (Rückrechnung der Draufsicht-Verkürzung; die Neigung aus Schritt 2 muss
+ * dafür stimmen). Schätzwerte, auf 0,1 m gerundet — echtes Aufmaß geht vor.
  */
 
 const MAX_PX = 1600;
@@ -48,24 +53,43 @@ function deckbreiteDefaultCm(f: Flaeche): number {
   return art === 'blech' ? 53 : 30; // Blech: Scharen-/Falzabstand; Beton/Ton: 30 cm
 }
 
+type Punkt = [number, number];
+type Modus = 'traufe' | 'ziegel' | 'masse';
+
+/** Wie viele Klicks der Modus braucht. */
+const KLICKS: Record<Modus, number> = { traufe: 2, ziegel: 2, masse: 3 };
+
 const knopfKlasse =
   'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
 
+function modusKnopfKlasse(aktiv: boolean): string {
+  return `h-9 rounded-lg border px-3 text-sm font-medium ${
+    aktiv ? 'border-akzent bg-akzent text-white' : 'border-slate-300 bg-white text-slate-700'
+  } disabled:opacity-40`;
+}
+
 export function FotoHintergrund({
   flaeche,
-  onFoto,
+  onPatch,
 }: {
   flaeche: Flaeche;
-  onFoto: (foto: DachFoto | undefined) => void;
+  /** Ein Patch pro Aktion — Foto und ggf. gemessene Maße in EINEM Update (kein Stale-State) */
+  onPatch: (patch: Partial<Flaeche>) => void;
 }) {
   const foto = flaeche.foto;
-  const [erster, setErster] = useState<[number, number] | null>(null);
-  const [modus, setModus] = useState<'traufe' | 'ziegel'>('traufe');
+  const onFoto = (f: DachFoto | undefined) => onPatch({ foto: f });
+  const [punkte, setPunkte] = useState<Punkt[]>([]);
+  const [modus, setModus] = useState<Modus>('traufe');
   const [anzahlZiegel, setAnzahlZiegel] = useState(10);
   const [deckbreiteCm, setDeckbreiteCm] = useState<number | null>(null); // null = Default je Eindeckung
   const inputRef = useRef<HTMLInputElement>(null);
 
   const deckCm = deckbreiteCm ?? deckbreiteDefaultCm(flaeche);
+
+  const wechsleModus = (m: Modus) => {
+    setModus(m);
+    setPunkte([]);
+  };
 
   const klick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!foto) return;
@@ -73,25 +97,47 @@ export function FotoHintergrund({
     if (rect.width === 0 || rect.height === 0) return;
     const x = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
     const y = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
-    if (!erster) {
-      setErster([x, y]);
+    const neu: Punkt[] = [...punkte, [x, y]];
+    if (neu.length < KLICKS[modus]) {
+      setPunkte(neu);
       return;
     }
+
     if (modus === 'ziegel') {
-      const distPx = Math.hypot(x - erster[0], y - erster[1]);
+      const [[x1, y1], [x2, y2]] = neu as [Punkt, Punkt];
+      const distPx = Math.hypot(x2 - x1, y2 - y1);
       const streckeM = (anzahlZiegel * deckCm) / 100;
       if (distPx > 0 && streckeM > 0) {
         onFoto({ ...foto, pxProM: distPx / streckeM });
       }
       setModus('traufe');
+    } else if (modus === 'masse' && foto.pxProM !== undefined) {
+      const [[x1, y1], [x2, y2], [fx, fy]] = neu as [Punkt, Punkt, Punkt];
+      const traufePxLaenge = Math.hypot(x2 - x1, y2 - y1);
+      // senkrechter Abstand First → Traufkante (|Kreuzprodukt| / Länge)
+      const dPx =
+        Math.abs((x2 - x1) * (y1 - fy) - (x1 - fx) * (y2 - y1)) / (traufePxLaenge || 1);
+      const cosN = Math.cos((flaeche.neigungDeg * Math.PI) / 180);
+      const breiteM = Math.round((traufePxLaenge / foto.pxProM) * 10) / 10;
+      const hoeheM = Math.round((dPx / foto.pxProM / cosN) * 10) / 10;
+      if (breiteM > 0 && hoeheM > 0 && Number.isFinite(hoeheM)) {
+        onPatch({
+          breiteM,
+          hoeheM,
+          inaktiv: [],
+          foto: { ...foto, traufePx: [x1, y1, x2, y2] },
+        });
+      }
+      setModus('traufe');
     } else {
-      onFoto({ ...foto, traufePx: [erster[0], erster[1], x, y] });
+      const [[x1, y1]] = neu as [Punkt];
+      onFoto({ ...foto, traufePx: [x1, y1, x, y] });
     }
-    setErster(null);
+    setPunkte([]);
   };
 
   const zurueckAufNull = () => {
-    setErster(null);
+    setPunkte([]);
     setModus('traufe');
   };
 
@@ -160,31 +206,30 @@ export function FotoHintergrund({
           <div className="mb-2 flex flex-wrap gap-2">
             <button
               type="button"
-              className={`h-9 rounded-lg border px-3 text-sm font-medium ${
-                modus === 'traufe'
-                  ? 'border-akzent bg-akzent text-white'
-                  : 'border-slate-300 bg-white text-slate-700'
-              }`}
-              onClick={() => {
-                setModus('traufe');
-                setErster(null);
-              }}
+              className={modusKnopfKlasse(modus === 'traufe')}
+              onClick={() => wechsleModus('traufe')}
             >
               Traufkante klicken
             </button>
             <button
               type="button"
-              className={`h-9 rounded-lg border px-3 text-sm font-medium ${
-                modus === 'ziegel'
-                  ? 'border-akzent bg-akzent text-white'
-                  : 'border-slate-300 bg-white text-slate-700'
-              }`}
-              onClick={() => {
-                setModus('ziegel');
-                setErster(null);
-              }}
+              className={modusKnopfKlasse(modus === 'ziegel')}
+              onClick={() => wechsleModus('ziegel')}
             >
               Ziegel zählen (Notnagel)
+            </button>
+            <button
+              type="button"
+              className={modusKnopfKlasse(modus === 'masse')}
+              disabled={foto.pxProM === undefined}
+              title={
+                foto.pxProM === undefined
+                  ? 'Braucht den Ziegel-Maßstab (erst „Ziegel zählen")'
+                  : undefined
+              }
+              onClick={() => wechsleModus('masse')}
+            >
+              Maße aus Foto messen
             </button>
             {modus === 'ziegel' && (
               <>
@@ -222,7 +267,7 @@ export function FotoHintergrund({
             )}
           </div>
 
-          {modus === 'traufe' ? (
+          {modus === 'traufe' && (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               {foto.pxProM !== undefined ? (
                 <>
@@ -239,12 +284,22 @@ export function FotoHintergrund({
                 </>
               )}
             </p>
-          ) : (
+          )}
+          {modus === 'ziegel' && (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Ziegel zählen:</strong> Anfang und Ende einer Strecke über{' '}
-              {anzahlZiegel} Ziegelbreiten <strong>entlang einer Reihe</strong> anklicken (quer zur
-              Falllinie — nur die Deckbreite ist nicht neigungsverzerrt). Beton: 30 cm ist
-              Standard; Ton je Modell 18–30 cm — im Zweifel einen Ziegel vor Ort messen.
+              <strong>Ziegel zählen:</strong> Anfang und Ende einer Strecke über {anzahlZiegel}{' '}
+              Ziegelbreiten <strong>entlang einer Reihe</strong> anklicken (quer zur Falllinie —
+              nur die Deckbreite ist nicht neigungsverzerrt). Beton: 30 cm ist Standard; Ton je
+              Modell 18–30 cm — im Zweifel einen Ziegel vor Ort messen.
+            </p>
+          )}
+          {modus === 'masse' && (
+            <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+              <strong>Maße aus Foto messen (3 Klicks):</strong> 1. Traufe links, 2. Traufe rechts
+              (First oberhalb), 3. Punkt auf dem <strong>First</strong>. Traufbreite und
+              Sparrenlänge (÷ cos {fmtDe(flaeche.neigungDeg, 0)}° Neigung) werden in die Fläche
+              übernommen — Schätzwerte auf 0,1 m gerundet, die Neigung aus Schritt 2 muss stimmen.
+              Echtes Aufmaß geht vor.
             </p>
           )}
 
@@ -263,25 +318,39 @@ export function FotoHintergrund({
               onClick={klick}
             >
               <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-              {erster && (
+              {punkte.length === 2 && (
+                <line
+                  x1={punkte[0]![0]}
+                  y1={punkte[0]![1]}
+                  x2={punkte[1]![0]}
+                  y2={punkte[1]![1]}
+                  stroke="#f97316"
+                  strokeWidth={foto.breitePx * 0.003}
+                  strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
+                />
+              )}
+              {punkte.map(([px, py], i) => (
                 <circle
-                  cx={erster[0]}
-                  cy={erster[1]}
+                  key={i}
+                  cx={px}
+                  cy={py}
                   r={foto.breitePx * 0.008}
                   fill={modus === 'ziegel' ? '#0ea5e9' : '#f97316'}
                   stroke="#ffffff"
                   strokeWidth={foto.breitePx * 0.002}
                 />
-              )}
+              ))}
             </svg>
           </div>
-          {erster && (
+          {punkte.length > 0 && (
             <p className="mt-1 text-xs text-slate-500">
-              Punkt 1 gesetzt — jetzt{' '}
-              {modus === 'ziegel'
-                ? `das Ende der ${anzahlZiegel}-Ziegel-Strecke`
-                : 'das rechte Ende der Traufkante'}{' '}
-              anklicken.
+              {modus === 'ziegel' &&
+                `Punkt 1 gesetzt — jetzt das Ende der ${anzahlZiegel}-Ziegel-Strecke anklicken.`}
+              {modus === 'traufe' && 'Punkt 1 gesetzt — jetzt das rechte Ende der Traufkante anklicken.'}
+              {modus === 'masse' &&
+                (punkte.length === 1
+                  ? 'Traufe links gesetzt — jetzt Traufe rechts anklicken.'
+                  : 'Traufe gesetzt — jetzt einen Punkt auf dem First anklicken.')}
             </p>
           )}
         </div>
