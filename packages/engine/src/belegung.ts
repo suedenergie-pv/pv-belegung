@@ -7,8 +7,8 @@ import type { ModuleType } from './types';
  * v1: Rechteckfläche ohne Ausschlüsse (Gauben/Hindernisse folgen).
  */
 
-/** Randabstand zu Traufe/First/Ortgang, Meter (SPEC §9, Admin-konfigurierbar) */
-export const DEFAULT_RAND_M = 0.3;
+/** Randabstand zu Traufe/First/Ortgang, Meter (SPEC §9, Admin-konfigurierbar; 0,05 seit 05.07.2026, Genrih) */
+export const DEFAULT_RAND_M = 0.05;
 /** Reihen-/Spaltenabstand (Klemmfuge), Meter (SPEC §9: Default 20 mm) */
 export const DEFAULT_FUGE_M = 0.02;
 

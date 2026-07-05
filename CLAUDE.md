@@ -60,7 +60,9 @@
    überall nachgezogen (SPEC §5.1, kalibrierung.md, modules.ts, Tests, Runner,
    OFFENE_FRAGEN, Sanity-Zeile oben). Kalibrier-Output neu generiert.
 2. ✅ **Randabstand einstellbar** — cm-Feld je Dachfläche im Belegungs-Schritt,
-   `Flaeche.randM` → Engine-`berechneRaster`; Default 0,30 m bleibt.
+   `Flaeche.randM` → Engine-`berechneRaster`. **Default seit 05.07. abends 0,05 m**
+   (Genrih: 0,30 m kostete Modulreihen; SPEC §9 angepasst). Merkregel: 3 Hochkant-
+   Reihen Jolywood brauchen 5,43 m Sparrenlänge — bei 5,40 m Rand auf ≤ 3 cm stellen.
 3. ✅ **Drohnenfoto als Belegungs-Hintergrund** — `FotoHintergrund.tsx`: Foto-Upload
    (bleibt lokal, wird auf 1600 px JPEG verkleinert), Kalibrierung durch Anklicken
    der **Traufkante** im Foto (Referenzstrecke = `breiteM` aus dem Aufmaß → Maßstab
