@@ -172,7 +172,8 @@ export function DachSvg({
     // verkürzt (Draufsicht-Projektion — reine Komposition, kein Solver).
     const [x1, y1, x2, y2] = foto.traufePx;
     const traufePxLaenge = Math.hypot(x2 - x1, y2 - y1);
-    const pxProM = traufePxLaenge / B;
+    // Maßstab: aus Ziegelzählung (falls gesetzt), sonst Trauflänge = breiteM
+    const pxProM = foto.pxProM ?? traufePxLaenge / B;
     const winkelDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     const cosNeigung = Math.cos((flaeche.neigungDeg * Math.PI) / 180);
     return (

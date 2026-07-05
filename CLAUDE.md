@@ -56,6 +56,13 @@
    Projektion, reiner Kompositor). Maps-Screenshots bleiben verboten (§8.1).
    Hinweis: Foto muss ~senkrecht von oben sein (Nadir); Klickreihenfolge Traufe
    links→rechts, First oberhalb — sonst „Traufkante neu setzen".
+   Getestet mit echtem Luftbild (Haus Darup, Wikimedia CC BY-SA — nicht im Repo).
+   **Nachtrag (Genrih-Idee, 05.07. abends): „Ziegel zählen"-Notnagel** — wenn die
+   Traufkante nicht frei sichtbar/bekannt ist: Strecke über n Ziegelbreiten
+   anklicken × Deckbreite (editierbar; Beton 30 cm quasi genormt, Ton 18–30 cm je
+   Modell, Blech-Falz 53 cm) → `DachFoto.pxProM` überschreibt den Maßstab, die
+   Traufklicks liefern dann nur noch Anker + Richtung. Nur QUER zur Falllinie
+   zählen (Deckbreite ist nicht neigungsverzerrt, die Decklänge schon + Lattung).
 4. ✅ **Wizard-State in localStorage** (`pv-belegung-wizard-v1`): speichert Projekt +
    Schritt bei jeder Änderung, lädt nach Reload; migriert veraltete Modul-/WR-ids
    (wichtig nach der Aiko-Umbenennung); bei vollem Speicher Fallback ohne Fotos;

@@ -38,6 +38,14 @@ export interface DachFoto {
   hoehePx: number;
   /** Traufkante im Foto, Bild-px: [x1, y1, x2, y2] — erst linkes, dann rechtes Ende */
   traufePx: [number, number, number, number] | null;
+  /**
+   * Optionaler Maßstab aus Ziegelzählung (Notnagel, wenn die Traufkante nicht
+   * frei sichtbar/bekannt ist): Strecke über n Ziegel × Deckbreite. Gesetzt
+   * überschreibt er „Trauflänge = breiteM"; die Traufklicks liefern dann nur
+   * noch Ankerpunkt + Richtung. Deckbreite ist quer zur Falllinie und damit
+   * nicht neigungsverzerrt (Beton quasi genormt 30 cm; Ton je Modell 18–30 cm).
+   */
+  pxProM?: number;
 }
 
 export interface Flaeche {
