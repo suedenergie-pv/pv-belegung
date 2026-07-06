@@ -154,7 +154,7 @@ interface ModuleType {
 | Bifazialität | 80 % | — | — |
 | renderSymbol | `jolywood_niwa_black` (6×16) | `aiko_abc` (6×18) | `aiko_abc` (6×18) |
 
-⚡ **Hohe Modulströme sind der Haupt-Filter der WR-Auswahl.** Jolywood: 16,00 × 1,25 = **20,0 A** Kurzschluss-Anforderung pro String am MPPT; Aiko MCE485: 14,88 × 1,25 = 18,60 A; Aiko MAH480: 14,38 × 1,25 = 17,98 A. Viele Standard-MPPTs fallen durch — High-Current-Varianten (Sungrow, Huawei) explizit im WR-Katalog kennzeichnen. R6/R7 schlagen häufiger an als die Spannungsregeln.
+⚡ **Hohe Modulströme sind der Haupt-Filter der WR-Auswahl.** Jolywood fordert **16,00 A** Kurzschlussfestigkeit pro String am MPPT (Isc STC, direkter Vergleich — Korrektur 06.07.2026, s. §7); Aiko MCE485: 14,88 A; Aiko MAH480: 14,38 A. Standard-MPPTs mit ≤ 15 A Kurzschlussgrenze (z.B. Huawei M1) fallen durch — High-Current-Varianten explizit im WR-Katalog kennzeichnen. R6/R7 schlagen häufiger an als die Spannungsregeln.
 
 Rechen-Referenzen für das Kalibrierungs-Gate (−15 °C / +70 °C):
 - Jolywood: Voc_cold `35,31 × 1,10 ≈ 38,84 V` → 1000-V-WR: max. 25 Module/String; Vmp_hot `30,34 × 0,874 ≈ 26,52 V`
@@ -190,7 +190,7 @@ interface InverterType {
   mpptVoltageRange: [number, number];  // [Vmin, Vmax] pro MPPT
   startupVoltageV: number;
   maxInputCurrentPerMpptA: number[];     // je MPPT — R6 (Imp-Summe)
-  maxShortCircuitCurrentPerMpptA: number[]; // je MPPT — R7 (Isc ×1,25)
+  maxShortCircuitCurrentPerMpptA: number[]; // je MPPT — R7 (Σ Isc, STC direkt)
   maxShortCircuitCurrentPerStringA?: number[]; // je MPPT, optional — R12; nur wo Datenblatt Per-String-Wert nennt (PO Plus PV1: 19 A)
   maxDcAcRatio: number;                // Überbelegungsgrenze lt. Hersteller, sonst Default 1.35
   stringsPerMppt: number[];            // je MPPT
@@ -208,9 +208,9 @@ interface InverterType {
 | Sungrow SH15/20/25T | 15 / 20 / 25 kW | 1000 V | 150–950 V / 180 V | 3: 2/2/1 Strings | 32/32/16 A · SC 40/40/20 A | 2,0 |
 | ~~Huawei SUN2000-3–10KTL-M1~~ | — | — | — | — | **11 A / 15 A** | — |
 
-~~⚠️ Huawei M1~~ **Entschieden 05.07.2026 (Genrih): Huawei M1 NICHT im Katalog.** 11 A Eingangsstrom pro MPPT liegt unter dem Imp aller drei Katalogmodule (13,29–15,16 A), 15 A Kurzschlussgrenze < 17,81–20,0 A Anforderung → jeder String fiele durch R6/R7. Datenblatt bleibt im Repo für den Fall einer High-Current-Variante.
+~~⚠️ Huawei M1~~ **Entschieden 05.07.2026 (Genrih): Huawei M1 NICHT im Katalog.** 11 A Eingangsstrom pro MPPT liegt unter dem Imp aller drei Katalogmodule (13,78–15,16 A) → jeder String fiele durch R6 (Jolywood zusätzlich durch R7: Isc 16,0 A > 15 A Kurzschlussgrenze; Vergleich seit 06.07.2026 ohne ×1,25). Datenblatt bleibt im Repo für den Fall einer High-Current-Variante.
 
-⚠️ **PowerOcean Plus PV1:** Datenblatt nennt 19 A Kurzschlussstrom **pro String** (2 Strings = 38 A je MPPT). Jolywood fordert 20,0 A pro String → ~~Regel-Lücke~~ **seit 05.07.2026 durch R12 abgedeckt** (`maxShortCircuitCurrentPerStringA: [19, 24, 24]`); die Engine verbietet Jolywood an PV1 mit konkreter Meldung.
+⚠️ **PowerOcean Plus PV1:** Datenblatt nennt 19 A Kurzschlussstrom **pro String** (2 Strings = 38 A je MPPT), durch R12 abgedeckt (`maxShortCircuitCurrentPerStringA: [19, 24, 24]`). ~~Jolywood fordert 20,0 A pro String → verboten~~ **Korrigiert 06.07.2026 (Genrih, Praxis-Einspruch + Recherche):** Der Vergleich läuft mit Isc STC **ohne** Faktor 1,25 → Jolywood 16,0 A ≤ 19 A → **an PV1 zulässig** — deckt sich mit der Installationspraxis (Jolywood an PowerOcean-Plus-String 1 ist Standardfall). Begründung in §7.
 
 Speicher (nur Flag, Datenblätter im Repo): EcoFlow PowerOcean LFP · Sungrow **SBR** (bestätigt 05.07.2026; SBH-Datenblatt liegt bei, wird aber nicht verknüpft) · SigenStor BAT.
 
@@ -243,14 +243,16 @@ Vmp_hot   = Vmp_STC × (1 + tkPmax/100 × (T_cell_max − 25)) // Näherung übe
 | R4 | MPPT-Fenster oben | `n × Vmp_STC ≤ mpptVmax` |
 | R5 | Anlaufspannung | `n × Vmp_hot ≥ startupVoltageV` |
 | R6 | Eingangsstrom | `Σ Imp der parallelen Strings ≤ maxInputCurrentPerMpptA` |
-| R7 | Kurzschlussstrom | `Σ Isc × 1,25 ≤ maxShortCircuitCurrentPerMpptA` |
+| R7 | Kurzschlussstrom | `Σ Isc × iscSafetyFactor ≤ maxShortCircuitCurrentPerMpptA` (Default-Faktor **1,0**, s.u.) |
 | R8 | Gleiche Stringlänge pro MPPT | parallele Strings am selben MPPT: identische Modulanzahl |
 | R9 | Eine Ausrichtung pro MPPT | Module unterschiedlicher `RoofPlane`-Azimut/Neigung nicht am selben MPPT (Ausnahme: WR mit Schatten-Management, Flag pro WR-Katalogeintrag) |
 | R10 | Kein Modul-Mix im String | ein String = ein `ModuleType` |
 | R11 | DC:AC-Ratio | `kWp_gesamt / acPowerKw ≤ maxDcAcRatio` (Warnung ab 1,2, hart bei Katalogwert) |
-| R12 | Kurzschlussstrom je String-Eingang | `Isc × 1,25 ≤ maxShortCircuitCurrentPerStringA[mppt]`; fehlt der Datenblattwert, gilt die MPPT-Grenze (R7) als Fallback. NEU 05.07.2026 |
+| R12 | Kurzschlussstrom je String-Eingang | `Isc × iscSafetyFactor ≤ maxShortCircuitCurrentPerStringA[mppt]`; fehlt der Datenblattwert, gilt die MPPT-Grenze (R7) als Fallback. NEU 05.07.2026 |
 
 **R12 (ergänzt 05.07.2026, Genrih):** Manche WR begrenzen den Kurzschlussstrom zusätzlich PRO STRING-EINGANG (PowerOcean Plus PV1: 19 A je Stecker bei 38 A je MPPT). Da der Stringstrom NICHT von der Modulanzahl abhängt, ist die Konsequenz eines R12-Fehlers immer: **anderer Modultyp oder anderer Eingang** — die Fehlermeldung sagt das explizit.
+
+**Isc-Sicherheitsfaktor = 1,0 (Korrektur 06.07.2026, Genrih):** R7/R12 vergleichen den Modul-Isc (STC) **direkt** mit der WR-Kurzschlussgrenze. Der ursprünglich angesetzte Faktor 1,25 (VDE 0100-712 / IEC 60364-7-712) gilt der Dimensionierung von **Leitungen und Überstromschutz** (dafür: `module.maxSeriesFuseA`), nicht dem Vergleich mit dem WR-Gerätegrenzwert — die Hersteller weisen ihre Kurzschlussfestigkeit bereits mit eigener Marge gegen den Modul-Isc aus (EcoFlow Plus PV1: 19 A SC bei 16 A Eingangsstrom; Quellen: KOSTAL-Planungshinweis „Isc_PV zu keiner Zeit überschreiten" = STC-Vergleich, SMA-Blog „Das große Missverständnis I DC max", BayWa-re-Fachartikel Auslegung von Modulströmen). Auslöser: Praxisfall Jolywood (16,0 A) an PowerOcean-Plus-PV1 (19 A/String) — mit ×1,25 fälschlich verboten, real Standardinstallation. `iscSafetyFactor` bleibt konfigurierbar für konservative Auslegung.
 
 **Fehlerdarstellung:** immer konkret mit Zahlen. Beispiel: „24 Module gehen nicht: Winter-Voc 1.052 V > WR-Maximum 1.000 V. Maximal 22 Module pro String." Niemals nur „ungültig".
 

@@ -9,7 +9,7 @@
 |---|---|
 | T_min (Winter-Leerlauf) | −15 °C |
 | T_cell_max (Sommer-Volllast) | +70 °C |
-| Isc-Sicherheitsfaktor (R7) | 1,25 |
+| Isc-Sicherheitsfaktor (R7/R12) | **1,0** (Korrektur 06.07.2026: STC-Direktvergleich mit WR-Grenze, SPEC §7; 1,25 nur Kabel/Sicherung) |
 | PV*SOL-Version | TODO eintragen (Release dokumentieren!) |
 
 ## Modul-Referenzwerte
@@ -20,7 +20,7 @@
 | Voc_cold (−15 °C, erwartet) | ≈ 44,50 V | ≈ 38,84 V | ≈ 44,93 V |
 | Vmp / TK Pmax | 34,30 V / −0,26 %/K | 30,34 V / −0,28 %/K | 34,86 V / −0,26 %/K |
 | Vmp_hot (+70 °C, erwartet) | ≈ 30,29 V | ≈ 26,52 V | ≈ 30,78 V |
-| Isc / ×1,25 | 14,88 A / 18,60 A | 16,00 A / **20,00 A** | 14,38 A / 17,98 A |
+| Isc (STC = Vergleichswert) | 14,88 A | **16,00 A** | 14,38 A |
 
 ## Testfälle
 
@@ -43,7 +43,7 @@ WR-Spalten bleiben leer, bis der WR-Katalog (SPEC §6) befüllt ist — dann pro
 
 ### Gruppe B — Jolywood JW-HD96N-R2-460 × gleicher WR
 
-✅ ENTSPERRT 04.07. — Fälle B1–B9 analog Gruppe A. Kritischster Fall ist B6: 20,00 A Kurzschluss-Anforderung pro String — hier werden die meisten Standard-MPPTs durchfallen; erwartetes FAIL(R7) bei allen WR ohne High-Current-Eingang.
+✅ ENTSPERRT 04.07. — Fälle B1–B9 analog Gruppe A. Kritischster Fall ist B6: 16,00 A Kurzschluss-Anforderung pro String (STC-Direktvergleich seit 06.07.2026) — erwartetes FAIL(R7) bei WR mit Kurzschlussgrenze < 16 A (z.B. Huawei M1 15 A); EcoFlow-Plus PV1 (19 A/String) besteht.
 
 ### Gruppe D — Aiko A480-MAH54Mw × gleicher WR
 
@@ -61,7 +61,8 @@ NEU 04.07. abends (beide Aiko-Varianten im Einsatz, SPEC §5.1): Fälle D1–D9 
 
 - [ ] Alle Fälle Match = ✅
 - [ ] Jede Regel R1–R12 mindestens einmal als Ursache eines erwarteten FAIL abgedeckt
-      (R12: Jolywood × PowerOcean Plus, Fälle B1/B3/B4 an PV1 — erwartetes FAIL(R12))
+      (R12: seit 06.07.2026 ist Jolywood an PO-Plus-PV1 zulässig — FAIL(R12) braucht
+      einen WR mit String-Grenze < 16 A oder konservativen Faktor 1,25)
 - [ ] PV*SOL-Version dokumentiert
 - [ ] Ergebnis-Commit referenziert Engine-Commit-Hash: `________`
 

@@ -68,7 +68,7 @@ export interface DesignParams {
   tMinC: number;
   /** Sommer-Volllast Zelltemperatur, °C (Default +70) */
   tCellMaxC: number;
-  /** Sicherheitsfaktor Kurzschlussstrom R7 (Default 1,25) */
+  /** Sicherheitsfaktor Kurzschlussstrom R7/R12 (Default 1,0 = STC-Direktvergleich, SPEC §7 06.07.2026) */
   iscSafetyFactor: number;
 }
 

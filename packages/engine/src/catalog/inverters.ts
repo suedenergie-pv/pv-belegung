@@ -47,7 +47,7 @@ function ecoflowPowerOceanPlus(klasse: string, acPowerKw: number, maxPvW: number
     startupVoltageV: 160,
     maxInputCurrentPerMpptA: [32, 16, 16],
     maxShortCircuitCurrentPerMpptA: [38, 24, 24],
-    // Datenblatt PV1: „19×2" = 19 A je String-Eingang (R12) — Jolywood (20,0 A) fällt hier durch
+    // Datenblatt PV1: „19×2" = 19 A je String-Eingang (R12) — Jolywood (Isc 16,0 A) zulässig (STC-Vergleich, SPEC §7 06.07.2026)
     maxShortCircuitCurrentPerStringA: [19, 24, 24],
     maxDcAcRatio: maxPvW / (acPowerKw * 1000),
     stringsPerMppt: [2, 1, 1],

@@ -4,7 +4,9 @@ import type { RuleId, RuleResult } from '../types';
 
 /**
  * Stromregeln R6–R7 (SPEC §7). Der Haupt-Filter der WR-Auswahl bei den hohen
- * Modulströmen (Jolywood Isc 16 A → 20 A Anforderung, SPEC §5.1 ⚡).
+ * Modulströmen (Jolywood Isc 16 A, SPEC §5.1 ⚡). Isc wird seit 06.07.2026 direkt
+ * (STC, Default-Faktor 1,0) mit den WR-Kurzschlussgrenzen verglichen — der Faktor
+ * 1,25 gehört zur Kabel-/Sicherungsdimensionierung, nicht hierher (SPEC §7).
  */
 
 function ok(rule: RuleId, message: string): RuleResult[] {
@@ -33,7 +35,7 @@ export function checkR6(calc: PlanCalc): RuleResult[] {
     : ok('R6', 'Betriebsstrom aller MPPTs innerhalb der jeweiligen Eingangsstrom-Grenze.');
 }
 
-/** R7: Σ Isc × 1,25 ≤ maxShortCircuitCurrentPerMpptA[mppt] (Limit je MPPT, SPEC §6) */
+/** R7: Σ Isc × iscSafetyFactor ≤ maxShortCircuitCurrentPerMpptA[mppt] (Limit je MPPT, SPEC §6; Default-Faktor 1,0) */
 export function checkR7(calc: PlanCalc): RuleResult[] {
   const factor = calc.params.iscSafetyFactor;
   const fails: RuleResult[] = [];
@@ -58,7 +60,7 @@ export function checkR7(calc: PlanCalc): RuleResult[] {
 }
 
 /**
- * R12: Isc × 1,25 ≤ Kurzschlussgrenze PRO STRING-EINGANG (SPEC §7, ergänzt 05.07.2026).
+ * R12: Isc × iscSafetyFactor ≤ Kurzschlussgrenze PRO STRING-EINGANG (SPEC §7, ergänzt 05.07.2026; Default-Faktor 1,0 seit 06.07.2026).
  * Explizite Datenblattwerte aus maxShortCircuitCurrentPerStringA; sonst gilt die
  * MPPT-Grenze (R7) als Fallback. Der Stringstrom hängt NICHT von der Modulanzahl
  * ab — ein R12-Fehler bedeutet immer: anderer Modultyp oder anderer Eingang.

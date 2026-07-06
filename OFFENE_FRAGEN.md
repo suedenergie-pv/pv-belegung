@@ -1,11 +1,13 @@
 # OFFENE FRAGEN
 
-Stand: 2026-07-05. Erledigt: SPEC + kalibrierung.md im Repo; beide
+Stand: 2026-07-06. Erledigt: SPEC + kalibrierung.md im Repo; beide
 Aiko-Varianten geklärt und verifiziert — **Wattklassen 05.07. korrigiert auf
-A485-MCE54Db (Isc ×1,25 = 18,60 A) und A480-MAH54Mw (17,98 A)**, Werte aus den
+A485-MCE54Db (Isc 14,88 A) und A480-MAH54Mw (14,38 A)**, Werte aus den
 PDF-Spalten A485/A480; Engine R1–R12 + Testrunner gebaut;
 **WR-Katalog Heimbereich bis 30 kWp geseedet** (28 Klassen, SPEC §6.1, alle
-Werte aus den Datenblatt-PDFs).
+Werte aus den Datenblatt-PDFs). **06.07.: Isc-Sicherheitsfaktor 1,25 → 1,0**
+(STC-Direktvergleich mit WR-Kurzschlussgrenze, SPEC §7 — Jolywood an
+EcoFlow-Plus PV1 damit zulässig, deckt sich mit der Installationspraxis).
 
 ## Für die Kalibrierung (SPEC §14)
 
@@ -24,10 +26,12 @@ Grund: 11 A/15 A pro MPPT unter den Modulströmen. Datenblatt bleibt im Repo.
 
 ### ~~3. PO Plus PV1: 19 A pro String~~ ✅ erledigt 05.07.2026: R12 gebaut
 
-Neue Regel R12 (SPEC §7): Isc × 1,25 ≤ Kurzschlussgrenze je String-Eingang;
-ohne expliziten Datenblattwert gilt die MPPT-Grenze als Fallback. Jolywood an
-PO-Plus-PV1 wird jetzt mit konkreter Meldung („Modultyp an diesem Eingang
-nicht zulässig") abgewiesen. Explizite Per-String-Werte bisher nur bei PO Plus
+Neue Regel R12 (SPEC §7): Isc × Faktor ≤ Kurzschlussgrenze je String-Eingang;
+ohne expliziten Datenblattwert gilt die MPPT-Grenze als Fallback.
+**Update 06.07.2026:** Faktor-Default auf 1,0 korrigiert (Genrih-Einspruch aus
+der Praxis + Recherche KOSTAL/SMA/BayWa: WR-Kurzschlussgrenze = STC-Vergleich;
+1,25 nur für Kabel/Sicherung) → Jolywood (16,0 A) an PO-Plus-PV1 (19 A) ist
+jetzt ZULÄSSIG. Explizite Per-String-Werte bisher nur bei PO Plus
 — falls Handbücher von Sungrow SH-T (MPPT1/2) oder Sigen TP2 (MPPT2) eigene
 Per-String-Kurzschlusswerte nennen, nachtragen.
 
