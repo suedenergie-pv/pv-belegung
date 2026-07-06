@@ -1,0 +1,50 @@
+# Deploy der Web-App (apps/web) als statischer Export auf GitHub Pages.
+# Die App ist eine reine Client-App (localStorage, kein Server-State) —
+# die dev-only debug-shot-API-Route wird nur im CI-Checkout entfernt, weil
+# output:'export' keine POST-Route-Handler erlaubt (lokal bleibt sie, CLAUDE.md).
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Dev-only API-Route für den statischen Export entfernen
+        run: rm -rf apps/web/app/api
+      - name: Build (statischer Export)
+        run: npm run build -w web
+        env:
+          STATIC_EXPORT: '1'
+          PAGES_BASE_PATH: /pv-belegung
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
