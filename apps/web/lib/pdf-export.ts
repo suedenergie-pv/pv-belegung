@@ -230,9 +230,10 @@ export async function erzeugeBelegungsPdf(
     doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SEITE_B - RAND, dy, { align: 'right' });
     dy += 6;
     doc.setFontSize(9);
+    // Nur ASCII/WinAnsi-sichere Trennzeichen — "·" rendert in jsPDF-Helvetica als Kästchen
     doc.text(
-      `${azimutLabel(f.azimutDeg)} · Neigung ${f.neigungDeg}° · Traufe ${fmtDe(f.breiteM, 2)} m × ` +
-        `Sparren ${fmtDe(f.hoeheM, 2)} m · Randabstand ${fmtDe(randVon(f) * 100, 0)} cm`,
+      `${azimutLabel(f.azimutDeg)}, Neigung ${f.neigungDeg}°, Traufe ${fmtDe(f.breiteM, 2)} m × ` +
+        `Sparren ${fmtDe(f.hoeheM, 2)} m, Randabstand ${fmtDe(randVon(f) * 100, 0)} cm`,
       RAND,
       dy,
     );

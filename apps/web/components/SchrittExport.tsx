@@ -104,16 +104,11 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
             {pdfLaeuft ? 'Erzeuge PDF …' : 'PDF herunterladen'}
           </button>
         </div>
-        <p className="text-sm text-slate-500">
-          Gesamtansicht plus eine Seite je Dachfläche — fürs Kundengespräch. Die Belegung ist
-          unabhängig vom Stringplan verfügbar
-          {result && !result.valid
-            ? '; der aktuelle Stringplan ist ungültig und wird deshalb nicht mit ausgegeben'
-            : result?.valid
-              ? '; der geprüfte Stringplan wird als Vermerk aufgenommen'
-              : ''}
-          .
-        </p>
+        {result && !result.valid && (
+          <p className="text-sm text-slate-500">
+            Der aktuelle Stringplan ist ungültig und wird im PDF weggelassen.
+          </p>
+        )}
         {pdfFehler && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{pdfFehler}</p>
         )}
