@@ -233,56 +233,147 @@ export const fmtDe = (v: number, digits = 2): string =>
   v.toLocaleString('de-DE', { maximumFractionDigits: digits });
 
 /**
- * Wizard-Stand in localStorage (Nice-to-have lt. Übergabe 05.07.2026):
- * geht sonst bei jedem Reload verloren. Kein Server-State — reines Browser-Feature.
+ * Projektverwaltung in localStorage (mehrere Projekte, 06.07.2026): Ein
+ * Vertriebler hat mehrere Termine — jedes Projekt bleibt erhalten. Kein
+ * Server-State, reines Browser-Feature. Migration vom Alt-Key (Einzelprojekt,
+ * `pv-belegung-wizard-v1`) beim ersten Laden, damit nichts verloren geht.
  */
-const STORAGE_KEY = 'pv-belegung-wizard-v1';
+const STORAGE_KEY = 'pv-belegung-wizard-v1'; // alt, nur noch für Migration
+const PROJEKTE_KEY = 'pv-belegung-projekte-v1';
 
-export function speichereStand(projekt: Projekt, schritt: number): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ projekt, schritt }));
-  } catch {
-    // Speicher voll (Fotos!) — Notnagel: Stand ohne Fotos sichern
-    try {
-      const ohneFotos: Projekt = {
-        ...projekt,
-        flaechen: projekt.flaechen.map(({ foto: _foto, ...rest }) => rest),
-      };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ projekt: ohneFotos, schritt }));
-    } catch {
-      // localStorage nicht verfügbar — Stand bleibt flüchtig
-    }
-  }
+export interface ProjektEintrag {
+  id: string;
+  projekt: Projekt;
+  schritt: number;
+  erstelltAm: number;
+  geaendertAm: number;
 }
 
-export function ladeStand(): { projekt: Projekt; schritt: number } | null {
+export interface ProjektDb {
+  aktivId: string | null;
+  projekte: ProjektEintrag[];
+}
+
+export function neueProjektId(): string {
+  return `prj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Anzeigename eines Eintrags (Kunde > Adresse > Fallback). */
+export function eintragName(e: ProjektEintrag): string {
+  return e.projekt.kunde.trim() || e.projekt.adresse.trim() || 'Unbenanntes Projekt';
+}
+
+/** kurzes Datum dd.mm.jj für die Projektliste */
+export function eintragDatum(e: ProjektEintrag): string {
+  return new Date(e.geaendertAm).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  });
+}
+
+/** Katalog-Migration eines geladenen Projekts (Modul-/WR-ids nach Updates veraltet). */
+function migriereProjekt(roh: Projekt): Projekt {
+  const projekt: Projekt = { ...neuesProjekt(), ...roh };
+  if (!MODULES.some((m) => m.id === projekt.modulId)) projekt.modulId = MODULES[0]!.id;
+  if (projekt.wrId && !INVERTERS.some((w) => w.id === projekt.wrId)) {
+    projekt.wrId = null;
+    projekt.mppts = [];
+  }
+  return projekt;
+}
+
+/** Alt-Key (Einzelprojekt) lesen — nur für die einmalige Migration. */
+function ladeAltStand(): { projekt: Projekt; schritt: number } | null {
   if (typeof window === 'undefined') return null;
   try {
     const roh = window.localStorage.getItem(STORAGE_KEY);
     if (!roh) return null;
     const stand = JSON.parse(roh) as { projekt?: Projekt; schritt?: number };
     if (!stand.projekt || !Array.isArray(stand.projekt.flaechen)) return null;
-    const projekt: Projekt = { ...neuesProjekt(), ...stand.projekt };
-    // Migration: gespeicherte Modul-/WR-ids können nach Katalog-Updates veraltet sein
-    if (!MODULES.some((m) => m.id === projekt.modulId)) projekt.modulId = MODULES[0]!.id;
-    if (projekt.wrId && !INVERTERS.some((w) => w.id === projekt.wrId)) {
-      projekt.wrId = null;
-      projekt.mppts = [];
-    }
-    return { projekt, schritt: stand.schritt ?? 0 };
+    return { projekt: migriereProjekt(stand.projekt), schritt: stand.schritt ?? 0 };
   } catch {
     return null;
   }
 }
 
-export function loescheStand(): void {
+export function speichereProjekte(db: ProjektDb): void {
   if (typeof window === 'undefined') return;
+  const schreibe = (d: ProjektDb) =>
+    window.localStorage.setItem(PROJEKTE_KEY, JSON.stringify(d));
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    schreibe(db);
   } catch {
-    // egal — dann war auch nichts gespeichert
+    // Speicher voll (Fotos sind Data-URLs!) — Notnagel: ohne Fotos sichern
+    try {
+      schreibe({
+        aktivId: db.aktivId,
+        projekte: db.projekte.map((e) => ({
+          ...e,
+          projekt: {
+            ...e.projekt,
+            flaechen: e.projekt.flaechen.map(({ foto: _foto, ...rest }) => rest),
+          },
+        })),
+      });
+    } catch {
+      // localStorage nicht verfügbar — Stand bleibt flüchtig
+    }
   }
+}
+
+export function ladeProjekte(): ProjektDb {
+  if (typeof window === 'undefined') return { aktivId: null, projekte: [] };
+  try {
+    const roh = window.localStorage.getItem(PROJEKTE_KEY);
+    if (roh) {
+      const db = JSON.parse(roh) as Partial<ProjektDb>;
+      if (Array.isArray(db.projekte)) {
+        const projekte = db.projekte
+          .filter((e): e is ProjektEintrag => !!e?.projekt && Array.isArray(e.projekt.flaechen))
+          .map((e) => ({ ...e, projekt: migriereProjekt(e.projekt) }));
+        const aktivId = projekte.some((e) => e.id === db.aktivId)
+          ? db.aktivId!
+          : (projekte[0]?.id ?? null);
+        return { aktivId, projekte };
+      }
+    }
+  } catch {
+    // fällt weiter zur Migration/Neuanlage
+  }
+  // Einmalige Migration vom Alt-Key (genau ein Projekt)
+  const alt = ladeAltStand();
+  if (alt) {
+    const jetzt = Date.now();
+    const eintrag: ProjektEintrag = {
+      id: neueProjektId(),
+      projekt: alt.projekt,
+      schritt: alt.schritt,
+      erstelltAm: jetzt,
+      geaendertAm: jetzt,
+    };
+    const db: ProjektDb = { aktivId: eintrag.id, projekte: [eintrag] };
+    speichereProjekte(db);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY); // Alt-Key freigeben (Fotos = groß)
+    } catch {
+      // egal
+    }
+    return db;
+  }
+  return { aktivId: null, projekte: [] };
+}
+
+/** Neuer, leerer Eintrag (Zeitstempel jetzt). */
+export function neuerEintrag(): ProjektEintrag {
+  const jetzt = Date.now();
+  return {
+    id: neueProjektId(),
+    projekt: neuesProjekt(),
+    schritt: 0,
+    erstelltAm: jetzt,
+    geaendertAm: jetzt,
+  };
 }
 
 /** Export-Payload nach SPEC §13 */

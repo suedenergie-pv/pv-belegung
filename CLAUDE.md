@@ -47,25 +47,17 @@
 - GATE-0: Solar-API-EEA-Testcall
 - Ticketsystem-Kategorie "Vorplanung Vertrieb" (+ user_categories-Bug)
 
-## AUFTRAG für die nächste Session (von Genrih übergeben, 06.07.2026 abends)
+## OFFENE Aufträge (Reihenfolge von Genrih bestätigt, 06.07.2026)
 
 Lies zuerst diese CLAUDE.md komplett (v.a. „Nicht verhandelbar", Screenshot-Workflow,
 Preview-Falle unten) und SPEC §9/§13. Arbeitsstand: alles committet & deployt,
 Live-URL https://suedenergie-pv.github.io/pv-belegung/ (jeder Push auf main deployt).
 
-**Hauptauftrag: Projektliste (mehrere Projekte im Browser).** Aktuell hält
-localStorage genau EIN Projekt (`pv-belegung-wizard-v1`, lib/model.ts) — „Neu
-beginnen" wirft den letzten Kunden weg; Vertriebler haben mehrere Termine pro Woche.
-Bauen: Projektliste in localStorage (neuer Key, Migration vom Alt-Key beim ersten
-Laden — Bestandsprojekt darf NICHT verloren gehen), Anzeige Name/Kunde + Datum,
-Aktionen: öffnen, duplizieren, löschen (mit Rückfrage), neues Projekt. Einstieg
-z.B. Projektauswahl vor Schritt 1 oder Dropdown in der Schrittleiste — schlicht
-halten, Vertriebstool. Achtung Speichergröße: Fotos sind Data-URLs; der bestehende
-Fallback „bei vollem Speicher ohne Fotos speichern" (speichereStand) muss
-sinngemäß erhalten bleiben.
+✅ **Projektliste erledigt (06.07., 4. Session)** — siehe Session-Übergabe unten.
 
-**Danach, wenn noch Luft (Reihenfolge von Genrih bestätigt):**
-1. PDF-Kleinkram: Erfasser-Name (Eingabefeld Schritt Projekt + PDF-Kopf),
+**Noch offen:**
+1. PDF-Kleinkram: Erfasser-Name (Eingabefeld Schritt Projekt + PDF-Kopf; im
+   Datenmodell `Projekt.erfasser` ergänzen — bauePayload hat schon `erfasser: ''`),
    Datum „06.07.2026" statt „6.7.2026" (toLocaleDateString mit 2-digit-Optionen),
    ggf. SüdEnergie-Logo in den PDF-Kopf (Genrih nach Datei fragen).
 2. Stringplan-Schritt dezenter: umbenennen Richtung „Check (optional)" —
@@ -73,12 +65,31 @@ sinngemäß erhalten bleiben.
 3. Belegungs-Optimierer im Polygon (nur wenn Zeit): je Reihe horizontalen
    Versatz variieren (Reihenraster bleibt!), deterministisch, mit Tests —
    holt auf Walmdächern 1–3 Module raus. Kein allgemeiner Packer.
+4. Weiterhin: PV*SOL-Gegenrechnung (das Gate, Genrih).
 
 **Regeln dabei:** Engine rechnet, UI rechnet nie (SPEC §3.4/§3.5). Elektrik nur
 aus Datenblatt-PDFs. Jede Engine-Änderung mit Tests (`npx vitest run --root
 packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsch,
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
+
+## Session-Übergabe 06.07.2026 (4. Session — Opus)
+
+**Projektliste (mehrere Projekte im Browser)** — Vertriebler haben mehrere Termine.
+- `lib/model.ts`: neuer Key `pv-belegung-projekte-v1` mit `ProjektDb`
+  (`aktivId` + `projekte: ProjektEintrag[]`, je Eintrag id/projekt/schritt/
+  erstelltAm/geaendertAm). `ladeProjekte()` migriert EINMALIG vom Alt-Key
+  `pv-belegung-wizard-v1` (Bestandsprojekt bleibt erhalten, Alt-Key wird danach
+  entfernt weil Fotos = groß). `speichereProjekte()` behält den Fallback „bei
+  vollem Speicher ohne Fotos". Katalog-id-Migration in `migriereProjekt()`
+  extrahiert und pro Eintrag angewandt.
+- `app/page.tsx`: Projektauswahl-Leiste oben (Select + „+ Neu"/„Duplizieren"/
+  „Löschen"), Schritt-Stand pro Projekt erhalten. „Neu beginnen" entfällt.
+  Invariante: es gibt IMMER genau ein aktives Projekt (leere Liste / letztes
+  gelöscht → frisches leeres). Löschen mit `window.confirm`.
+- Verifiziert im Browser: Migration (Alt-Kunde + Schritt 2 übernommen, Alt-Key
+  weg), Neu/Bearbeiten/Duplizieren („(Kopie)")/Wechseln (Schritt-Stand folgt)/
+  Löschen inkl. Edge Case „letztes Projekt gelöscht → neues leeres". Screenshot ok.
 
 ## Session-Übergabe 06.07.2026 (3. Session)
 
