@@ -8,6 +8,8 @@ import {
   type BelegungRaster,
   type InverterType,
   type ModuleType,
+  type PunktM,
+  type RechteckM,
   type StringPlanInput,
   type StringPlanResult,
 } from '@pv-belegung/engine';
@@ -73,9 +75,18 @@ export interface Flaeche {
   randM?: number;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
+  /**
+   * Optionaler Flächen-Umriss (Walm/Trapez/L-Form, beliebige Eckenzahl,
+   * Flächen-Koordinaten in Meter). Ohne Umriss gilt das Rechteck (SPEC §9).
+   */
+  umrissM?: PunktM[];
+  /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
+  hindernisse?: RechteckM[];
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
 }
+
+export type { PunktM, RechteckM };
 
 export { DEFAULT_RAND_M };
 
@@ -152,6 +163,8 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
     module: modul,
     ausrichtung: f.ausrichtung,
     randM: randVon(f),
+    umrissM: f.umrissM,
+    hindernisseM: f.hindernisse,
   });
 }
 

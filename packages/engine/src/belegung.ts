@@ -1,10 +1,13 @@
+import { rechteckImUmriss, rechteckeUeberlappen, type PunktM, type RechteckM } from './geometrie';
 import type { ModuleType } from './types';
 
 /**
  * Belegungslogik (SPEC §9): Raster pro Dachfläche aus Modulmaß (mm, Katalog),
  * Ausrichtung hoch/quer, Klemmfuge und Randabstand. Modulgrößen kommen
  * AUSSCHLIESSLICH aus mm-Maßen × Maßstab (SPEC §3.5) — die UI rechnet nichts.
- * v1: Rechteckfläche ohne Ausschlüsse (Gauben/Hindernisse folgen).
+ * Seit 06.07.2026: optionaler Polygon-Umriss (Walm/Trapez/L-Form, beliebige
+ * Eckenzahl) und Hindernis-Rechtecke (Kamin/Fenster/SAT) filtern das Raster —
+ * das Rechteck Traufe × Sparren bleibt Rahmen und Koordinatensystem.
  */
 
 /** Randabstand zu Traufe/First/Ortgang, Meter (SPEC §9, Admin-konfigurierbar; 0,05 seit 05.07.2026, Genrih) */
@@ -21,6 +24,14 @@ export interface BelegungInput {
   ausrichtung: 'hoch' | 'quer';
   randM?: number;
   fugeM?: number;
+  /**
+   * Optionaler Flächen-Umriss (≥ 3 Ecken, Flächen-Koordinaten in Meter,
+   * Ursprung links oben). Module müssen komplett im Polygon liegen, mit
+   * randM Abstand zu jeder Umrisskante. Ohne Umriss gilt das Rechteck.
+   */
+  umrissM?: readonly PunktM[];
+  /** Hindernisse (Kamin, Fenster, SAT …): schneidende Module entfallen. */
+  hindernisseM?: readonly RechteckM[];
 }
 
 export interface ModulPosition {
@@ -63,15 +74,18 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   const x0 = randM + (nutzB - belegtB) / 2;
   const y0 = randM + (nutzH - belegtH) / 2;
 
+  const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
+  const hindernisse = input.hindernisseM ?? [];
+
   const positionen: ModulPosition[] = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      positionen.push({
-        row,
-        col,
-        xM: x0 + col * (modulBreiteM + fugeM),
-        yM: y0 + row * (modulHoeheM + fugeM),
-      });
+      const xM = x0 + col * (modulBreiteM + fugeM);
+      const yM = y0 + row * (modulHoeheM + fugeM);
+      const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
+      if (umriss && !rechteckImUmriss(rect, umriss, randM)) continue;
+      if (hindernisse.some((h) => rechteckeUeberlappen(rect, h))) continue;
+      positionen.push({ row, col, xM, yM });
     }
   }
 

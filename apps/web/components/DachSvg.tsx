@@ -1,8 +1,20 @@
 'use client';
 
 import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
-import { homographie, projPfad, type Punkt } from '../lib/foto-geometrie';
-import { DACHFARBEN, type Dachfarbe, type Flaeche } from '../lib/model';
+import { homographie, inverseHomographie, projiziere, projPfad, type Punkt } from '../lib/foto-geometrie';
+import { DACHFARBEN, type Dachfarbe, type Flaeche, type PunktM } from '../lib/model';
+
+/**
+ * Zeichenmodus (SPEC §9, 06.07.2026): Klicks werden in Flächen-Koordinaten
+ * (Meter) gemeldet — in der Draufsicht direkt über die viewBox, in der
+ * Foto-Ansicht über die inverse Homographie. Die Draft-Punkte zeichnet DachSvg
+ * in der jeweiligen Projektion mit.
+ */
+export interface ZeichnenProps {
+  aktiv: boolean;
+  punkteM: PunktM[];
+  onKlickM: (p: PunktM) => void;
+}
 
 /**
  * Dach-Texturen als SVG-Pattern in ECHTEN Maßen (Meter, userSpaceOnUse) —
@@ -109,11 +121,13 @@ export function DachSvg({
   raster,
   modul,
   onToggle,
+  zeichnen,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
   modul: ModuleType;
   onToggle?: (key: string) => void;
+  zeichnen?: ZeichnenProps;
 }) {
   const B = flaeche.breiteM;
   const H = flaeche.hoeheM;
@@ -122,6 +136,50 @@ export function DachSvg({
   const patId = `pat-${flaeche.id}-${farbe.id}`;
   const mB = raster.modulBreiteM;
   const mH = raster.modulHoeheM;
+  // Während des Zeichnens gehen Klicks an den Zeichenmodus, nicht ans Modul-Toggle
+  const toggle = zeichnen?.aktiv ? undefined : onToggle;
+  const umriss = flaeche.umrissM && flaeche.umrissM.length >= 3 ? flaeche.umrissM : null;
+  const hindernisse = flaeche.hindernisse ?? [];
+  const draft = zeichnen?.punkteM ?? [];
+
+  /** Overlay in Flächen-Koordinaten (Meter) — gilt für Draufsicht UND Alt-Foto-Ansicht */
+  const overlayM = (
+    <>
+      {umriss && (
+        <path
+          d={`M${umriss.map(([x, y]) => `${x} ${y}`).join('L')}Z`}
+          fill="none"
+          stroke="#f97316"
+          strokeWidth={0.05}
+          strokeDasharray="0.2 0.12"
+        />
+      )}
+      {hindernisse.map((h, i) => (
+        <rect
+          key={i}
+          x={h.xM}
+          y={h.yM}
+          width={h.breiteM}
+          height={h.hoeheM}
+          fill="rgba(239,68,68,0.35)"
+          stroke="#ef4444"
+          strokeWidth={0.03}
+        />
+      ))}
+      {draft.length >= 2 && (
+        <polyline
+          points={draft.map(([x, y]) => `${x},${y}`).join(' ')}
+          fill="none"
+          stroke="#f97316"
+          strokeWidth={0.04}
+          strokeDasharray="0.12 0.08"
+        />
+      )}
+      {draft.map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r={0.12} fill="#f97316" stroke="#fff" strokeWidth={0.03} />
+      ))}
+    </>
+  );
 
   // Belegung in Flächen-Koordinaten (Meter) — identisch für beide Hintergründe
   const belegung = (
@@ -143,8 +201,8 @@ export function DachSvg({
           <g
             key={key}
             opacity={aus ? 0.22 : 1}
-            className={onToggle ? 'cursor-pointer' : undefined}
-            onClick={onToggle ? () => onToggle(key) : undefined}
+            className={toggle ? 'cursor-pointer' : undefined}
+            onClick={toggle ? () => toggle(key) : undefined}
           >
             <use href={`#${symId}`} x={p.xM} y={p.yM} width={mB} height={mH} />
             <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="transparent" />
@@ -163,6 +221,7 @@ export function DachSvg({
           </g>
         );
       })}
+      {overlayM}
     </>
   );
 
@@ -180,6 +239,18 @@ export function DachSvg({
         [x + w, y + hh],
         [x, y + hh],
       ];
+      const klickM = zeichnen?.aktiv
+        ? (e: React.MouseEvent<SVGSVGElement>) => {
+            const inv = inverseHomographie(B, H, foto.eckenPx!);
+            if (!inv) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            const px = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
+            const py = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
+            const [xM, yM] = projiziere(inv, [px, py]);
+            zeichnen.onKlickM([Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))]);
+          }
+        : undefined;
       return (
         <div
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -191,8 +262,9 @@ export function DachSvg({
         >
           <svg
             viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-            className="block h-full w-full"
+            className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
             preserveAspectRatio="xMidYMid meet"
+            onClick={klickM}
           >
             <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
             <path
@@ -209,8 +281,8 @@ export function DachSvg({
                 <g
                   key={key}
                   opacity={aus ? 0.25 : 1}
-                  className={onToggle ? 'cursor-pointer' : undefined}
-                  onClick={onToggle ? () => onToggle(key) : undefined}
+                  className={toggle ? 'cursor-pointer' : undefined}
+                  onClick={toggle ? () => toggle(key) : undefined}
                 >
                   <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="#1c1f24" />
                   <path
@@ -230,6 +302,50 @@ export function DachSvg({
                     />
                   )}
                 </g>
+              );
+            })}
+            {/* Umriss/Hindernisse/Draft in Foto-Projektion */}
+            {umriss && (
+              <path
+                d={projPfad(h, umriss.map(([x, y]) => [x, y] as Punkt))}
+                fill="none"
+                stroke="#f97316"
+                strokeWidth={foto.breitePx * 0.002}
+                strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
+              />
+            )}
+            {hindernisse.map((hi, i) => (
+              <path
+                key={i}
+                d={projPfad(h, rechteck(hi.xM, hi.yM, hi.breiteM, hi.hoeheM))}
+                fill="rgba(239,68,68,0.35)"
+                stroke="#ef4444"
+                strokeWidth={foto.breitePx * 0.0015}
+              />
+            ))}
+            {draft.length >= 2 && (
+              <polyline
+                points={draft
+                  .map(([x, y]) => projiziere(h, [x, y]).map((n) => n.toFixed(2)).join(','))
+                  .join(' ')}
+                fill="none"
+                stroke="#f97316"
+                strokeWidth={foto.breitePx * 0.002}
+                strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
+              />
+            )}
+            {draft.map(([x, y], i) => {
+              const [px, py] = projiziere(h, [x, y]);
+              return (
+                <circle
+                  key={i}
+                  cx={px}
+                  cy={py}
+                  r={foto.breitePx * 0.007}
+                  fill="#f97316"
+                  stroke="#ffffff"
+                  strokeWidth={foto.breitePx * 0.002}
+                />
               );
             })}
           </svg>
@@ -280,7 +396,22 @@ export function DachSvg({
       className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
       style={{ aspectRatio: `${B} / ${H}`, maxHeight: 420, maxWidth: (420 * B) / H }}
     >
-      <svg viewBox={`0 0 ${B} ${H}`} className="block h-full w-full" preserveAspectRatio="xMidYMid meet">
+      <svg
+        viewBox={`0 0 ${B} ${H}`}
+        className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
+        preserveAspectRatio="xMidYMid meet"
+        onClick={
+          zeichnen?.aktiv
+            ? (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return;
+                const xM = ((e.clientX - rect.left) / rect.width) * B;
+                const yM = ((e.clientY - rect.top) / rect.height) * H;
+                zeichnen.onKlickM([Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))]);
+              }
+            : undefined
+        }
+      >
         <defs>
           <ModulSymbol id={symId} modul={modul} wMm={mB * 1000} hMm={mH * 1000} />
           <DachPattern id={patId} farbe={farbe} />

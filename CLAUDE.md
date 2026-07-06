@@ -67,11 +67,26 @@
    Vermerk, ungültiger wird weggelassen. JSON bleibt als „Ticketsystem-Payload"-Karte.
    Verifiziert über debug-shot-Route (PDF abgefangen + Seiten geprüft, 3 Seiten ok).
 
-**Verlorene Arbeit aus Session 2 (Rate-Limit-Abbruch, NIE committet):
-Hindernis-Markierung** — Genrihs Wunsch: Hindernisse (Kamin/Fenster/SAT) im Foto
-als Rechteck markieren (2 Klicks) → inverse Homographie → schneidende Module
-automatisch deaktivieren. Besprochen und für gut befunden (deterministisch, kein
-CV/ML), Umsetzung stand noch aus → **nächster Auftrag**.
+3. ✅ **Repo öffentlich + Live-Deploy** — GitHub Pages via Actions-Workflow
+   (`.github/workflows/pages.yml`): jeder Push auf main deployt
+   https://suedenergie-pv.github.io/pv-belegung/ (statischer Export; CI entfernt
+   die dev-only debug-shot-Route, lokal bleibt sie). App ist rein clientseitig.
+4. ✅ **Polygon-Umriss je Fläche** (Genrihs Walmdach-Frage) — `umrissM` (beliebige
+   Eckenzahl; Eckenzahl wird nie abgefragt, sie ergibt sich beim Klicken),
+   Engine filtert Module, die nicht komplett im Polygon liegen; Randabstand gilt
+   auch zum Grat (`geometrie.ts` + 10 Tests). UI: „Umriss zeichnen" in Draufsicht
+   UND Foto-Ansicht (Rückrechnung über `inverseHomographie`, Round-Trip ±1 px
+   verifiziert); Schließen per Klick auf ersten Punkt oder „Fertig".
+   Rechteck Traufe×Sparren bleibt Rahmen/Koordinatensystem, Umriss ist optionales
+   Verfeinern. Alt-Ansicht „nur Traufkante" hat KEINE Zeichnen-Klicks.
+5. ✅ **Hindernis-Markierung** (verlorener Auftrag aus Session 2 nachgeholt) —
+   „Hindernis markieren": 2 Klicks = Rechteck (`hindernisse` an der Fläche),
+   Engine entfernt schneidende Module automatisch (Kantenberührung zählt nicht);
+   Chips mit ✕ zum Löschen; Modus bleibt für mehrere Hindernisse aktiv.
+
+**Preview-Falle:** Wenn `preview_eval`-Klicks ins Leere gehen: erst
+`window.innerWidth` prüfen — der Preview-Tab kann 0×0 sein (Layout kollabiert,
+getBoundingClientRect liefert 0). Fix: `preview_resize` auf 1280×900.
 
 **Weitere offene Punkte:** PV*SOL-Gegenrechnung (Gate, Genrih), Hero-Artikelnummern
 Aiko, OFFENE_FRAGEN #4 (R13+), Foto-Feinpositionierung, Stringplan-Schritt evtl.

@@ -292,7 +292,8 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 
 - Raster pro `RoofPlane`: Modulmaß (aus Katalog, mm) + Ausrichtung hoch/quer (Button) + Reihen-/Spaltenabstand (Default 20 mm Klemmfuge, Admin-konfigurierbar)
 - Randabstände: Default 0,05 m zu Traufe/First/Ortgang (Genrih 05.07.2026 — 0,30 m war zu konservativ und kostete Modulreihen; Admin-/UI-konfigurierbar je Fläche; Hinweis auf Wind-Randzonen als v2-Thema, v1 = pauschaler Rand)
-- Ausschlüsse (Gauben-Footprints + Clearance, Hindernisse) werden ausgespart
+- **Flächen-Umriss (06.07.2026):** optionales Polygon je Fläche (`umrissM`, beliebige Eckenzahl, Flächen-Koordinaten in Meter) für Walm/Trapez/L-Form. Das Rechteck Traufe × Sparren bleibt Rahmen + Koordinatensystem; Module müssen komplett im Polygon liegen, Randabstand gilt auch zu jeder Umrisskante (Grat!). Ohne Umriss gilt das Rechteck — Eckenzahl wird nie abgefragt, sie ergibt sich beim Klicken. v1 behält das zentrierte Rechteck-Raster und filtert (kein Packungs-Optimierer).
+- **Hindernisse (06.07.2026):** Rechtecke je Fläche (`hindernisseM`: Kamin, Dachfenster, SAT); Module, die ein Hindernis schneiden, entfallen automatisch (Kantenberührung zählt nicht). Kein CV/ML — Markierung ist manuell (2 Klicks), Rückrechnung Foto→Fläche über die inverse Homographie.
 - Manuelles Nacharbeiten: einzelne Module per Klick deaktivieren/aktivieren
 - kWp = Σ aktive Module × Pmax
 

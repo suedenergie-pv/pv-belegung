@@ -79,6 +79,18 @@ export function projiziere(h: M3, [x, y]: Punkt): Punkt {
   return [(h[0] * x + h[1] * y + h[2]) / w, (h[3] * x + h[4] * y + h[5]) / w];
 }
 
+/**
+ * Inverse Homographie Foto-Pixel → Flächen-Koordinaten (Meter). Projektiv ist
+ * die Inverse bis auf Skalierung die Adjugate — Grundlage für „Umriss zeichnen"
+ * und Hindernis-Markierung direkt im Foto (SPEC §9, 06.07.2026).
+ */
+export function inverseHomographie(breiteM: number, hoeheM: number, ecken: Ecken): M3 | null {
+  const h = homographie(breiteM, hoeheM, ecken);
+  if (!h) return null;
+  const inv = adjugat(h);
+  return inv.every((n) => Number.isFinite(n)) && (inv[6] || inv[7] || inv[8]) ? inv : null;
+}
+
 /** SVG-Pfad eines in Foto-Pixel projizierten Polygons (Flächen-Koordinaten in m). */
 export function projPfad(h: M3, punkte: Punkt[]): string {
   return (
