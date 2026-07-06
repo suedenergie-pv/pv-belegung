@@ -7,6 +7,7 @@ import {
   modulById,
   randVon,
   rasterFuer,
+  umrissVon,
   type Flaeche,
   type Projekt,
   type PunktM,
@@ -301,7 +302,7 @@ export function SchrittBelegung({
             {raster.positionen.length === 0 ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
                 Fläche zu klein für dieses Modul (inkl. {Math.round(randVon(f) * 100)} cm
-                Randabstand){f.umrissM ? ' — oder der Umriss lässt kein Modul komplett zu' : ''}.
+                Randabstand){umrissVon(f) ? ' — oder die Dachform lässt kein Modul komplett zu' : ''}.
               </p>
             ) : f.foto && !f.foto.traufePx && !f.foto.eckenPx ? null : (
               <DachSvg

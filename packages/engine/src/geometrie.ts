@@ -19,6 +19,30 @@ export interface RechteckM {
 /** Toleranz 0,1 mm — Modulkanten dürfen exakt auf der Umrisslinie liegen */
 const EPS_M = 1e-4;
 
+/**
+ * Symmetrisches Trapez/Walm als Umriss-Polygon (SPEC §9): Traufe unten (volle
+ * Breite, y = hoeheM), First oben schmaler (firstBreiteM, zentriert, y = 0) —
+ * Koordinatensystem wie sonst (Ursprung links oben, y zur Traufe). firstBreiteM = 0
+ * ergibt eine Dreiecksspitze (Walm), firstBreiteM = breiteM wäre wieder ein Rechteck.
+ */
+export function trapezUmriss(breiteM: number, hoeheM: number, firstBreiteM: number): PunktM[] {
+  const fb = Math.max(0, Math.min(firstBreiteM, breiteM));
+  if (fb < 0.05) {
+    // Spitze/Dreieck — nur 3 Ecken, kein entartetes Null-Segment oben
+    return [
+      [breiteM / 2, 0],
+      [breiteM, hoeheM],
+      [0, hoeheM],
+    ];
+  }
+  return [
+    [(breiteM - fb) / 2, 0],
+    [(breiteM + fb) / 2, 0],
+    [breiteM, hoeheM],
+    [0, hoeheM],
+  ];
+}
+
 /** Punkt-in-Polygon (Ray-Casting); Punkte AUF der Kante zählen als innen (±EPS). */
 export function punktInPolygon(p: PunktM, poly: readonly PunktM[]): boolean {
   const [x, y] = p;

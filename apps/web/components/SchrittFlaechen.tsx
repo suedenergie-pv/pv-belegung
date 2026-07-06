@@ -107,6 +107,55 @@ export function SchrittFlaechen({
           </div>
 
           <div className="mt-4">
+            <span className="mb-1 block text-sm font-medium text-slate-600">Dachform</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <ToggleButton
+                aktiv={(f.dachform ?? 'rechteck') === 'rechteck'}
+                onClick={() =>
+                  setFlaeche(f.id, { dachform: 'rechteck', firstBreiteM: undefined, umrissM: undefined })
+                }
+              >
+                ▭ Rechteck
+              </ToggleButton>
+              <ToggleButton
+                aktiv={f.dachform === 'trapez'}
+                onClick={() =>
+                  setFlaeche(f.id, {
+                    dachform: 'trapez',
+                    firstBreiteM: f.firstBreiteM ?? Math.round(f.breiteM * 0.6 * 10) / 10,
+                    umrissM: undefined,
+                  })
+                }
+              >
+                ⬯ Trapez / Walm
+              </ToggleButton>
+              {f.dachform === 'trapez' && (
+                <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                  Firstbreite oben
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={f.breiteM}
+                    step={0.1}
+                    value={Number.isFinite(f.firstBreiteM as number) ? (f.firstBreiteM as number) : ''}
+                    onChange={(e) =>
+                      setFlaeche(f.id, { firstBreiteM: Number.parseFloat(e.target.value) })
+                    }
+                    className="h-10 w-20 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
+                  />
+                  m
+                </label>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              {f.dachform === 'trapez'
+                ? 'Traufe unten = Breite, First oben schmaler (0 m = Walmspitze). Für komplexere Formen später „Umriss zeichnen" in der Belegung.'
+                : 'Rechteck ist Standard. Trapez/Walm füllt die Fläche gleich richtig — auch ohne Foto.'}
+            </p>
+          </div>
+
+          <div className="mt-4">
             <span className="mb-1 block text-sm font-medium text-slate-600">Ausrichtung (Azimut)</span>
             <div className="flex flex-wrap gap-2">
               {AZIMUT_PRESETS.map((a) => (

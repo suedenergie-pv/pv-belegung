@@ -2,7 +2,7 @@
 
 import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
 import { homographie, inverseHomographie, projiziere, projPfad, type Punkt } from '../lib/foto-geometrie';
-import { DACHFARBEN, type Dachfarbe, type Flaeche, type PunktM } from '../lib/model';
+import { DACHFARBEN, umrissVon, type Dachfarbe, type Flaeche, type PunktM } from '../lib/model';
 
 /**
  * Zeichenmodus (SPEC §9, 06.07.2026): Klicks werden in Flächen-Koordinaten
@@ -75,14 +75,14 @@ function ModulSymbol({ id, modul, wMm, hMm }: { id: string; modul: ModuleType; w
 
   const laengsLinien: JSX.Element[] = [];
   const istJolywood = modul.renderSymbol === 'jolywood_niwa_black';
+  // Jolywood Niwa Black = Glas-Glas mit sichtbaren silbrigen Zellfugen (KEIN echtes
+  // Full-Black wie Aiko ABC). Deshalb hellere, kräftigere Zelllinien; Aiko bleibt schwarz.
   for (let i = 1; i < reihen; i++) {
     const pos = (i * L) / reihen;
     const mitte = reihen % 2 === 0 && i === reihen / 2;
-    // dezent halten — der einzelne Modulrahmen muss das Bild dominieren,
-    // sonst verschmelzen die Zellreihen benachbarter Module zu „Streifen"
-    const stroke = istJolywood ? (mitte ? '#54585f' : '#42454d') : mitte ? '#15161a' : '#121316';
-    const width = istJolywood ? (mitte ? 14 : 2.5) : mitte ? 5 : 2;
-    const opacity = istJolywood ? (mitte ? 0.8 : 0.5) : 0.7;
+    const stroke = istJolywood ? (mitte ? '#aab3c2' : '#8b95a6') : mitte ? '#15161a' : '#121316';
+    const width = istJolywood ? (mitte ? 16 : 7) : mitte ? 5 : 2;
+    const opacity = istJolywood ? (mitte ? 0.7 : 0.55) : 0.7;
     laengsLinien.push(
       laengsHorizontal ? (
         <line key={i} x1={pos} y1={inset} x2={pos} y2={hMm - inset} stroke={stroke} strokeWidth={width} opacity={opacity} />
@@ -95,21 +95,25 @@ function ModulSymbol({ id, modul, wMm, hMm }: { id: string; modul: ModuleType; w
   const spaltenLinien: JSX.Element[] = [];
   for (let j = 1; j < 6; j++) {
     const pos = (j * Q) / 6;
-    const stroke = istJolywood ? '#101114' : '#121316';
+    const stroke = istJolywood ? '#8b95a6' : '#121316';
+    const width = istJolywood ? 6 : 2;
+    const opacity = istJolywood ? 0.5 : 0.7;
     spaltenLinien.push(
       laengsHorizontal ? (
-        <line key={j} x1={inset} y1={pos} x2={wMm - inset} y2={pos} stroke={stroke} strokeWidth={2} opacity={0.7} />
+        <line key={j} x1={inset} y1={pos} x2={wMm - inset} y2={pos} stroke={stroke} strokeWidth={width} opacity={opacity} />
       ) : (
-        <line key={j} x1={pos} y1={inset} x2={pos} y2={hMm - inset} stroke={stroke} strokeWidth={2} opacity={0.7} />
+        <line key={j} x1={pos} y1={inset} x2={pos} y2={hMm - inset} stroke={stroke} strokeWidth={width} opacity={opacity} />
       ),
     );
   }
 
+  // Glas: Jolywood dunkelblau-anthrazit (Glas-Optik), Aiko fast schwarz (ABC)
+  const glasFill = istJolywood ? '#151a24' : '#08090b';
   return (
     <symbol id={id} viewBox={`0 0 ${wMm} ${hMm}`}>
       {/* Rahmen bewusst sichtbar (heller als Glas), damit jedes Modul einzeln lesbar ist */}
       <rect width={wMm} height={hMm} rx={14} fill="#1c1f24" />
-      <rect x={inset} y={inset} width={wMm - 2 * inset} height={hMm - 2 * inset} rx={6} fill="#08090b" />
+      <rect x={inset} y={inset} width={wMm - 2 * inset} height={hMm - 2 * inset} rx={6} fill={glasFill} />
       {laengsLinien}
       {spaltenLinien}
     </symbol>
@@ -138,7 +142,8 @@ export function DachSvg({
   const mH = raster.modulHoeheM;
   // Während des Zeichnens gehen Klicks an den Zeichenmodus, nicht ans Modul-Toggle
   const toggle = zeichnen?.aktiv ? undefined : onToggle;
-  const umriss = flaeche.umrissM && flaeche.umrissM.length >= 3 ? flaeche.umrissM : null;
+  const umrissEff = umrissVon(flaeche);
+  const umriss = umrissEff && umrissEff.length >= 3 ? umrissEff : null;
   const hindernisse = flaeche.hindernisse ?? [];
   const draft = zeichnen?.punkteM ?? [];
 

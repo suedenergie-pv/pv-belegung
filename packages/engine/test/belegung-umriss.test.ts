@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { berechneRaster, type BelegungInput } from '../src/belegung';
+import { trapezUmriss } from '../src/geometrie';
 import type { ModuleType } from '../src/types';
 
 /**
@@ -113,5 +114,38 @@ describe('Hindernis-Rechtecke entfernen schneidende Module (SPEC §9)', () => {
       hindernisseM: [{ xM: 2.2, yM: 0.2, breiteM: 0.6, hoeheM: 0.6 }],
     });
     expect(keys(r)).toEqual(['0-1', '0-3', '1-1', '1-2', '1-3', '2-1', '2-2', '2-3']);
+  });
+});
+
+describe('trapezUmriss — parametrische Dachform (SPEC §9, 06.07.2026)', () => {
+  it('symmetrisches Trapez: Traufe unten voll, First oben zentriert schmaler', () => {
+    expect(trapezUmriss(5, 3, 3)).toEqual([
+      [1, 0],
+      [4, 0],
+      [5, 3],
+      [0, 3],
+    ]);
+  });
+
+  it('firstBreiteM = 0 → Dreiecksspitze (Walm), nur 3 Ecken', () => {
+    expect(trapezUmriss(6, 4, 0)).toEqual([
+      [3, 0],
+      [6, 4],
+      [0, 4],
+    ]);
+  });
+
+  it('firstBreiteM wird auf breiteM gedeckelt (kein invertiertes Trapez)', () => {
+    expect(trapezUmriss(5, 3, 99)).toEqual([
+      [0, 0],
+      [5, 0],
+      [5, 3],
+      [0, 3],
+    ]);
+  });
+
+  it('als Umriss in berechneRaster: Trapez schneidet die oberen Randspalten weg', () => {
+    const r = raster({ umrissM: trapezUmriss(5, 3, 3) });
+    expect(keys(r)).toEqual(['0-1', '0-2', '0-3', '1-1', '1-2', '1-3', '2-1', '2-2', '2-3']);
   });
 });

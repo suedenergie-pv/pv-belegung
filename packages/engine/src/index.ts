@@ -19,7 +19,7 @@ export { resolveParams, vocColdV, vmpHotV } from './temperature';
 export { maxModulesPerString, minModulesPerString } from './stringlimits';
 export { berechneRaster, DEFAULT_FUGE_M, DEFAULT_RAND_M } from './belegung';
 export type { BelegungInput, BelegungRaster, ModulPosition } from './belegung';
-export { punktInPolygon, rechteckImUmriss, rechteckeUeberlappen } from './geometrie';
+export { punktInPolygon, rechteckImUmriss, rechteckeUeberlappen, trapezUmriss } from './geometrie';
 export type { PunktM, RechteckM } from './geometrie';
 export { buildPlanCalc, orientationKey } from './plan';
 export type { MpptCalc, PlanCalc, StringCalc } from './plan';

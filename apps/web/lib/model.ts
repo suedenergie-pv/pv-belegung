@@ -5,6 +5,7 @@ import {
   DEFAULT_RAND_M,
   berechneRaster,
   checkStringPlan,
+  trapezUmriss,
   type BelegungRaster,
   type InverterType,
   type ModuleType,
@@ -60,6 +61,9 @@ export interface DachFoto {
   pxProM?: number;
 }
 
+/** Parametrische Dachform (SPEC §9). 'trapez' deckt Walm/Krüppelwalm mit Firstbreite. */
+export type Dachform = 'rechteck' | 'trapez';
+
 export interface Flaeche {
   id: string;
   name: string;
@@ -73,17 +77,35 @@ export interface Flaeche {
   ausrichtung: 'hoch' | 'quer';
   /** Randabstand zu Traufe/First/Ortgang, Meter (Default: Engine DEFAULT_RAND_M) */
   randM?: number;
+  /** Parametrische Dachform (Default 'rechteck'); 'trapez' nutzt firstBreiteM. */
+  dachform?: Dachform;
+  /** Firstbreite oben, Meter — nur bei dachform 'trapez' (0 = Walmspitze). */
+  firstBreiteM?: number;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
   /**
-   * Optionaler Flächen-Umriss (Walm/Trapez/L-Form, beliebige Eckenzahl,
-   * Flächen-Koordinaten in Meter). Ohne Umriss gilt das Rechteck (SPEC §9).
+   * Manuell gezeichneter Flächen-Umriss (beliebige Eckenzahl, Flächen-Koordinaten
+   * in Meter). Hat Vorrang vor dachform; ohne beides gilt das Rechteck (SPEC §9).
    */
   umrissM?: PunktM[];
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
   hindernisse?: RechteckM[];
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
+}
+
+/**
+ * Effektiver Umriss einer Fläche (SPEC §9): manuell gezeichneter Umriss gewinnt,
+ * sonst erzeugt 'trapez' das Polygon aus Traufe/Sparren/Firstbreite, sonst
+ * (Rechteck) kein Umriss → volles Raster. So hat die digitale Fläche von Anfang
+ * an die richtige Form, auch ohne Foto.
+ */
+export function umrissVon(f: Flaeche): PunktM[] | undefined {
+  if (f.umrissM && f.umrissM.length >= 3) return f.umrissM;
+  if (f.dachform === 'trapez') {
+    return trapezUmriss(f.breiteM, f.hoeheM, f.firstBreiteM ?? f.breiteM * 0.6);
+  }
+  return undefined;
 }
 
 export type { PunktM, RechteckM };
@@ -163,7 +185,7 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
     module: modul,
     ausrichtung: f.ausrichtung,
     randM: randVon(f),
-    umrissM: f.umrissM,
+    umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
   });
 }
