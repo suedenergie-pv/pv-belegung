@@ -47,6 +47,36 @@
 - GATE-0: Solar-API-EEA-Testcall
 - Ticketsystem-Kategorie "Vorplanung Vertrieb" (+ user_categories-Bug)
 
+## Session-Übergabe 06.07.2026 (3. Session)
+
+**Stand:** Engine R1–R12 (58 Tests grün) + UI-Wizard + **PDF-Export als Hauptexport**.
+
+1. ✅ **Isc-Faktor korrigiert (1,25 → 1,0)** — Genrihs Praxis-Einspruch („Jolywood an
+   EcoFlow-String-1 machen wir immer") war berechtigt: WR-Kurzschlussgrenzen werden
+   mit Modul-Isc (STC) **direkt** verglichen (KOSTAL/SMA/BayWa; Herstellermarge schon
+   eingerechnet — EcoFlow Plus PV1: 19 A SC bei 16 A Eingang). Der Faktor 1,25
+   (VDE 0100-712) gilt Kabeln/Sicherungen, nicht dem WR-Vergleich. Jolywood (16,0 A)
+   an PO-Plus-PV1 (19 A/String) ist jetzt ZULÄSSIG. SPEC §7 + §5.1 + §6.1,
+   kalibrierung.md, OFFENE_FRAGEN, Tests nachgezogen; `iscSafetyFactor` bleibt
+   konfigurierbar. Im UI verifiziert (2 × Jolywood-Strings an PV1 → R1–R12 bestanden).
+2. ✅ **PDF-Export** (`lib/pdf-export.ts`, jspdf) — Genrih: „JSON bringt dem Vertriebler
+   nichts". PDF = Hauptexport: Seite 1 Zusammenfassung (kWp, Modul/WR, Flächen-Tabelle,
+   Gesamtansicht), danach je Fläche eine Detailseite. DachSvg wird offscreen gerendert
+   und per Canvas gerastert (Maße bleiben mm × Maßstab). PDF ist NICHT vom
+   Stringplan-Gate blockiert (Belegung = Hauptprodukt); gültiger Stringplan = grüner
+   Vermerk, ungültiger wird weggelassen. JSON bleibt als „Ticketsystem-Payload"-Karte.
+   Verifiziert über debug-shot-Route (PDF abgefangen + Seiten geprüft, 3 Seiten ok).
+
+**Verlorene Arbeit aus Session 2 (Rate-Limit-Abbruch, NIE committet):
+Hindernis-Markierung** — Genrihs Wunsch: Hindernisse (Kamin/Fenster/SAT) im Foto
+als Rechteck markieren (2 Klicks) → inverse Homographie → schneidende Module
+automatisch deaktivieren. Besprochen und für gut befunden (deterministisch, kein
+CV/ML), Umsetzung stand noch aus → **nächster Auftrag**.
+
+**Weitere offene Punkte:** PV*SOL-Gegenrechnung (Gate, Genrih), Hero-Artikelnummern
+Aiko, OFFENE_FRAGEN #4 (R13+), Foto-Feinpositionierung, Stringplan-Schritt evtl.
+dezenter („optionaler Check für kleine Anlagen", Genrih 06.07.).
+
 ## Session-Übergabe 05.07.2026 (2. Session — alle 4 Aufträge erledigt)
 
 **Stand:** Engine R1–R12 + Belegungsraster + Kalibrier-Testrunner (`npm run kalibrierung`)

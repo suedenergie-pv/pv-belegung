@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   bauePayload,
@@ -13,6 +13,8 @@ import {
   zuordnungsHinweise,
   type Projekt,
 } from '../lib/model';
+import { erzeugeBelegungsPdf } from '../lib/pdf-export';
+import { DachSvg } from './DachSvg';
 import { Karte, KartenTitel } from './ui';
 
 export function SchrittExport({ projekt }: { projekt: Projekt }) {
@@ -20,10 +22,27 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
   const result = useMemo(() => pruefeStringplan(projekt), [projekt]);
   const zuordnung = zuordnungsHinweise(projekt);
   const [kopiert, setKopiert] = useState(false);
+  const [pdfLaeuft, setPdfLaeuft] = useState(false);
+  const [pdfFehler, setPdfFehler] = useState<string | null>(null);
+  const renderRef = useRef<HTMLDivElement>(null);
 
   const exportGesperrt = (result !== null && !result.valid) || zuordnung.fehler.length > 0;
   const payload = useMemo(() => bauePayload(projekt, result), [projekt, result]);
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
+
+  const pdfHerunterladen = async () => {
+    setPdfLaeuft(true);
+    setPdfFehler(null);
+    try {
+      await erzeugeBelegungsPdf(projekt, result, (flaecheId) =>
+        renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ?? null,
+      );
+    } catch (e) {
+      setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
+    } finally {
+      setPdfLaeuft(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -75,12 +94,39 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
 
       <Karte>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <KartenTitel>Export (Ticketsystem-Payload)</KartenTitel>
+          <KartenTitel>Belegungsplan (PDF)</KartenTitel>
+          <button
+            type="button"
+            disabled={pdfLaeuft}
+            className="ml-auto h-12 rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:cursor-wait disabled:opacity-60"
+            onClick={() => void pdfHerunterladen()}
+          >
+            {pdfLaeuft ? 'Erzeuge PDF …' : 'PDF herunterladen'}
+          </button>
+        </div>
+        <p className="text-sm text-slate-500">
+          Gesamtansicht plus eine Seite je Dachfläche — fürs Kundengespräch. Die Belegung ist
+          unabhängig vom Stringplan verfügbar
+          {result && !result.valid
+            ? '; der aktuelle Stringplan ist ungültig und wird deshalb nicht mit ausgegeben'
+            : result?.valid
+              ? '; der geprüfte Stringplan wird als Vermerk aufgenommen'
+              : ''}
+          .
+        </p>
+        {pdfFehler && (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{pdfFehler}</p>
+        )}
+      </Karte>
+
+      <Karte>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <KartenTitel>Ticketsystem-Payload (JSON)</KartenTitel>
           <div className="ml-auto flex gap-2">
             <button
               type="button"
               disabled={exportGesperrt}
-              className="h-12 rounded-xl bg-akzent px-5 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="h-12 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition enabled:hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => {
                 void navigator.clipboard.writeText(json).then(() => {
                   setKopiert(true);
@@ -110,12 +156,12 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         </div>
         {exportGesperrt && (
           <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            Export gesperrt: Der Stringplan ist ungültig (SPEC §7) oder es sind mehr Module
+            JSON-Export gesperrt: Der Stringplan ist ungültig (SPEC §7) oder es sind mehr Module
             verstringt als belegt. Fehler im Schritt „Stringplan" beheben — oder den
-            Wechselrichter auf „kein Stringplan" stellen.
+            Wechselrichter auf „kein Stringplan" stellen. Das PDF oben bleibt verfügbar.
           </p>
         )}
-        <pre className="max-h-80 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
+        <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
           {json}
         </pre>
         <p className="mt-2 text-xs text-slate-400">
@@ -123,6 +169,21 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
           oder als Datei ans Ticket hängen.
         </p>
       </Karte>
+
+      {/* Offscreen-Render für die PDF-Rasterung: identische DachSvg-Komponenten,
+          Maße bleiben mm × Maßstab (SPEC §3.5) — nur unsichtbar positioniert. */}
+      <div
+        ref={renderRef}
+        aria-hidden
+        className="pointer-events-none fixed top-0 h-0 overflow-hidden"
+        style={{ left: -10000, width: 1400 }}
+      >
+        {projekt.flaechen.map((f) => (
+          <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
+            <DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
