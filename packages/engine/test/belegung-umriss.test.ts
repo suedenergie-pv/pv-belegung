@@ -28,6 +28,8 @@ const TESTMODUL: ModuleType = {
   renderSymbol: 'jolywood_niwa_black',
 };
 
+// Default: reines Filtern (Optimierung aus), damit die Filter-Tests unbeeinflusst
+// bleiben. Die Optimierer-Tests schalten optimiereReihen: true explizit an.
 function raster(over: Partial<BelegungInput> = {}) {
   return berechneRaster({
     breiteM: 5,
@@ -36,6 +38,7 @@ function raster(over: Partial<BelegungInput> = {}) {
     ausrichtung: 'quer',
     randM: 0,
     fugeM: 0,
+    optimiereReihen: false,
     ...over,
   });
 }
@@ -144,8 +147,36 @@ describe('trapezUmriss — parametrische Dachform (SPEC §9, 06.07.2026)', () =>
     ]);
   });
 
-  it('als Umriss in berechneRaster: Trapez schneidet die oberen Randspalten weg', () => {
+  it('als Umriss in berechneRaster (reines Filtern): Trapez schneidet obere Randspalten weg', () => {
     const r = raster({ umrissM: trapezUmriss(5, 3, 3) });
     expect(keys(r)).toEqual(['0-1', '0-2', '0-3', '1-1', '1-2', '1-3', '2-1', '2-2', '2-3']);
+  });
+});
+
+describe('Reihen-Optimierung: horizontaler Versatz nur bei echtem Gewinn (SPEC §9)', () => {
+  it('verschiebt eine Reihe, wenn dadurch ein Modul mehr passt (asymmetrisches Band)', () => {
+    // Gültiges Band [1,5 .. 4,5] (Breite 3): zentriertes Gitter (x=0..4) trifft nur 2
+    // Module (x=2,3); ein Versatz auf 1,5/2,5/3,5 bringt 3 — genau der Walm-Nutzen.
+    const r = raster({ hoeheM: 1, optimiereReihen: true, umrissM: [[1.5, 0], [4.5, 0], [4.5, 1], [1.5, 1]] });
+    expect(r.positionen).toHaveLength(3);
+    expect(r.positionen.map((p) => Math.round(p.xM * 100) / 100)).toEqual([1.5, 2.5, 3.5]);
+  });
+
+  it('symmetrisches Trapez: breite untere Reihe bekommt EIN zentriertes Modul mehr', () => {
+    // Filter-only wäre 9 (3+3+3); mit Optimierung fasst die breite Reihe 2 (y 2–3) ein
+    // 4. Modul, zentriert (0,5/1,5/2,5/3,5) — symmetrisch, kein Versatz-Salat.
+    const r = raster({ optimiereReihen: true, umrissM: trapezUmriss(5, 3, 3) });
+    expect(r.positionen).toHaveLength(10);
+    const reihe2 = r.positionen.filter((p) => p.row === 2).map((p) => Math.round(p.xM * 100) / 100);
+    expect(reihe2).toEqual([0.5, 1.5, 2.5, 3.5]);
+  });
+
+  it('Rechteck (kein Umriss) wird NIE verschoben, auch mit Optimierung an', () => {
+    const r = raster({ optimiereReihen: true });
+    expect(keys(r)).toEqual([
+      '0-0', '0-1', '0-2', '0-3', '0-4',
+      '1-0', '1-1', '1-2', '1-3', '1-4',
+      '2-0', '2-1', '2-2', '2-3', '2-4',
+    ]);
   });
 });

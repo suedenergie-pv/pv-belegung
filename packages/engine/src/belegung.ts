@@ -32,6 +32,12 @@ export interface BelegungInput {
   umrissM?: readonly PunktM[];
   /** Hindernisse (Kamin, Fenster, SAT …): schneidende Module entfallen. */
   hindernisseM?: readonly RechteckM[];
+  /**
+   * Reihen-Optimierung (Default true): bei Umriss jede Reihe horizontal so
+   * verschieben, dass mehr Module passen (Walm/asymmetrisch). Rechteck und
+   * symmetrische Reihen bleiben zentriert. false = reines zentriertes Gitter.
+   */
+  optimiereReihen?: boolean;
 }
 
 export interface ModulPosition {
@@ -76,16 +82,57 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
 
   const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
   const hindernisse = input.hindernisseM ?? [];
+  const pitchX = modulBreiteM + fugeM;
 
+  const gueltig = (xM: number, yM: number): boolean => {
+    const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
+    if (umriss && !rechteckImUmriss(rect, umriss, randM)) return false;
+    return !hindernisse.some((h) => rechteckeUeberlappen(rect, h));
+  };
+
+  const EPS = 1e-4;
   const positionen: ModulPosition[] = [];
   for (let row = 0; row < rows; row++) {
+    const yM = y0 + row * (modulHoeheM + fugeM);
+    // Standard-Gitter dieser Reihe (Original-Spaltenindex bleibt erhalten → stabile Keys)
+    const gitter: { col: number; xM: number }[] = [];
     for (let col = 0; col < cols; col++) {
-      const xM = x0 + col * (modulBreiteM + fugeM);
-      const yM = y0 + row * (modulHoeheM + fugeM);
-      const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
-      if (umriss && !rechteckImUmriss(rect, umriss, randM)) continue;
-      if (hindernisse.some((h) => rechteckeUeberlappen(rect, h))) continue;
-      positionen.push({ row, col, xM, yM });
+      const xM = x0 + col * pitchX;
+      if (gueltig(xM, yM)) gitter.push({ col, xM });
+    }
+    // Optimierung (SPEC §9, 06.07.2026): Nur bei Umriss die Reihe horizontal
+    // verschieben, und NUR wenn dadurch echt mehr Module passen (Walm/asymmetrisch).
+    // Reihenraster bleibt (feste y-Positionen), kein allgemeiner Packer. Rechteck
+    // und symmetrisches Trapez bleiben dadurch unverändert.
+    let beste = gitter.map((g) => g.xM);
+    if (umriss && cols > 0 && (input.optimiereReihen ?? true)) {
+      const maxRechts = input.breiteM - randM + EPS;
+      const schritt = pitchX / 24;
+      // Unwucht = |linker Rand − rechter Rand| des Modul-Laufs in der Nutzbreite;
+      // Tie-Break auf minimale Unwucht → symmetrische Formen bleiben zentriert.
+      const unwucht = (xs: number[]): number =>
+        xs.length === 0
+          ? Infinity
+          : Math.abs(
+              xs[0]! - randM - (input.breiteM - randM - (xs[xs.length - 1]! + modulBreiteM)),
+            );
+      let besteUnwucht = unwucht(beste);
+      for (let off = randM; off <= randM + pitchX + EPS; off += schritt) {
+        const xs: number[] = [];
+        for (let xM = off; xM + modulBreiteM <= maxRechts; xM += pitchX) {
+          if (gueltig(xM, yM)) xs.push(xM);
+        }
+        const u = unwucht(xs);
+        if (xs.length > beste.length || (xs.length === beste.length && u < besteUnwucht - EPS)) {
+          beste = xs;
+          besteUnwucht = u;
+        }
+      }
+    }
+    if (beste.length > gitter.length) {
+      beste.forEach((xM, i) => positionen.push({ row, col: i, xM, yM }));
+    } else {
+      gitter.forEach((g) => positionen.push({ row, col: g.col, xM: g.xM, yM }));
     }
   }
 
