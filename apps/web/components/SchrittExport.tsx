@@ -152,7 +152,7 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         {exportGesperrt && (
           <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             JSON-Export gesperrt: Der Stringplan ist ungültig (SPEC §7) oder es sind mehr Module
-            verstringt als belegt. Fehler im Schritt „Stringplan" beheben — oder den
+            verstringt als belegt. Fehler im Schritt „Stringcheck" beheben — oder den
             Wechselrichter auf „kein Stringplan" stellen. Das PDF oben bleibt verfügbar.
           </p>
         )}

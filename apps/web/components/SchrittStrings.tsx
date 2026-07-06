@@ -50,9 +50,15 @@ export function SchrittStrings({
 
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <span className="font-semibold text-slate-700">Optionaler Check für kleine Anlagen.</span>{' '}
+        Prüft, ob die gewählte Verstringung elektrisch aufgeht (Mindestspannung, Ströme,
+        Regeln R1–R12). Fürs Kundengespräch nicht nötig — Belegung und PDF stehen auch ohne
+        diesen Schritt. Einfach überspringen, wenn nicht gebraucht.
+      </div>
       <Karte>
         <KartenTitel>
-          Wechselrichter <span className="font-normal text-slate-400">(optional — für den Stringplan)</span>
+          Wechselrichter <span className="font-normal text-slate-400">(optional — für den Stringcheck)</span>
         </KartenTitel>
         <Feld label="Modell">
           <select

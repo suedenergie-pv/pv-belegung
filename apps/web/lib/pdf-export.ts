@@ -109,10 +109,16 @@ export async function erzeugeBelegungsPdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(80);
+  const datum = new Date().toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
   const kopfzeilen = [
     projekt.kunde && `Kunde: ${projekt.kunde}`,
     projekt.adresse && `Adresse: ${projekt.adresse}`,
-    `Datum: ${new Date().toLocaleDateString('de-DE')}`,
+    projekt.erfasser && `Erfasser: ${projekt.erfasser}`,
+    `Datum: ${datum}`,
   ].filter(Boolean) as string[];
   for (const zeile of kopfzeilen) {
     doc.text(zeile, RAND, y);

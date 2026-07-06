@@ -32,6 +32,14 @@ export function SchrittProjekt({
               placeholder="Straße, PLZ Ort"
             />
           </Feld>
+          <Feld label="Erfasser (Vertrieb)">
+            <input
+              className={inputKlasse}
+              value={projekt.erfasser ?? ''}
+              onChange={(e) => onChange({ ...projekt, erfasser: e.target.value })}
+              placeholder="Dein Name — erscheint im PDF"
+            />
+          </Feld>
         </div>
       </Karte>
 

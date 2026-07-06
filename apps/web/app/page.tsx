@@ -18,7 +18,7 @@ import {
   type Projekt,
 } from '../lib/model';
 
-const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Stringplan', 'Export'] as const;
+const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Stringcheck', 'Export'] as const;
 
 export default function Home() {
   const [db, setDb] = useState<ProjektDb>({ aktivId: null, projekte: [] });

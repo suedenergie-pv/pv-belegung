@@ -125,6 +125,8 @@ export interface UiStringDef {
 export interface Projekt {
   adresse: string;
   kunde: string;
+  /** Vertriebler/Erfasser (Name), erscheint im PDF-Kopf (SPEC §13) */
+  erfasser?: string;
   modulId: string;
   flaechen: Flaeche[];
   wrId: string | null;
@@ -405,7 +407,7 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
   return {
     tool: 'belegungsplaner',
     version: '1.0',
-    projekt: { adresse: p.adresse, kunde: p.kunde, erfasser: '' },
+    projekt: { adresse: p.adresse, kunde: p.kunde, erfasser: p.erfasser ?? '' },
     geometrieQuelle: 'manual',
     flaechen: p.flaechen.map((f) => {
       const raster = rasterFuer(f, modul);
