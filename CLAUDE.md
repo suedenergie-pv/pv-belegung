@@ -47,31 +47,52 @@
 - GATE-0: Solar-API-EEA-Testcall
 - Ticketsystem-Kategorie "Vorplanung Vertrieb" (+ user_categories-Bug)
 
-## OFFENE Aufträge (Reihenfolge von Genrih bestätigt, 06.07.2026)
+## OFFENE Aufträge (Stand 06.07.2026 abends)
 
 Lies zuerst diese CLAUDE.md komplett (v.a. „Nicht verhandelbar", Screenshot-Workflow,
 Preview-Falle unten) und SPEC §9/§13. Arbeitsstand: alles committet & deployt,
 Live-URL https://suedenergie-pv.github.io/pv-belegung/ (jeder Push auf main deployt).
 
-✅ **Projektliste erledigt (06.07., 4. Session)** — siehe Session-Übergabe unten.
+✅ Projektliste, Dachform (Trapez), Jolywood-Rendering, PDF-Kleinkram,
+Stringcheck-Umbenennung, Belegungs-Optimierer — alle erledigt (5. Session, s.u.).
 
 **Noch offen:**
-1. PDF-Kleinkram: Erfasser-Name (Eingabefeld Schritt Projekt + PDF-Kopf; im
-   Datenmodell `Projekt.erfasser` ergänzen — bauePayload hat schon `erfasser: ''`),
-   Datum „06.07.2026" statt „6.7.2026" (toLocaleDateString mit 2-digit-Optionen),
-   ggf. SüdEnergie-Logo in den PDF-Kopf (Genrih nach Datei fragen).
-2. Stringplan-Schritt dezenter: umbenennen Richtung „Check (optional)" —
-   Genrih: das ist ein optionaler Test für kleine Anlagen, kein Main-Feature.
-3. Belegungs-Optimierer im Polygon (nur wenn Zeit): je Reihe horizontalen
-   Versatz variieren (Reihenraster bleibt!), deterministisch, mit Tests —
-   holt auf Walmdächern 1–3 Module raus. Kein allgemeiner Packer.
-4. Weiterhin: PV*SOL-Gegenrechnung (das Gate, Genrih).
+1. **PV*SOL-Gegenrechnung (das Gate, Genrih)** — weiterhin der wichtigste Punkt.
+2. SüdEnergie-Logo in den PDF-Kopf — braucht die Logo-Datei von Genrih (fragen).
+3. Ideen: Foto-Feinpositionierung, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
 
 **Regeln dabei:** Engine rechnet, UI rechnet nie (SPEC §3.4/§3.5). Elektrik nur
 aus Datenblatt-PDFs. Jede Engine-Änderung mit Tests (`npx vitest run --root
 packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsch,
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
+
+## Session-Übergabe 06.07.2026 (5. Session — Opus, autonom)
+
+Fünf Genrih-Wünsche + Backlog abgearbeitet, je Schritt committet & gepusht (Deploy automatisch):
+
+1. **Dachform Rechteck/Trapez von Anfang an** (`SchrittFlaechen`): parametrische
+   Form je Fläche → die digitale Fläche hat sofort die richtige Form, auch ohne Foto.
+   Engine `trapezUmriss` (Traufe unten voll, First oben schmaler, 0 = Walmspitze).
+   `model.ts umrissVon(f)`: manueller Umriss > Trapez > Rechteck. DachSvg/Belegung/PDF
+   nutzen `umrissVon`. Manuelles „Umriss zeichnen" bleibt als Override.
+2. **Jolywood-Rendering** (`DachSvg ModulSymbol`): Niwa Black rendert jetzt Glas-Glas-
+   Optik mit sichtbaren SILBRIGEN Zellfugen (war schwarzes Rechteck); Aiko ABC bleibt
+   echt schwarz. Genrih: „man sollte die leichten silbernen Linien erkennen."
+3. **Belegungs-Optimierer** (`berechneRaster`): bei Umriss wird jede Reihe horizontal
+   verschoben, WENN dadurch mehr Module passen (Walm 1–3 Module), Tie-Break zentriert
+   → symmetrische Formen bleiben symmetrisch, Rechtecke unverändert. `optimiereReihen`-
+   Flag (Default true). Verschiebt NIE Module raus (nur strikt mehr).
+4. **PDF-Kleinkram**: `Projekt.erfasser` + Eingabefeld (SchrittProjekt), im PDF-Kopf +
+   JSON; Datum „06.07.2026" (dd.mm.yyyy).
+5. **Stringplan → „Stringcheck"** (Nav + Einleitungshinweis „optionaler Check für
+   kleine Anlagen"). Genrih: kein Main-Feature.
+
+**Verifiziert im Browser** (debug-shot): Trapez-Filter, Jolywood-Linien, Optimierer an
+asymmetrischem Walm (Reihen folgen dem Grat, keine Module verloren), PDF mit Erfasser+
+Datum. 75 Engine-Tests grün.
+
+## Session-Übergabe 06.07.2026 (4. Session — Opus)
 
 ## Session-Übergabe 06.07.2026 (4. Session — Opus)
 
