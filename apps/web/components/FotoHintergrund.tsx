@@ -534,11 +534,20 @@ export function FotoHintergrund({
                   />
                 ))}
 
-              {/* Fadenkreuz am Mauszeiger — leicht sichtbar, nicht penetrant */}
+              {/* Fadenkreuz am Mauszeiger — kräftig, mit weißem Halo + Zielring (auf
+                  jedem Fotohintergrund gut sichtbar) */}
               {zeigtKreuz && mausPx && (
-                <g stroke="#38bdf8" strokeWidth={px(0.0012)} strokeOpacity={0.6} strokeDasharray={`${px(0.006)} ${px(0.004)}`}>
-                  <line x1={0} y1={mausPx[1]} x2={foto.breitePx} y2={mausPx[1]} />
-                  <line x1={mausPx[0]} y1={0} x2={mausPx[0]} y2={foto.hoehePx} />
+                <g style={{ pointerEvents: 'none' }}>
+                  <g stroke="#ffffff" strokeOpacity={0.85} strokeWidth={px(0.0045)} fill="none">
+                    <line x1={0} y1={mausPx[1]} x2={foto.breitePx} y2={mausPx[1]} />
+                    <line x1={mausPx[0]} y1={0} x2={mausPx[0]} y2={foto.hoehePx} />
+                    <circle cx={mausPx[0]} cy={mausPx[1]} r={px(0.013)} />
+                  </g>
+                  <g stroke="#0284c7" strokeOpacity={0.95} strokeWidth={px(0.002)} fill="none">
+                    <line x1={0} y1={mausPx[1]} x2={foto.breitePx} y2={mausPx[1]} />
+                    <line x1={mausPx[0]} y1={0} x2={mausPx[0]} y2={foto.hoehePx} />
+                    <circle cx={mausPx[0]} cy={mausPx[1]} r={px(0.013)} />
+                  </g>
                 </g>
               )}
 
