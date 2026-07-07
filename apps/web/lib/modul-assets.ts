@@ -84,11 +84,10 @@ export function modulAssetInner(renderSymbol: string): string {
 }
 
 /**
- * Affine Matrix, die das Asset (260×404) in das Modul-Viereck legt, definiert
- * durch die drei projizierten Ecken TL, TR (Traufrichtung +Breite), BL
- * (Sparrenrichtung +Höhe). 'quer' dreht das Hochformat-Asset um 90°.
- * (Die 4. Ecke ergibt sich als Parallelogramm — bei kleinen Modulen und
- * mäßiger Perspektive vernachlässigbar.)
+ * Affine Matrix, die das Asset (260×404) in das Modul-RECHTECK legt (Draufsicht,
+ * ohne Perspektive), definiert durch TL, TR (+Breite), BL (+Höhe). 'quer' dreht
+ * das Hochformat-Asset um 90°. In der Draufsicht sind TR−TL und BL−TL senkrecht,
+ * also exakt — für das perspektivische Foto siehe `modulMatrixDreiecke`.
  */
 export function modulMatrix(
   TL: readonly [number, number],
@@ -101,17 +100,69 @@ export function modulMatrix(
   let vx: number;
   let vy: number;
   if (quer) {
-    // Asset-x (kurze Seite) → vertikal (BL−TL); Asset-y (lange Seite) → horizontal (TR−TL)
     ux = (BL[0] - TL[0]) / MODUL_ASSET_W;
     uy = (BL[1] - TL[1]) / MODUL_ASSET_W;
     vx = (TR[0] - TL[0]) / MODUL_ASSET_H;
     vy = (TR[1] - TL[1]) / MODUL_ASSET_H;
   } else {
-    // Hochkant: Asset-x → horizontal (TR−TL); Asset-y → vertikal (BL−TL)
     ux = (TR[0] - TL[0]) / MODUL_ASSET_W;
     uy = (TR[1] - TL[1]) / MODUL_ASSET_W;
     vx = (BL[0] - TL[0]) / MODUL_ASSET_H;
     vy = (BL[1] - TL[1]) / MODUL_ASSET_H;
   }
   return `matrix(${ux} ${uy} ${vx} ${vy} ${TL[0]} ${TL[1]})`;
+}
+
+type P = readonly [number, number];
+
+/** Affine Matrix, die 3 Asset-Punkte EXAKT auf 3 Zielpunkte abbildet. */
+function affine3(a0: P, a1: P, a2: P, p0: P, p1: P, p2: P): string {
+  const ax1 = a1[0] - a0[0];
+  const ay1 = a1[1] - a0[1];
+  const ax2 = a2[0] - a0[0];
+  const ay2 = a2[1] - a0[1];
+  const det = ax1 * ay2 - ax2 * ay1 || 1e-9;
+  const px1 = p1[0] - p0[0];
+  const py1 = p1[1] - p0[1];
+  const px2 = p2[0] - p0[0];
+  const py2 = p2[1] - p0[1];
+  const a = (px1 * ay2 - px2 * ay1) / det;
+  const b = (py1 * ay2 - py2 * ay1) / det;
+  const c = (px2 * ax1 - px1 * ax2) / det;
+  const d = (py2 * ax1 - py1 * ax2) / det;
+  const e = p0[0] - a * a0[0] - c * a0[1];
+  const f = p0[1] - b * a0[0] - d * a0[1];
+  return `matrix(${a} ${b} ${c} ${d} ${e} ${f})`;
+}
+
+/**
+ * Perspektivisch korrekte Einpassung des Assets ins Modul-Viereck (Foto): das
+ * Asset wird in ZWEI Dreiecke geteilt und jedes exakt auf die vier
+ * homographisch projizierten Ecken abgebildet (kein Parallelogramm-Verzug →
+ * Module stehen gerade). Ecken TL, TR, BR, BL im Uhrzeigersinn (Foto-Pixel).
+ * Rückgabe: zwei {matrix, clip}-Paare (clip = Dreieck-Polygon-Punkte).
+ */
+export function modulMatrixDreiecke(
+  TL: P,
+  TR: P,
+  BR: P,
+  BL: P,
+  quer: boolean,
+): { matrix: string; clip: string }[] {
+  const W = MODUL_ASSET_W;
+  const HH = MODUL_ASSET_H;
+  const aTL: P = [0, 0];
+  const aTR: P = [W, 0];
+  const aBR: P = [W, HH];
+  const aBL: P = [0, HH];
+  // Asset-Ecke → Foto-Ecke (quer: Asset um 90° gedreht)
+  const cTL = TL;
+  const cTR = quer ? BL : TR;
+  const cBR = BR;
+  const cBL = quer ? TR : BL;
+  const poly = (p: P, q: P, r: P) => `${p[0]},${p[1]} ${q[0]},${q[1]} ${r[0]},${r[1]}`;
+  return [
+    { matrix: affine3(aTL, aTR, aBR, cTL, cTR, cBR), clip: poly(cTL, cTR, cBR) },
+    { matrix: affine3(aTL, aBR, aBL, cTL, cBR, cBL), clip: poly(cTL, cBR, cBL) },
+  ];
 }

@@ -2,7 +2,7 @@
 
 import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
 import { homographie, inverseHomographie, projiziere, projPfad, type Punkt } from '../lib/foto-geometrie';
-import { modulAssetInner, modulMatrix } from '../lib/modul-assets';
+import { modulAssetInner, modulMatrix, modulMatrixDreiecke } from '../lib/modul-assets';
 import { DACHFARBEN, umrissVon, type Dachfarbe, type Flaeche, type PunktM } from '../lib/model';
 
 /**
@@ -232,11 +232,13 @@ export function DachSvg({
             {raster.positionen.map((p) => {
               const key = `${p.row}-${p.col}`;
               const aus = flaeche.inaktiv.includes(key);
-              // Modul-Ecken in Foto-Pixel (Homographie); Asset per affiner Matrix
-              // aus 3 Ecken eingepasst (4. Ecke ≈ Parallelogramm, bei Modulgröße ok).
+              // Vier Modul-Ecken exakt homographisch projiziert; Asset in ZWEI
+              // Dreiecke geteilt und exakt eingepasst → perspektivisch gerade.
               const TL = projiziere(h, [p.xM, p.yM]);
               const TR = projiziere(h, [p.xM + mB, p.yM]);
+              const BR = projiziere(h, [p.xM + mB, p.yM + mH]);
               const BL = projiziere(h, [p.xM, p.yM + mH]);
+              const dreiecke = modulMatrixDreiecke(TL, TR, BR, BL, quer);
               return (
                 <g
                   key={key}
@@ -244,7 +246,20 @@ export function DachSvg({
                   className={toggle ? 'cursor-pointer' : undefined}
                   onClick={toggle ? () => toggle(key) : undefined}
                 >
-                  <use href={`#${assetId}`} transform={modulMatrix(TL, TR, BL, quer)} />
+                  {dreiecke.map((dr, di) => {
+                    const cid = `clip-${flaeche.id}-${key}-${di}`;
+                    return (
+                      <g key={di}>
+                        <clipPath id={cid} clipPathUnits="userSpaceOnUse">
+                          <polygon points={dr.clip} />
+                        </clipPath>
+                        {/* Clip am transformlosen <g> → in Foto-Pixeln; <use> transformiert innen */}
+                        <g clipPath={`url(#${cid})`}>
+                          <use href={`#${assetId}`} transform={dr.matrix} />
+                        </g>
+                      </g>
+                    );
+                  })}
                   <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="transparent" />
                   {aus && (
                     <path
