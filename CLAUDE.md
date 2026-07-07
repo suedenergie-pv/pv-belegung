@@ -86,6 +86,15 @@ mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-R
   Der alte generierte `ModulSymbol` ist raus. Auf dem Foto sehen die Module jetzt wie
   Module aus (silberne Zelllinien/Busbars), nicht wie schwarze Rechtecke. Assets sind die
   einzige Quelle für den Modul-Look; Änderung nur mit neuem Asset von Genrih.
+- **Foto-Markierung: Perspektive vor Umriss + Fadenkreuz** (`FotoHintergrund`, 07.07.).
+  Die 4./5.-Session-Idee „Umriss direkt zeichnen, Perspektive automatisch ableiten"
+  (`vierEckenFuerHomographie`) verschob bei Dächern mit Ecke „in der Luft" die Ecke
+  (schiefe Homographie). Jetzt wieder ZWEI Schritte: (1) `perspektive`-Modus = 4 Ecken
+  des Dach-Rechtecks → `eckenPx`; (2) `umriss`-Modus = echten Rand zeichnen → `umrissM`
+  via inverse Homographie (korrekt, kein Verschieben). Beim Setzen: dezentes Fadenkreuz
+  (X/Y gestrichelt durch den Cursor, `mausPx`) + Vorschaulinie vom letzten Punkt — zum
+  Ausrichten von Ecken im leeren Raum. `vierEckenFuerHomographie` bleibt ungenutzt im
+  Code (foto-geometrie), schadet nicht. Modi jetzt: perspektive/umriss/hindernis/ziegel.
 
 ## Session-Übergabe 06.07.2026 (5. Session — Opus, autonom)
 
