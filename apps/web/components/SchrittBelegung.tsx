@@ -9,6 +9,7 @@ import {
   randVon,
   rasterFuer,
   umrissVon,
+  zonenLabel,
   type Flaeche,
   type Projekt,
   type PunktM,
@@ -16,7 +17,7 @@ import {
 import { DACHFARBEN } from '../lib/model';
 import { DachSvg } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
-import { Karte, KartenTitel, ToggleButton } from './ui';
+import { Karte, KartenTitel, ToggleButton, ZonenBadge } from './ui';
 
 /** Laufende Zeichnung (Umriss oder Hindernis) — immer nur eine Fläche gleichzeitig */
 interface Zeichnung {
@@ -156,7 +157,7 @@ export function SchrittBelegung({
         </div>
       </Karte>
 
-      {projekt.flaechen.map((f) => {
+      {projekt.flaechen.map((f, i) => {
         const raster = rasterFuer(f, modul);
         const aktiv = aktiveModule(f, raster);
         const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
@@ -169,6 +170,7 @@ export function SchrittBelegung({
         return (
           <Karte key={f.id}>
             <div className="mb-3 flex flex-wrap items-center gap-3">
+              <ZonenBadge label={zonenLabel(i)} />
               <KartenTitel>{f.name}</KartenTitel>
               <span className="ml-auto text-sm text-slate-500">
                 {aktiv} / {raster.positionen.length} Module ·{' '}

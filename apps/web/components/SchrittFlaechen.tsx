@@ -4,10 +4,11 @@ import {
   AZIMUT_PRESETS,
   DACHFARBEN,
   neueFlaeche,
+  zonenLabel,
   type Flaeche,
   type Projekt,
 } from '../lib/model';
-import { Feld, inputKlasse, Karte, KartenTitel, ToggleButton } from './ui';
+import { Feld, inputKlasse, Karte, KartenTitel, ToggleButton, ZonenBadge } from './ui';
 
 function ZahlenFeld({
   label,
@@ -57,10 +58,13 @@ export function SchrittFlaechen({
 
   return (
     <div className="space-y-4">
-      {projekt.flaechen.map((f) => (
+      {projekt.flaechen.map((f, i) => (
         <Karte key={f.id}>
           <div className="mb-4 flex items-center justify-between">
-            <KartenTitel>{f.name}</KartenTitel>
+            <div className="flex items-center gap-2">
+              <ZonenBadge label={zonenLabel(i)} />
+              <KartenTitel>{f.name}</KartenTitel>
+            </div>
             {projekt.flaechen.length > 1 && (
               <button
                 type="button"

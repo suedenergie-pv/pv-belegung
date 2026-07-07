@@ -14,6 +14,15 @@ export function KartenTitel({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-4 text-base font-semibold text-slate-800">{children}</h2>;
 }
 
+/** Zonen-Kennzeichen A/B/C… je Dachfläche (durchgängig in allen Schritten + PDF). */
+export function ZonenBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-akzent text-sm font-bold text-white">
+      {label}
+    </span>
+  );
+}
+
 export function Feld({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
