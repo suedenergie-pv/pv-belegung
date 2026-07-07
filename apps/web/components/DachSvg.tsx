@@ -77,12 +77,16 @@ export function DachSvg({
   modul,
   onToggle,
   zeichnen,
+  druck,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
   modul: ModuleType;
   onToggle?: (key: string) => void;
   zeichnen?: ZeichnenProps;
+  /** Druck/PDF: nur Foto + Module, keine Markierungs-Overlays (Umriss/Hindernis/
+   *  Randlinie), deaktivierte Module ausblenden — soll realistisch aussehen. */
+  druck?: boolean;
 }) {
   const B = flaeche.breiteM;
   const H = flaeche.hoeheM;
@@ -141,19 +145,22 @@ export function DachSvg({
   // Belegung in Flächen-Koordinaten (Meter) — identisch für beide Hintergründe
   const belegung = (
     <>
-      <rect
-        x={raster.randM}
-        y={raster.randM}
-        width={B - 2 * raster.randM}
-        height={H - 2 * raster.randM}
-        fill="none"
-        stroke="rgba(255,255,255,0.3)"
-        strokeWidth={0.015}
-        strokeDasharray="0.12 0.1"
-      />
+      {!druck && (
+        <rect
+          x={raster.randM}
+          y={raster.randM}
+          width={B - 2 * raster.randM}
+          height={H - 2 * raster.randM}
+          fill="none"
+          stroke="rgba(255,255,255,0.3)"
+          strokeWidth={0.015}
+          strokeDasharray="0.12 0.1"
+        />
+      )}
       {raster.positionen.map((p) => {
         const key = `${p.row}-${p.col}`;
         const aus = flaeche.inaktiv.includes(key);
+        if (aus && druck) return null; // deaktivierte Module im Druck weglassen
         const TL: Punkt = [p.xM, p.yM];
         const TR: Punkt = [p.xM + mB, p.yM];
         const BL: Punkt = [p.xM, p.yM + mH];
@@ -181,7 +188,7 @@ export function DachSvg({
           </g>
         );
       })}
-      {overlayM}
+      {!druck && overlayM}
     </>
   );
 
@@ -232,6 +239,7 @@ export function DachSvg({
             {raster.positionen.map((p) => {
               const key = `${p.row}-${p.col}`;
               const aus = flaeche.inaktiv.includes(key);
+              if (aus && druck) return null; // deaktivierte Module im Druck weglassen
               // Vier Modul-Ecken exakt homographisch projiziert; Asset in ZWEI
               // Dreiecke geteilt und exakt eingepasst → perspektivisch gerade.
               const TL = projiziere(h, [p.xM, p.yM]);
@@ -273,8 +281,8 @@ export function DachSvg({
                 </g>
               );
             })}
-            {/* Umriss/Hindernisse/Draft in Foto-Projektion */}
-            {umriss && (
+            {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
+            {!druck && umriss && (
               <path
                 d={projPfad(h, umriss.map(([x, y]) => [x, y] as Punkt))}
                 fill="none"
@@ -283,16 +291,17 @@ export function DachSvg({
                 strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
               />
             )}
-            {hindernisse.map((hi, i) => (
-              <path
-                key={i}
-                d={projPfad(h, rechteck(hi.xM, hi.yM, hi.breiteM, hi.hoeheM))}
-                fill="rgba(239,68,68,0.35)"
-                stroke="#ef4444"
-                strokeWidth={foto.breitePx * 0.0015}
-              />
-            ))}
-            {draft.length >= 2 && (
+            {!druck &&
+              hindernisse.map((hi, i) => (
+                <path
+                  key={i}
+                  d={projPfad(h, rechteck(hi.xM, hi.yM, hi.breiteM, hi.hoeheM))}
+                  fill="rgba(239,68,68,0.35)"
+                  stroke="#ef4444"
+                  strokeWidth={foto.breitePx * 0.0015}
+                />
+              ))}
+            {!druck && draft.length >= 2 && (
               <polyline
                 points={draft
                   .map(([x, y]) => projiziere(h, [x, y]).map((n) => n.toFixed(2)).join(','))
@@ -303,20 +312,21 @@ export function DachSvg({
                 strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
               />
             )}
-            {draft.map(([x, y], i) => {
-              const [px, py] = projiziere(h, [x, y]);
-              return (
-                <circle
-                  key={i}
-                  cx={px}
-                  cy={py}
-                  r={foto.breitePx * 0.007}
-                  fill="#f97316"
-                  stroke="#ffffff"
-                  strokeWidth={foto.breitePx * 0.002}
-                />
-              );
-            })}
+            {!druck &&
+              draft.map(([x, y], i) => {
+                const [px, py] = projiziere(h, [x, y]);
+                return (
+                  <circle
+                    key={i}
+                    cx={px}
+                    cy={py}
+                    r={foto.breitePx * 0.007}
+                    fill="#f97316"
+                    stroke="#ffffff"
+                    strokeWidth={foto.breitePx * 0.002}
+                  />
+                );
+              })}
           </svg>
         </div>
       );

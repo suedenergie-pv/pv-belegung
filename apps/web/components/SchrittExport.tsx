@@ -175,7 +175,7 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
       >
         {projekt.flaechen.map((f) => (
           <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
-            <DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul} />
+            <DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul} druck />
           </div>
         ))}
       </div>

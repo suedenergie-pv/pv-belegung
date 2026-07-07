@@ -191,13 +191,15 @@ export async function erzeugeBelegungsPdf(
   doc.line(RAND, y, SEITE_B - RAND, y);
   y += 7;
 
-  // Gesamtübersicht: alle Flächen auf Seite 1 (2 Spalten ab 2 Flächen)
+  // Gesamtansicht: eine Fläche = groß auf Seite 1 (einzige Ansicht, keine Detailseite);
+  // mehrere = Übersicht in 2 Spalten, danach je Fläche eine Detailseite.
+  const einzelflaeche = projekt.flaechen.length === 1;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20);
   doc.text('Gesamtansicht', RAND, y);
   y += 5;
-  const spalten = projekt.flaechen.length > 1 ? 2 : 1;
+  const spalten = einzelflaeche ? 1 : 2;
   const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
   let zeilenHoehe = 0;
   let x = RAND;
@@ -207,17 +209,20 @@ export async function erzeugeBelegungsPdf(
     if (!bild) continue;
     let bildB = zelleB;
     let bildH = bildB * bild.seitenverhaeltnis;
-    const maxH = 92;
+    // Einzelfläche darf die ganze Restseite füllen, sonst kompakte Übersicht.
+    const maxH = einzelflaeche ? SEITE_H - y - 18 : 92;
     if (bildH > maxH) {
       bildH = maxH;
       bildB = bildH / bild.seitenverhaeltnis;
     }
-    if (y + bildH + 10 > SEITE_H - 16) break; // Seite voll — Details folgen ohnehin
-    doc.addImage(bild.dataUrl, 'JPEG', x, y, bildB, bildH);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(90);
-    doc.text(f.name, x, y + bildH + 4);
+    if (y + bildH + 10 > SEITE_H - 16 && !einzelflaeche) break; // Seite voll — Details folgen
+    doc.addImage(bild.dataUrl, 'JPEG', x + (einzelflaeche ? (NUTZ_B - bildB) / 2 : 0), y, bildB, bildH);
+    if (!einzelflaeche) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(90);
+      doc.text(f.name, x, y + bildH + 4);
+    }
     zeilenHoehe = Math.max(zeilenHoehe, bildH + 8);
     spalte += 1;
     if (spalte >= spalten) {
@@ -230,7 +235,8 @@ export async function erzeugeBelegungsPdf(
     }
   }
 
-  // ---- Je Fläche eine Detailseite ----
+  // ---- Je Fläche eine Detailseite (nur bei mehreren Flächen) ----
+  if (!einzelflaeche)
   for (const f of projekt.flaechen) {
     const bild = bilder.get(f.id);
     if (!bild) continue;
