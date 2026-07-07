@@ -3,21 +3,26 @@
 import { useRef, useState } from 'react';
 import {
   belegungsCheck,
+  inverseHomographie,
+  projiziere,
   sortiereEcken,
   traufeWechseln,
+  vierEckenFuerHomographie,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche } from '../lib/model';
+import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche, type PunktM } from '../lib/model';
 
 /**
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal im Browser;
  * Google-Maps-Screenshots bleiben verboten, SPEC §8.1).
  *
- * Markierung: alle 4 Ecken der Dachfläche anklicken (Traufe links → Traufe
- * rechts → First rechts → First links). Die Platzierung ist damit auch bei
- * schräg aufgenommenen Fotos perspektivisch exakt (Homographie). Nach dem
- * Markieren läuft automatisch der Belegungs-Check: passt die markierte
- * Fläche zu den eingegebenen Maßen? (Braucht den Ziegel-Maßstab.)
+ * Markierung (06.07.2026 vereinfacht): den Umriss der Dachfläche direkt
+ * einzeichnen — Ecken der Reihe nach anklicken (mind. 4, beliebig mehr für
+ * Walm/L-Form), zum Schließen den ersten Punkt oder „Fertig". Die 4 Perspektiv-
+ * Ecken für die Homographie werden intern aus dem Umriss bestimmt
+ * (vierEckenFuerHomographie); zusätzliche Ecken maskieren die Belegung
+ * (umrissM). Kein getrennter „erst 4 Ecken, dann Umriss"-Schritt mehr.
+ * Danach läuft der Belegungs-Check gegen die eingegebenen Maße (Ziegel-Maßstab).
  *
  * „Ziegel zählen": Strecke über n Ziegelbreiten entlang einer Reihe ×
  * Deckbreite = Maßstab px/m — Grundlage für Check und Maß-Übernahme.
@@ -55,9 +60,7 @@ function deckbreiteDefaultCm(f: Flaeche): number {
   return art === 'blech' ? 53 : 30; // Blech: Scharen-/Falzabstand; Beton/Ton: 30 cm
 }
 
-type Modus = 'ecken' | 'ziegel';
-
-const ECKEN_LABELS = ['Traufe links', 'Traufe rechts', 'First rechts', 'First links'] as const;
+type Modus = 'umriss' | 'ziegel';
 
 const knopfKlasse =
   'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
@@ -78,7 +81,7 @@ export function FotoHintergrund({
 }) {
   const foto = flaeche.foto;
   const [punkte, setPunkte] = useState<Punkt[]>([]);
-  const [modus, setModus] = useState<Modus>('ecken');
+  const [modus, setModus] = useState<Modus>('umriss');
   const [anzahlZiegel, setAnzahlZiegel] = useState(10);
   const [deckbreiteCm, setDeckbreiteCm] = useState<number | null>(null); // null = Default je Eindeckung
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,40 +100,61 @@ export function FotoHintergrund({
     setPunkte([]);
   };
 
+  /** Umriss abschließen: 4 Perspektiv-Ecken aus den Umrisspunkten, Rest maskiert. */
+  const umrissAbschliessen = (pts: Punkt[]) => {
+    if (!foto || pts.length < 4) return;
+    const ecken = sortiereEcken(vierEckenFuerHomographie(pts));
+    const hinv = inverseHomographie(flaeche.breiteM, flaeche.hoeheM, ecken);
+    // > 4 Ecken → echter Umriss maskiert die Belegung (in Flächen-Koordinaten)
+    let umrissM: PunktM[] | undefined;
+    if (pts.length > 4 && hinv) {
+      const B = flaeche.breiteM;
+      const H = flaeche.hoeheM;
+      umrissM = pts.map((p) => {
+        const [x, y] = projiziere(hinv, p);
+        return [Math.max(0, Math.min(B, x)), Math.max(0, Math.min(H, y))] as PunktM;
+      });
+    }
+    onPatch({ foto: { ...foto, eckenPx: ecken, traufePx: null }, umrissM, inaktiv: [] });
+    setPunkte([]);
+  };
+
   const klick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!foto) return;
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const x = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
     const y = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
-    const neu: Punkt[] = [...punkte, [x, y]];
-    const noetig = modus === 'ziegel' ? 2 : 4;
-    if (neu.length < noetig) {
-      setPunkte(neu);
-      return;
-    }
 
     if (modus === 'ziegel') {
+      const neu: Punkt[] = [...punkte, [x, y]];
+      if (neu.length < 2) {
+        setPunkte(neu);
+        return;
+      }
       const [[x1, y1], [x2, y2]] = neu as [Punkt, Punkt];
       const distPx = Math.hypot(x2 - x1, y2 - y1);
       const streckeM = (anzahlZiegel * deckCm) / 100;
-      if (distPx > 0 && streckeM > 0) {
-        onFoto({ ...foto, pxProM: distPx / streckeM });
-      }
-      setModus('ecken');
-    } else {
-      onFoto({
-        ...foto,
-        eckenPx: sortiereEcken(neu as [Punkt, Punkt, Punkt, Punkt]),
-        traufePx: null,
-      });
+      if (distPx > 0 && streckeM > 0) onFoto({ ...foto, pxProM: distPx / streckeM });
+      setPunkte([]);
+      setModus('umriss');
+      return;
     }
-    setPunkte([]);
+
+    // Umriss: Klick nahe am ersten Punkt schließt das Polygon (ab 4 Ecken)
+    if (punkte.length >= 4) {
+      const [fx, fy] = punkte[0]!;
+      if (Math.hypot(x - fx, y - fy) <= foto.breitePx * 0.025) {
+        umrissAbschliessen(punkte);
+        return;
+      }
+    }
+    setPunkte([...punkte, [x, y]]);
   };
 
   const zurueckAufNull = () => {
     setPunkte([]);
-    setModus('ecken');
+    setModus('umriss');
   };
 
   return (
@@ -161,10 +185,10 @@ export function FotoHintergrund({
                 onClick={() => {
                   zurueckAufNull();
                   const { eckenPx: _e, ...rest } = foto;
-                  onFoto({ ...rest, traufePx: null });
+                  onPatch({ foto: { ...rest, traufePx: null }, umrissM: undefined, inaktiv: [] });
                 }}
               >
-                Dachfläche neu markieren
+                Umriss neu zeichnen
               </button>
             )}
             {foto.eckenPx && (
@@ -244,10 +268,10 @@ export function FotoHintergrund({
           <div className="mb-2 flex flex-wrap gap-2">
             <button
               type="button"
-              className={modusKnopfKlasse(modus === 'ecken')}
-              onClick={() => wechsleModus('ecken')}
+              className={modusKnopfKlasse(modus === 'umriss')}
+              onClick={() => wechsleModus('umriss')}
             >
-              Dachfläche markieren (4 Ecken)
+              Umriss zeichnen
             </button>
             <button
               type="button"
@@ -256,6 +280,26 @@ export function FotoHintergrund({
             >
               Ziegel zählen (Maßstab)
             </button>
+            {modus === 'umriss' && (
+              <>
+                <button
+                  type="button"
+                  disabled={punkte.length < 4}
+                  className="h-9 rounded-lg bg-akzent px-3 text-sm font-semibold text-white disabled:opacity-40"
+                  onClick={() => umrissAbschliessen(punkte)}
+                >
+                  ✓ Fertig ({punkte.length} Ecken)
+                </button>
+                <button
+                  type="button"
+                  disabled={punkte.length === 0}
+                  className={`${knopfKlasse} disabled:opacity-40`}
+                  onClick={() => setPunkte(punkte.slice(0, -1))}
+                >
+                  ↶ Punkt zurück
+                </button>
+              </>
+            )}
             {modus === 'ziegel' && (
               <>
                 <label className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -292,14 +336,14 @@ export function FotoHintergrund({
             )}
           </div>
 
-          {modus === 'ecken' ? (
+          {modus === 'umriss' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Dachfläche markieren:</strong> die 4 Ecken der Fläche anklicken —{' '}
-              <strong>Reihenfolge egal</strong>, die unterste Kante wird als Traufe angenommen
-              (danach ggf. „↻ Traufe wechseln"). Die Module werden perspektivisch exakt
-              eingepasst (auch bei schräg aufgenommenem Foto). Danach läuft der Belegungs-Check
-              gegen die eingegebenen Maße
-              {foto.pxProM === undefined ? ' — dafür vorher „Ziegel zählen"' : ''}.
+              <strong>Umriss zeichnen:</strong> die Ecken der Dachfläche der Reihe nach anklicken
+              — <strong>mindestens 4</strong>, für Walm/L-Form beliebig mehr. Schließen: auf den
+              ersten Punkt klicken oder „Fertig". Die Module werden perspektivisch exakt
+              eingepasst (auch bei schrägem Foto), die unterste Kante gilt als Traufe (danach
+              ggf. „↻ Traufe wechseln").
+              {foto.pxProM === undefined ? ' Für den Maß-Check vorher „Ziegel zählen".' : ''}
             </p>
           ) : (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
@@ -334,13 +378,26 @@ export function FotoHintergrund({
                   strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
                 />
               )}
+              {/* Schließ-Hinweis: gestrichelte Linie zurück zum ersten Punkt (ab 4 Ecken) */}
+              {modus === 'umriss' && punkte.length >= 4 && (
+                <line
+                  x1={punkte[punkte.length - 1]![0]}
+                  y1={punkte[punkte.length - 1]![1]}
+                  x2={punkte[0]![0]}
+                  y2={punkte[0]![1]}
+                  stroke="#f97316"
+                  strokeOpacity={0.5}
+                  strokeWidth={foto.breitePx * 0.0018}
+                  strokeDasharray={`${foto.breitePx * 0.004} ${foto.breitePx * 0.004}`}
+                />
+              )}
               {punkte.map(([px, py], i) => (
                 <circle
                   key={i}
                   cx={px}
                   cy={py}
-                  r={foto.breitePx * 0.007}
-                  fill={modus === 'ziegel' ? '#0ea5e9' : '#f97316'}
+                  r={foto.breitePx * (i === 0 && modus === 'umriss' && punkte.length >= 4 ? 0.011 : 0.007)}
+                  fill={modus === 'ziegel' ? '#0ea5e9' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
                   stroke="#ffffff"
                   strokeWidth={foto.breitePx * 0.002}
                 />
@@ -352,7 +409,9 @@ export function FotoHintergrund({
               ? punkte.length === 0
                 ? 'Anfang der Ziegel-Strecke anklicken.'
                 : `Punkt 1 gesetzt — jetzt das Ende der ${anzahlZiegel}-Ziegel-Strecke anklicken.`
-              : `Als Nächstes anklicken: ${ECKEN_LABELS[punkte.length] ?? ''} (${punkte.length + 1}/4)`}
+              : punkte.length < 4
+                ? `Ecke ${punkte.length + 1} anklicken (mindestens 4 Ecken).`
+                : 'Weitere Ecken möglich — oder ersten Punkt anklicken / „Fertig" zum Schließen.'}
           </p>
         </div>
       )}

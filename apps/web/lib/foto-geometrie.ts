@@ -91,6 +91,71 @@ export function inverseHomographie(breiteM: number, hoeheM: number, ecken: Ecken
   return inv.every((n) => Number.isFinite(n)) && (inv[6] || inv[7] || inv[8]) ? inv : null;
 }
 
+/** Konvexe Hülle (Andrew's Monotone Chain), gegen den Uhrzeigersinn. */
+function konvexeHuelle(punkte: Punkt[]): Punkt[] {
+  const p = [...punkte].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const kreuz = (o: Punkt, a: Punkt, b: Punkt) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const unten: Punkt[] = [];
+  for (const q of p) {
+    while (unten.length >= 2 && kreuz(unten[unten.length - 2]!, unten[unten.length - 1]!, q) <= 0)
+      unten.pop();
+    unten.push(q);
+  }
+  const oben: Punkt[] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i]!;
+    while (oben.length >= 2 && kreuz(oben[oben.length - 2]!, oben[oben.length - 1]!, q) <= 0)
+      oben.pop();
+    oben.push(q);
+  }
+  unten.pop();
+  oben.pop();
+  return unten.concat(oben);
+}
+
+function viereckFlaeche(a: Punkt, b: Punkt, c: Punkt, d: Punkt): number {
+  // Gauß'sche Trapezformel (Betrag), Reihenfolge a,b,c,d als Ring
+  return (
+    Math.abs(
+      a[0] * b[1] - b[0] * a[1] +
+      b[0] * c[1] - c[0] * b[1] +
+      c[0] * d[1] - d[0] * c[1] +
+      d[0] * a[1] - a[0] * d[1],
+    ) / 2
+  );
+}
+
+/**
+ * Wählt aus beliebig vielen Umriss-Ecken die 4 Punkte, die das flächengrößte
+ * umschließende Viereck bilden — das dient als Perspektiv-Referenz (Homographie),
+ * während der volle Umriss die Belegung maskiert. Bei genau 4 Punkten sind es
+ * diese; bei < 4 (nach konvexer Hülle) mit den ersten Klicks aufgefüllt.
+ */
+export function vierEckenFuerHomographie(punkte: Punkt[]): [Punkt, Punkt, Punkt, Punkt] {
+  const h = konvexeHuelle(punkte);
+  if (h.length >= 4) {
+    let best = -1;
+    let idx: [number, number, number, number] = [0, 1, 2, 3];
+    for (let i = 0; i < h.length; i++)
+      for (let j = i + 1; j < h.length; j++)
+        for (let k = j + 1; k < h.length; k++)
+          for (let l = k + 1; l < h.length; l++) {
+            const a = viereckFlaeche(h[i]!, h[j]!, h[k]!, h[l]!);
+            if (a > best) {
+              best = a;
+              idx = [i, j, k, l];
+            }
+          }
+    return [h[idx[0]]!, h[idx[1]]!, h[idx[2]]!, h[idx[3]]!];
+  }
+  // Degeneriert (< 4 Hüllenpunkte): mit den geklickten Punkten auffüllen
+  const q = [...punkte];
+  while (q.length < 4) q.push(punkte[punkte.length - 1] ?? [0, 0]);
+  return [q[0]!, q[1]!, q[2]!, q[3]!];
+}
+
 /** SVG-Pfad eines in Foto-Pixel projizierten Polygons (Flächen-Koordinaten in m). */
 export function projPfad(h: M3, punkte: Punkt[]): string {
   return (
