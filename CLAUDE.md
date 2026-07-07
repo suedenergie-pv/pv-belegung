@@ -67,6 +67,23 @@ packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsc
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
 
+## Session-Übergabe 07.07.2026 (6. Session — Opus)
+
+- **Belegungs-Optimierer als Hybrid** (`berechneRaster`, `optimierePosition`): ausgerichteter
+  Block als Standard, reihenweiser Treppen-Versatz nur bei komplexen/schrägen Dächern mit
+  klarem Gewinn (Schwelle max(2, 10 %)). Vorgeschichte s. Punkt 3 der 5. Session.
+- **Foto-Ablauf: Hindernisse VOR der Belegung** (`markierungFertig`-Flag an Flaeche).
+  Genrih: bei belegtem Dach sieht man Kamin/Fenster nicht zum Markieren. Jetzt: Umriss
+  zeichnen → das LEERE Foto bleibt → Hindernisse (2 Klicks) drauf → „Dach belegen".
+  `FotoHintergrund` hat jetzt den Hindernis-Modus + Overlays; „✎ Markierung ändern"
+  bringt aus der Belegung zurück aufs leere Foto. `SchrittBelegung` zeigt die Belegung
+  erst bei `markierungFertig`; das dortige Umriss/Hindernis-Zeichnen ist nur noch für die
+  Draufsicht (ohne Foto). Migration: bestehende Foto-Flächen = markierungFertig true.
+- **Bekannte Einschränkung:** die Foto-Homographie-Ansicht (`DachSvg` eckenPx-Zweig) rendert
+  Module als einfache schwarze Vierecke OHNE die silbrigen Jolywood-Zelllinien (die gibt es
+  nur in Draufsicht + Alt-Affin-Zweig). Falls Genrih das im Foto stört → dort ModulSymbol
+  statt Flächen-Pfade projizieren.
+
 ## Session-Übergabe 06.07.2026 (5. Session — Opus, autonom)
 
 Fünf Genrih-Wünsche + Backlog abgearbeitet, je Schritt committet & gepusht (Deploy automatisch):
