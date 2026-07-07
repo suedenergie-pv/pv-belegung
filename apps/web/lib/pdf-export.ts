@@ -1,4 +1,5 @@
 import type { StringPlanResult } from '@pv-belegung/engine';
+import { logoPng } from './logo';
 import { aktiveModule, fmtDe, kwpGesamt, modulById, randVon, rasterFuer, wrById, type Projekt } from './model';
 
 /**
@@ -71,6 +72,9 @@ export async function erzeugeBelegungsPdf(
   const { jsPDF } = await import('jspdf');
   const modul = modulById(projekt.modulId);
 
+  // Logo vorab rastern (fällt bei Fehler auf den Text-Schriftzug zurück)
+  const logo = await logoPng().catch(() => null);
+
   // Alle Flächen vorab rastern (Detailbreite; die Übersicht nutzt dieselben Bilder)
   const bilder = new Map<string, { dataUrl: string; seitenverhaeltnis: number }>();
   for (const f of projekt.flaechen) {
@@ -102,9 +106,16 @@ export async function erzeugeBelegungsPdf(
   doc.setFontSize(20);
   doc.setTextColor(20);
   doc.text('Belegungsplan', RAND, y);
-  doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text('SüdEnergie PV', SEITE_B - RAND, y, { align: 'right' });
+  if (logo) {
+    // Logo oben rechts, an der Titelzeile ausgerichtet (Icon = Schrifthöhe, s. logo.ts)
+    const logoH = 9;
+    const logoW = logoH * (logo.w / logo.h);
+    doc.addImage(logo.dataUrl, 'PNG', SEITE_B - RAND - logoW, y - 6.6, logoW, logoH);
+  } else {
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text('SüdEnergie PV', SEITE_B - RAND, y, { align: 'right' });
+  }
   y += 7;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
