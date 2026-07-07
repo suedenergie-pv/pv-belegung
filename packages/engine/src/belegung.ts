@@ -33,11 +33,11 @@ export interface BelegungInput {
   /** Hindernisse (Kamin, Fenster, SAT …): schneidende Module entfallen. */
   hindernisseM?: readonly RechteckM[];
   /**
-   * Reihen-Optimierung (Default true): bei Umriss jede Reihe horizontal so
-   * verschieben, dass mehr Module passen (Walm/asymmetrisch). Rechteck und
-   * symmetrische Reihen bleiben zentriert. false = reines zentriertes Gitter.
+   * Positions-Optimierung (Default true): bei Umriss das GANZE Raster als Block
+   * horizontal so verschieben, dass insgesamt die meisten Module passen — Spalten
+   * bleiben reihenübergreifend ausgerichtet. false = reines zentriertes Gitter.
    */
-  optimiereReihen?: boolean;
+  optimierePosition?: boolean;
 }
 
 export interface ModulPosition {
@@ -83,6 +83,7 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
   const hindernisse = input.hindernisseM ?? [];
   const pitchX = modulBreiteM + fugeM;
+  const pitchY = modulHoeheM + fugeM;
 
   const gueltig = (xM: number, yM: number): boolean => {
     const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
@@ -91,48 +92,43 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   };
 
   const EPS = 1e-4;
-  const positionen: ModulPosition[] = [];
-  for (let row = 0; row < rows; row++) {
-    const yM = y0 + row * (modulHoeheM + fugeM);
-    // Standard-Gitter dieser Reihe (Original-Spaltenindex bleibt erhalten → stabile Keys)
-    const gitter: { col: number; xM: number }[] = [];
-    for (let col = 0; col < cols; col++) {
-      const xM = x0 + col * pitchX;
-      if (gueltig(xM, yM)) gitter.push({ col, xM });
-    }
-    // Optimierung (SPEC §9, 06.07.2026): Nur bei Umriss die Reihe horizontal
-    // verschieben, und NUR wenn dadurch echt mehr Module passen (Walm/asymmetrisch).
-    // Reihenraster bleibt (feste y-Positionen), kein allgemeiner Packer. Rechteck
-    // und symmetrisches Trapez bleiben dadurch unverändert.
-    let beste = gitter.map((g) => g.xM);
-    if (umriss && cols > 0 && (input.optimiereReihen ?? true)) {
-      const maxRechts = input.breiteM - randM + EPS;
-      const schritt = pitchX / 24;
-      // Unwucht = |linker Rand − rechter Rand| des Modul-Laufs in der Nutzbreite;
-      // Tie-Break auf minimale Unwucht → symmetrische Formen bleiben zentriert.
-      const unwucht = (xs: number[]): number =>
-        xs.length === 0
-          ? Infinity
-          : Math.abs(
-              xs[0]! - randM - (input.breiteM - randM - (xs[xs.length - 1]! + modulBreiteM)),
-            );
-      let besteUnwucht = unwucht(beste);
-      for (let off = randM; off <= randM + pitchX + EPS; off += schritt) {
-        const xs: number[] = [];
-        for (let xM = off; xM + modulBreiteM <= maxRechts; xM += pitchX) {
-          if (gueltig(xM, yM)) xs.push(xM);
-        }
-        const u = unwucht(xs);
-        if (xs.length > beste.length || (xs.length === beste.length && u < besteUnwucht - EPS)) {
-          beste = xs;
-          besteUnwucht = u;
-        }
+  const yPos: number[] = [];
+  for (let row = 0; row < rows; row++) yPos.push(y0 + row * pitchY);
+
+  // Positions-Optimierung (SPEC §9, überarbeitet 07.07.2026): Bei Umriss wird das
+  // GANZE Raster als Block horizontal verschoben, sodass insgesamt die meisten
+  // Module passen. Die Spalten bleiben reihenübergreifend AUSGERICHTET (kein
+  // Reihen-Versatz — der sah bei asymmetrischen Formen wie L/Walm hässlich aus,
+  // Genrih 07.07.). Rechteck bleibt zentriert; Tie-Break auf minimalen Versatz.
+  let dx = 0;
+  if (umriss && cols > 0 && rows > 0 && (input.optimierePosition ?? true)) {
+    const zaehle = (v: number): number => {
+      let n = 0;
+      for (const yM of yPos)
+        for (let col = 0; col < cols; col++) if (gueltig(x0 + v + col * pitchX, yM)) n++;
+      return n;
+    };
+    let best = zaehle(0);
+    let bestAbs = 0;
+    const dxMin = -x0; // linkeste Spalte bei x = 0
+    const dxMax = input.breiteM - belegtB - x0; // rechteste Spalte bei x = breiteM
+    const schritt = pitchX / 24;
+    for (let v = dxMin; v <= dxMax + EPS; v += schritt) {
+      const n = zaehle(v);
+      if (n > best || (n === best && Math.abs(v) < bestAbs - EPS)) {
+        best = n;
+        bestAbs = Math.abs(v);
+        dx = v;
       }
     }
-    if (beste.length > gitter.length) {
-      beste.forEach((xM, i) => positionen.push({ row, col: i, xM, yM }));
-    } else {
-      gitter.forEach((g) => positionen.push({ row, col: g.col, xM: g.xM, yM }));
+  }
+
+  const positionen: ModulPosition[] = [];
+  for (let row = 0; row < rows; row++) {
+    const yM = yPos[row]!;
+    for (let col = 0; col < cols; col++) {
+      const xM = x0 + dx + col * pitchX;
+      if (gueltig(xM, yM)) positionen.push({ row, col, xM, yM });
     }
   }
 

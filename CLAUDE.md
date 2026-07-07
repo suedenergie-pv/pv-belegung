@@ -79,10 +79,12 @@ Fünf Genrih-Wünsche + Backlog abgearbeitet, je Schritt committet & gepusht (De
 2. **Jolywood-Rendering** (`DachSvg ModulSymbol`): Niwa Black rendert jetzt Glas-Glas-
    Optik mit sichtbaren SILBRIGEN Zellfugen (war schwarzes Rechteck); Aiko ABC bleibt
    echt schwarz. Genrih: „man sollte die leichten silbernen Linien erkennen."
-3. **Belegungs-Optimierer** (`berechneRaster`): bei Umriss wird jede Reihe horizontal
-   verschoben, WENN dadurch mehr Module passen (Walm 1–3 Module), Tie-Break zentriert
-   → symmetrische Formen bleiben symmetrisch, Rechtecke unverändert. `optimiereReihen`-
-   Flag (Default true). Verschiebt NIE Module raus (nur strikt mehr).
+3. **Belegungs-Optimierer** (`berechneRaster`): bei Umriss wird das GANZE Raster als
+   Block horizontal verschoben, sodass insgesamt die meisten Module passen — Spalten
+   bleiben reihenübergreifend AUSGERICHTET. `optimierePosition`-Flag (Default true).
+   ⚠️ 07.07. korrigiert: erst war es Reihen-EINZEL-Versatz (`optimiereReihen`) — das
+   sah bei asymmetrischen Formen (L/Walm) hässlich aus (versetzte Reihen, Genrih-
+   Beschwerde). Jetzt globaler Block-Versatz, kein Reihen-Salat mehr.
 4. **PDF-Kleinkram**: `Projekt.erfasser` + Eingabefeld (SchrittProjekt), im PDF-Kopf +
    JSON; Datum „06.07.2026" (dd.mm.yyyy).
 5. **Stringplan → „Stringcheck"** (Nav + Einleitungshinweis „optionaler Check für

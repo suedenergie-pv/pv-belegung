@@ -29,7 +29,7 @@ const TESTMODUL: ModuleType = {
 };
 
 // Default: reines Filtern (Optimierung aus), damit die Filter-Tests unbeeinflusst
-// bleiben. Die Optimierer-Tests schalten optimiereReihen: true explizit an.
+// bleiben. Die Optimierer-Tests schalten optimierePosition: true explizit an.
 function raster(over: Partial<BelegungInput> = {}) {
   return berechneRaster({
     breiteM: 5,
@@ -38,7 +38,7 @@ function raster(over: Partial<BelegungInput> = {}) {
     ausrichtung: 'quer',
     randM: 0,
     fugeM: 0,
-    optimiereReihen: false,
+    optimierePosition: false,
     ...over,
   });
 }
@@ -153,26 +153,32 @@ describe('trapezUmriss — parametrische Dachform (SPEC §9, 06.07.2026)', () =>
   });
 });
 
-describe('Reihen-Optimierung: horizontaler Versatz nur bei echtem Gewinn (SPEC §9)', () => {
-  it('verschiebt eine Reihe, wenn dadurch ein Modul mehr passt (asymmetrisches Band)', () => {
-    // Gültiges Band [1,5 .. 4,5] (Breite 3): zentriertes Gitter (x=0..4) trifft nur 2
-    // Module (x=2,3); ein Versatz auf 1,5/2,5/3,5 bringt 3 — genau der Walm-Nutzen.
-    const r = raster({ hoeheM: 1, optimiereReihen: true, umrissM: [[1.5, 0], [4.5, 0], [4.5, 1], [1.5, 1]] });
-    expect(r.positionen).toHaveLength(3);
-    expect(r.positionen.map((p) => Math.round(p.xM * 100) / 100)).toEqual([1.5, 2.5, 3.5]);
+describe('Positions-Optimierung: ganzes Raster als Block verschieben, Spalten ausgerichtet (SPEC §9)', () => {
+  it('verschiebt den ganzen Block, wenn dadurch je Reihe ein Modul mehr passt', () => {
+    // Fläche 5,5 breit → 5 Spalten, Slack 0,5, zentriert x0=0,25. Umriss rechts
+    // versetzt [0,5 .. 5,5]: zentriert passen nur 4 (col0 links außerhalb); der ganze
+    // Block 0,25 nach rechts → 5 Module je Reihe, Spalten bleiben ausgerichtet.
+    const r = raster({
+      breiteM: 5.5,
+      optimierePosition: true,
+      umrissM: [[0.5, 0], [5.5, 0], [5.5, 3], [0.5, 3]],
+    });
+    // 3 Reihen × 5 = 15, alle Reihen an denselben x-Positionen (ausgerichtet)
+    expect(r.positionen).toHaveLength(15);
+    const reihe0 = r.positionen.filter((p) => p.row === 0).map((p) => Math.round(p.xM * 100) / 100);
+    const reihe2 = r.positionen.filter((p) => p.row === 2).map((p) => Math.round(p.xM * 100) / 100);
+    expect(reihe0).toEqual([0.5, 1.5, 2.5, 3.5, 4.5]);
+    expect(reihe2).toEqual(reihe0); // reihenübergreifend ausgerichtet, kein Versatz
   });
 
-  it('symmetrisches Trapez: breite untere Reihe bekommt EIN zentriertes Modul mehr', () => {
-    // Filter-only wäre 9 (3+3+3); mit Optimierung fasst die breite Reihe 2 (y 2–3) ein
-    // 4. Modul, zentriert (0,5/1,5/2,5/3,5) — symmetrisch, kein Versatz-Salat.
-    const r = raster({ optimiereReihen: true, umrissM: trapezUmriss(5, 3, 3) });
-    expect(r.positionen).toHaveLength(10);
-    const reihe2 = r.positionen.filter((p) => p.row === 2).map((p) => Math.round(p.xM * 100) / 100);
-    expect(reihe2).toEqual([0.5, 1.5, 2.5, 3.5]);
+  it('symmetrisches Trapez bleibt zentriert und ausgerichtet (kein Reihen-Versatz)', () => {
+    // Alle Reihen an denselben Spalten (1,2,3) — sauberer ausgerichteter Block.
+    const r = raster({ optimierePosition: true, umrissM: trapezUmriss(5, 3, 3) });
+    expect(keys(r)).toEqual(['0-1', '0-2', '0-3', '1-1', '1-2', '1-3', '2-1', '2-2', '2-3']);
   });
 
   it('Rechteck (kein Umriss) wird NIE verschoben, auch mit Optimierung an', () => {
-    const r = raster({ optimiereReihen: true });
+    const r = raster({ optimierePosition: true });
     expect(keys(r)).toEqual([
       '0-0', '0-1', '0-2', '0-3', '0-4',
       '1-0', '1-1', '1-2', '1-3', '1-4',
