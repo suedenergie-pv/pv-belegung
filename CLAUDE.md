@@ -95,6 +95,18 @@ mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-R
   (X/Y gestrichelt durch den Cursor, `mausPx`) + Vorschaulinie vom letzten Punkt — zum
   Ausrichten von Ecken im leeren Raum. `vierEckenFuerHomographie` bleibt ungenutzt im
   Code (foto-geometrie), schadet nicht. Modi jetzt: perspektive/umriss/hindernis/ziegel.
+- **Foto-Module perspektivisch exakt** (`modul-assets.ts`, `DachSvg`): die affine
+  3-Ecken-Einpassung (Parallelogramm) verzog Module bei schrägem Foto („Module schief").
+  Jetzt `modulMatrixDreiecke` — Modul in 2 Dreiecke geteilt, jedes exakt auf die 4
+  homographisch projizierten Ecken (`affine3`). WICHTIG: Clip am transformLOSEN `<g>`,
+  nicht am transformierten `<use>` (sonst Clip im Asset-Raum → falsch). Draufsicht bleibt
+  bei `modulMatrix` (perspektivfrei = exakt).
+- **PDF realistisch + Einzelseite** (`DachSvg` `druck`-Prop, `pdf-export`): im Druck keine
+  Umriss-/Hindernis-/Randlinien-Overlays, deaktivierte Module weg — nur Foto + Module.
+  Eine Dachfläche → nur Seite 1 (große Gesamtansicht, keine Detailseite); mehrere → wie
+  bisher (Übersicht + Detailseiten).
+
+**BACKUP-Tag `backup-2026-07-07`** markiert diesen Stand (Wiederherstellungspunkt).
 
 ## Session-Übergabe 06.07.2026 (5. Session — Opus, autonom)
 
