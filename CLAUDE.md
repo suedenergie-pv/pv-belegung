@@ -87,6 +87,13 @@ Fünf Genrih-Wünsche + Backlog abgearbeitet, je Schritt committet & gepusht (De
    JSON; Datum „06.07.2026" (dd.mm.yyyy).
 5. **Stringplan → „Stringcheck"** (Nav + Einleitungshinweis „optionaler Check für
    kleine Anlagen"). Genrih: kein Main-Feature.
+6. **Foto-Umriss direkt zeichnen** (`FotoHintergrund` + `foto-geometrie`) — Genrih
+   fand den alten „erst 4 Ecken kalibrieren, DANN Umriss zeichnen"-Zweischritt
+   umständlich. Jetzt EINE Aktion „Umriss zeichnen": Ecken der Reihe nach klicken
+   (≥4), schließen per erstem Punkt/„Fertig". `vierEckenFuerHomographie` bestimmt
+   die 4 Perspektiv-Ecken (größtes umschließendes Viereck der konvexen Hülle) für
+   die Homographie; zusätzliche Ecken → `umrissM`-Maske via inverse Homographie.
+   4 Ecken = einfaches Viereck (umrissM leer), >4 = maskierte Form (L/Walm).
 
 **Verifiziert im Browser** (debug-shot): Trapez-Filter, Jolywood-Linien, Optimierer an
 asymmetrischem Walm (Reihen folgen dem Grat, keine Module verloren), PDF mit Erfasser+
