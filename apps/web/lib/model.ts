@@ -4,8 +4,10 @@ import {
   INVERTERS,
   DEFAULT_RAND_M,
   berechneRaster,
+  besterVersatz,
   checkStringPlan,
   trapezUmriss,
+  type BelegungInput,
   type BelegungRaster,
   type InverterType,
   type ModuleType,
@@ -119,6 +121,12 @@ export interface Flaeche {
    * als Bänder-Stapel (gemischt hoch/quer, SPEC §9).
    */
   baender?: ('hoch' | 'quer')[];
+  /**
+   * Manueller Versatz der Belegung, Meter (Nudge). Gesetzt → phasenverschobenes
+   * Gitter (Engine), wirkt auch in Gesamtansicht/PDF.
+   */
+  versatzXM?: number;
+  versatzYM?: number;
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
 }
@@ -216,8 +224,8 @@ export function wrById(id: string): InverterType {
   return wr;
 }
 
-export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
-  return berechneRaster({
+function belegungInput(f: Flaeche, modul: ModuleType): BelegungInput {
+  return {
     breiteM: f.breiteM,
     hoeheM: f.hoeheM,
     module: modul,
@@ -226,7 +234,21 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
     umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
     baender: f.baender,
-  });
+    versatzXM: f.versatzXM,
+    versatzYM: f.versatzYM,
+  };
+}
+
+export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
+  return berechneRaster(belegungInput(f, modul));
+}
+
+/** Beste Verschiebung dieser Fläche (max. Module), ohne bestehenden Versatz. */
+export function besterVersatzFuer(f: Flaeche, modul: ModuleType): {
+  versatzXM: number;
+  versatzYM: number;
+} {
+  return besterVersatz({ ...belegungInput(f, modul), versatzXM: undefined, versatzYM: undefined });
 }
 
 export function aktiveModule(f: Flaeche, raster: BelegungRaster): number {

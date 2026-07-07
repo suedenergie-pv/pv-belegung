@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { berechneRaster, DEFAULT_RAND_M } from '../src/belegung';
+import { berechneRaster, besterVersatz, DEFAULT_RAND_M } from '../src/belegung';
 import { JOLYWOOD_JW_HD96N_R2_460 } from '../src/catalog/modules';
 
 const M = JOLYWOOD_JW_HD96N_R2_460; // 1762 × 1134 mm
@@ -151,6 +151,46 @@ describe('Gemischte Ausrichtung — Bänder (SPEC §9, 07.07.2026)', () => {
       ausrichtung: 'hoch',
       baender: ['quer'],
     });
+    for (const p of r.positionen) {
+      expect(p.xM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.yM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.xM + p.wM).toBeLessThanOrEqual(10 - r.randM + 1e-9);
+      expect(p.yM + p.hM).toBeLessThanOrEqual(6 - r.randM + 1e-9);
+    }
+  });
+});
+
+describe('Manueller Versatz / Nudge (07.07.2026)', () => {
+  const basis = { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const };
+  // Hindernis, das nur Reihe0/Spalte0 streift (x 0,40..0,65) → 1 Modul entfaellt.
+  const hindernis = { xM: 0.4, yM: 0.4, breiteM: 0.25, hoeheM: 0.3 };
+
+  it('Versatz 0 aendert die Standardbelegung (Rechteck) nicht', () => {
+    const ohne = berechneRaster(basis);
+    const mit0 = berechneRaster({ ...basis, versatzXM: 0, versatzYM: 0 });
+    expect(mit0.positionen).toHaveLength(ohne.positionen.length); // 25
+  });
+
+  it('Verschieben befreit ein vom Hindernis gestreiftes Modul', () => {
+    const voll = berechneRaster(basis).positionen.length; // 25
+    const gestreift = berechneRaster({ ...basis, hindernisseM: [hindernis] });
+    expect(gestreift.positionen.length).toBe(voll - 1); // 24
+    // 10 cm nach rechts → Modul frei, wieder voll belegt
+    const verschoben = berechneRaster({ ...basis, hindernisseM: [hindernis], versatzXM: 0.1 });
+    expect(verschoben.positionen.length).toBe(voll); // 25
+  });
+
+  it('besterVersatz findet die Lage mit den meisten Modulen', () => {
+    const input = { ...basis, hindernisseM: [hindernis] };
+    const best = besterVersatz(input);
+    const voll = berechneRaster(basis).positionen.length; // 25
+    const r = berechneRaster({ ...input, versatzXM: best.versatzXM, versatzYM: best.versatzYM });
+    expect(r.positionen.length).toBe(voll); // Hindernis umgangen
+  });
+
+  it('Versatz bleibt in der Zone (Randabstand eingehalten)', () => {
+    const r = berechneRaster({ ...basis, versatzXM: 0.3, versatzYM: -0.2 });
+    expect(r.positionen.length).toBeGreaterThan(0);
     for (const p of r.positionen) {
       expect(p.xM).toBeGreaterThanOrEqual(r.randM - 1e-9);
       expect(p.yM).toBeGreaterThanOrEqual(r.randM - 1e-9);

@@ -46,6 +46,16 @@ export interface BelegungInput {
    * nach — der ehrliche „Platz geht verloren"-Effekt.
    */
   baender?: readonly ('hoch' | 'quer')[];
+  /**
+   * Manueller Versatz der ganzen Belegung, Meter (Nudge, Genrih 07.07.). Ist einer
+   * der Werte gesetzt (auch 0), wird das Gitter phasenverschoben in die Zone gelegt
+   * und wie immer gefiltert: Module, die aus Rand/Umriss fallen oder ein Hindernis
+   * treffen, entfallen; frei werdende Module kommen dazu. Der Auto-Optimierer
+   * entfaellt in diesem Modus (Nutzer bzw. besterVersatz bestimmt die Lage).
+   * Positiv X = nach rechts (Traufe), positiv Y = nach unten (Richtung Traufe).
+   */
+  versatzXM?: number;
+  versatzYM?: number;
 }
 
 export interface ModulPosition {
@@ -70,6 +80,20 @@ export interface BelegungRaster {
   positionen: ModulPosition[];
   randM: number;
   fugeM: number;
+}
+
+/**
+ * Achspositionen eines Gitters (Nudge): alle `anker + k·pitch`, die mit ihrer
+ * Modulgröße komplett in [rand, dim − rand] liegen. `anker` legt die Phase fest;
+ * so kann Verschieben am Rand eine Spalte/Reihe gewinnen oder verlieren.
+ */
+function gitterAchse(anker: number, pitch: number, size: number, rand: number, dim: number): number[] {
+  if (pitch <= 0) return [];
+  const maxPos = dim - rand;
+  const k0 = Math.ceil((rand - anker) / pitch - 1e-9);
+  const res: number[] = [];
+  for (let v = anker + k0 * pitch; v + size <= maxPos + 1e-9; v += pitch) res.push(v);
+  return res;
 }
 
 export function berechneRaster(input: BelegungInput): BelegungRaster {
@@ -185,6 +209,35 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
 
   // Roh = Position ohne Ausrichtungs-/Maß-Annotation (im Einheitspfad überall gleich).
   type Roh = { row: number; col: number; xM: number; yM: number };
+  const querBasis = basisA === 'quer';
+  const annotiere = (roh: Roh[]): ModulPosition[] =>
+    roh.map((p) => ({ ...p, quer: querBasis, wM: modulBreiteM, hM: modulHoeheM }));
+
+  // ---- Manueller Versatz (Nudge, 07.07.2026) ----
+  // Ist ein Versatz gesetzt, wird das Gitter phasenverschoben ab dem (schon
+  // optimierten) Anker basisX0/y0 gelegt und wie immer gefiltert. Der Auto-
+  // Optimierer unten entfällt dann — die Lage bestimmt der Nutzer.
+  if (input.versatzXM !== undefined || input.versatzYM !== undefined) {
+    const ankerX = basisX0 + (input.versatzXM ?? 0);
+    const ankerY = y0 + (input.versatzYM ?? 0);
+    const xs = gitterAchse(ankerX, pitchX, modulBreiteM, randM, input.breiteM);
+    const ys = gitterAchse(ankerY, pitchY, modulHoeheM, randM, input.hoeheM);
+    const roh: Roh[] = [];
+    ys.forEach((yM, iy) =>
+      xs.forEach((xM, ix) => {
+        if (gueltig(xM, yM)) roh.push({ row: iy, col: ix, xM, yM });
+      }),
+    );
+    return {
+      cols: xs.length,
+      rows: ys.length,
+      modulBreiteM,
+      modulHoeheM,
+      positionen: annotiere(roh),
+      randM,
+      fugeM,
+    };
+  }
 
   const ausgerichtet: Roh[] = [];
   for (let row = 0; row < rows; row++) {
@@ -246,14 +299,29 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
       ? reihenweise
       : ausgerichtet;
 
-  // Einheitspfad: alle Module tragen die Basis-Ausrichtung und -Maße.
-  const querBasis = basisA === 'quer';
-  const positionen: ModulPosition[] = roh.map((p) => ({
-    ...p,
-    quer: querBasis,
-    wM: modulBreiteM,
-    hM: modulHoeheM,
-  }));
+  return { cols, rows, modulBreiteM, modulHoeheM, positionen: annotiere(roh), randM, fugeM };
+}
 
-  return { cols, rows, modulBreiteM, modulHoeheM, positionen, randM, fugeM };
+/**
+ * Sucht den Versatz (relativ zur optimierten Standardlage), bei dem die MEISTEN
+ * Module passen — cm-genau über eine volle Gitterphase (± halbe Modulteilung je
+ * Achse). Bei Gleichstand gewinnt der kleinste Versatz (nah an der Mitte). Löst
+ * den „wegen 2 cm fehlt ein Modul"-Fall per Klick (Genrih 07.07.).
+ */
+export function besterVersatz(input: BelegungInput): { versatzXM: number; versatzYM: number } {
+  const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
+  const probe = berechneRaster({ ...input, versatzXM: 0, versatzYM: 0 });
+  const pitchX = probe.modulBreiteM + fugeM;
+  const pitchY = probe.modulHoeheM + fugeM;
+  const spanX = pitchX / 2;
+  const spanY = pitchY / 2;
+  let best = { n: -1, vx: 0, vy: 0 };
+  for (let vy = -spanY; vy <= spanY + 1e-9; vy += 0.01) {
+    for (let vx = -spanX; vx <= spanX + 1e-9; vx += 0.01) {
+      const n = berechneRaster({ ...input, versatzXM: vx, versatzYM: vy }).positionen.length;
+      const naeher = Math.hypot(vx, vy) < Math.hypot(best.vx, best.vy) - 1e-9;
+      if (n > best.n || (n === best.n && naeher)) best = { n, vx, vy };
+    }
+  }
+  return { versatzXM: Math.round(best.vx * 100) / 100, versatzYM: Math.round(best.vy * 100) / 100 };
 }
