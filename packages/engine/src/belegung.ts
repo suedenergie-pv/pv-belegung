@@ -92,16 +92,24 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   };
 
   const EPS = 1e-4;
+  const schritt = pitchX / 24;
   const yPos: number[] = [];
   for (let row = 0; row < rows; row++) yPos.push(y0 + row * pitchY);
+  const optimieren = !!umriss && cols > 0 && rows > 0 && (input.optimierePosition ?? true);
 
-  // Positions-Optimierung (SPEC §9, überarbeitet 07.07.2026): Bei Umriss wird das
-  // GANZE Raster als Block horizontal verschoben, sodass insgesamt die meisten
-  // Module passen. Die Spalten bleiben reihenübergreifend AUSGERICHTET (kein
-  // Reihen-Versatz — der sah bei asymmetrischen Formen wie L/Walm hässlich aus,
-  // Genrih 07.07.). Rechteck bleibt zentriert; Tie-Break auf minimalen Versatz.
+  /**
+   * Positions-Optimierung (SPEC §9, Stand 07.07.2026). Zwei Kandidaten:
+   * (1) AUSGERICHTET — das ganze Raster als Block horizontal verschieben, Spalten
+   *     bleiben reihenübergreifend gerade. Das ist der Standard: sieht sauber aus,
+   *     kein Reihen-Versatz. (2) REIHENWEISE — jede Reihe darf einzeln abweichen,
+   *     falls sie dadurch strikt mehr Module fasst (schräge/komplexe Dächer).
+   * Reihenweise wird NUR genommen, wenn es deutlich mehr Module bringt (Schwelle),
+   * sonst gerade montieren wenn offensichtlich Platz ist (Genrih 07.07.).
+   */
+
+  // (1) Bester globaler Block-Versatz dx
   let dx = 0;
-  if (umriss && cols > 0 && rows > 0 && (input.optimierePosition ?? true)) {
+  if (optimieren) {
     const zaehle = (v: number): number => {
       let n = 0;
       for (const yM of yPos)
@@ -110,9 +118,8 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
     };
     let best = zaehle(0);
     let bestAbs = 0;
-    const dxMin = -x0; // linkeste Spalte bei x = 0
-    const dxMax = input.breiteM - belegtB - x0; // rechteste Spalte bei x = breiteM
-    const schritt = pitchX / 24;
+    const dxMin = -x0;
+    const dxMax = input.breiteM - belegtB - x0;
     for (let v = dxMin; v <= dxMax + EPS; v += schritt) {
       const n = zaehle(v);
       if (n > best || (n === best && Math.abs(v) < bestAbs - EPS)) {
@@ -122,15 +129,67 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
       }
     }
   }
+  const basisX0 = x0 + dx;
 
-  const positionen: ModulPosition[] = [];
+  const ausgerichtet: ModulPosition[] = [];
   for (let row = 0; row < rows; row++) {
     const yM = yPos[row]!;
     for (let col = 0; col < cols; col++) {
-      const xM = x0 + dx + col * pitchX;
-      if (gueltig(xM, yM)) positionen.push({ row, col, xM, yM });
+      const xM = basisX0 + col * pitchX;
+      if (gueltig(xM, yM)) ausgerichtet.push({ row, col, xM, yM });
     }
   }
+
+  // (2) Reihenweiser Kandidat: je Reihe vom Block abweichen, nur bei echtem Gewinn.
+  let reihenweise: ModulPosition[] | null = null;
+  if (optimieren) {
+    const maxRechts = input.breiteM - randM + EPS;
+    // Unwucht = |linker Rand − rechter Rand| → zentriert, wenn eine Reihe abweicht.
+    const unwucht = (xs: number[]): number =>
+      xs.length === 0
+        ? Infinity
+        : Math.abs(xs[0]! - randM - (input.breiteM - randM - (xs[xs.length - 1]! + modulBreiteM)));
+    reihenweise = [];
+    for (let row = 0; row < rows; row++) {
+      const yM = yPos[row]!;
+      const basis: number[] = [];
+      for (let col = 0; col < cols; col++) {
+        const xM = basisX0 + col * pitchX;
+        if (gueltig(xM, yM)) basis.push(xM);
+      }
+      let beste = basis;
+      let besteUnwucht = unwucht(basis);
+      for (let off = randM; off <= randM + pitchX + EPS; off += schritt) {
+        const xs: number[] = [];
+        for (let xM = off; xM + modulBreiteM <= maxRechts; xM += pitchX) {
+          if (gueltig(xM, yM)) xs.push(xM);
+        }
+        const u = unwucht(xs);
+        if (xs.length > beste.length || (xs.length === beste.length && u < besteUnwucht - EPS)) {
+          beste = xs;
+          besteUnwucht = u;
+        }
+      }
+      // Nur abweichen, wenn die Reihe dadurch strikt mehr Module fasst; sonst
+      // am ausgerichteten Block bleiben (Spaltenindex bleibt → gerade Montage).
+      if (beste.length > basis.length) {
+        beste.forEach((xM, i) => reihenweise!.push({ row, col: i, xM, yM }));
+      } else {
+        let col = 0;
+        for (let c = 0; c < cols; c++) {
+          const xM = basisX0 + c * pitchX;
+          if (gueltig(xM, yM)) reihenweise!.push({ row, col: col++, xM, yM });
+        }
+      }
+    }
+  }
+
+  // Reihenweise nur, wenn es DEUTLICH mehr Module bringt (sonst gerade montieren).
+  const schwelle = Math.max(2, Math.ceil(ausgerichtet.length * 0.1));
+  const positionen =
+    reihenweise && reihenweise.length >= ausgerichtet.length + schwelle
+      ? reihenweise
+      : ausgerichtet;
 
   return { cols, rows, modulBreiteM, modulHoeheM, positionen, randM, fugeM };
 }

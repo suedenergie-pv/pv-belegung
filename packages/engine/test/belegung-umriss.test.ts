@@ -185,4 +185,18 @@ describe('Positions-Optimierung: ganzes Raster als Block verschieben, Spalten au
       '2-0', '2-1', '2-2', '2-3', '2-4',
     ]);
   });
+
+  it('schräges Parallelogramm (komplexes Dach): reihenweiser Versatz greift für deutlich mehr Module', () => {
+    // Streifen mit 0,5 Versatz je Reihe — ausgerichtet passen nur 6, der Treppen-
+    // Versatz (folgt der Schräge) fasst 8. Über der Schwelle → reihenweise.
+    const par: [number, number][] = [[0, 0], [2.5, 0], [4.5, 4], [2, 4]];
+    const opt = raster({ breiteM: 8, hoeheM: 4, optimierePosition: true, umrissM: par });
+    const nurAusgerichtet = raster({ breiteM: 8, hoeheM: 4, optimierePosition: false, umrissM: par });
+    expect(nurAusgerichtet.positionen).toHaveLength(6);
+    expect(opt.positionen).toHaveLength(8);
+    const xrow = (r: number, res: ReturnType<typeof berechneRaster>) =>
+      res.positionen.filter((p) => p.row === r).map((p) => Math.round(p.xM * 100) / 100);
+    expect(xrow(0, opt)).toEqual([0.5, 1.5]);
+    expect(xrow(3, opt)).toEqual([2, 3]); // je Reihe 0,5 nach rechts — sauberer Treppen-Versatz
+  });
 });

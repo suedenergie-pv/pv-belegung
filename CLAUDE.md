@@ -79,12 +79,15 @@ Fünf Genrih-Wünsche + Backlog abgearbeitet, je Schritt committet & gepusht (De
 2. **Jolywood-Rendering** (`DachSvg ModulSymbol`): Niwa Black rendert jetzt Glas-Glas-
    Optik mit sichtbaren SILBRIGEN Zellfugen (war schwarzes Rechteck); Aiko ABC bleibt
    echt schwarz. Genrih: „man sollte die leichten silbernen Linien erkennen."
-3. **Belegungs-Optimierer** (`berechneRaster`): bei Umriss wird das GANZE Raster als
-   Block horizontal verschoben, sodass insgesamt die meisten Module passen — Spalten
-   bleiben reihenübergreifend AUSGERICHTET. `optimierePosition`-Flag (Default true).
-   ⚠️ 07.07. korrigiert: erst war es Reihen-EINZEL-Versatz (`optimiereReihen`) — das
-   sah bei asymmetrischen Formen (L/Walm) hässlich aus (versetzte Reihen, Genrih-
-   Beschwerde). Jetzt globaler Block-Versatz, kein Reihen-Salat mehr.
+3. **Belegungs-Optimierer** (`berechneRaster`, `optimierePosition`-Flag, Default true).
+   Zwei Kandidaten, automatische Wahl: (a) AUSGERICHTET = ganzes Raster als Block
+   horizontal an die beste Position, Spalten reihenübergreifend gerade — der Standard;
+   (b) REIHENWEISE = jede Reihe darf einzeln abweichen (Treppen-Versatz, folgt der
+   Schräge), zentriert. Reihenweise nur, wenn es DEUTLICH mehr Module bringt
+   (Schwelle max(2, 10 %)). ⚠️ Historie: 06.07. erst Reihen-Einzelversatz immer →
+   bei L/Walm hässlich versetzt (Genrih); dann nur-ausgerichtet → verschenkte bei
+   schrägen Dächern Module; 07.07. final = Hybrid (gerade wenn Platz, Versatz nur
+   bei komplexen/schrägen Dächern mit klarem Gewinn).
 4. **PDF-Kleinkram**: `Projekt.erfasser` + Eingabefeld (SchrittProjekt), im PDF-Kopf +
    JSON; Datum „06.07.2026" (dd.mm.yyyy).
 5. **Stringplan → „Stringcheck"** (Nav + Einleitungshinweis „optionaler Check für
