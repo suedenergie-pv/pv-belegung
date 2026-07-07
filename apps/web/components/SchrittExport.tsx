@@ -15,6 +15,7 @@ import {
 } from '../lib/model';
 import { erzeugeBelegungsPdf } from '../lib/pdf-export';
 import { DachSvg } from './DachSvg';
+import { GesamtSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
 export function SchrittExport({ projekt }: { projekt: Projekt }) {
@@ -34,8 +35,13 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
     setPdfLaeuft(true);
     setPdfFehler(null);
     try {
-      await erzeugeBelegungsPdf(projekt, result, (flaecheId) =>
-        renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ?? null,
+      await erzeugeBelegungsPdf(
+        projekt,
+        result,
+        (flaecheId) =>
+          renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ??
+          null,
+        () => renderRef.current?.querySelector<SVGSVGElement>('[data-gesamt] svg') ?? null,
       );
     } catch (e) {
       setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
@@ -178,6 +184,11 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
             <DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul} druck />
           </div>
         ))}
+        {projekt.gesamtFoto && (
+          <div data-gesamt style={{ width: 1400 }}>
+            <GesamtSvg projekt={projekt} foto={projekt.gesamtFoto} />
+          </div>
+        )}
       </div>
     </div>
   );

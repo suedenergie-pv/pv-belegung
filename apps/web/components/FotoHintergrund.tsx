@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { dateiZuBild } from '../lib/bild';
 import {
   belegungsCheck,
   homographie,
@@ -25,29 +26,9 @@ import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche, type PunktM, type Recht
  * „Ziegel zählen" liefert den Maßstab für den Belegungs-Check.
  */
 
-const MAX_PX = 1600;
-
 async function dateiZuFoto(file: File): Promise<DachFoto> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = dataUrl;
-  });
-  const faktor = Math.min(1, MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
-  const breitePx = Math.round(img.naturalWidth * faktor);
-  const hoehePx = Math.round(img.naturalHeight * faktor);
-  const canvas = document.createElement('canvas');
-  canvas.width = breitePx;
-  canvas.height = hoehePx;
-  canvas.getContext('2d')!.drawImage(img, 0, 0, breitePx, hoehePx);
-  return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), breitePx, hoehePx, traufePx: null };
+  const bild = await dateiZuBild(file);
+  return { ...bild, traufePx: null };
 }
 
 function deckbreiteDefaultCm(f: Flaeche): number {

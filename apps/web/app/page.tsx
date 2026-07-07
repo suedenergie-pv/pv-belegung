@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittFlaechen } from '../components/SchrittFlaechen';
+import { SchrittGesamt } from '../components/SchrittGesamt';
 import { SchrittProjekt } from '../components/SchrittProjekt';
 import { SchrittStrings } from '../components/SchrittStrings';
 import {
@@ -18,7 +19,7 @@ import {
   type Projekt,
 } from '../lib/model';
 
-const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Stringcheck', 'Export'] as const;
+const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Gesamtansicht', 'Stringcheck', 'Export'] as const;
 
 export default function Home() {
   const [db, setDb] = useState<ProjektDb>({ aktivId: null, projekte: [] });
@@ -168,8 +169,9 @@ export default function Home() {
       {schritt === 0 && <SchrittProjekt projekt={projekt} onChange={setProjekt} />}
       {schritt === 1 && <SchrittFlaechen projekt={projekt} onChange={setProjekt} />}
       {schritt === 2 && <SchrittBelegung projekt={projekt} onChange={setProjekt} />}
-      {schritt === 3 && <SchrittStrings projekt={projekt} onChange={setProjekt} />}
-      {schritt === 4 && <SchrittExport projekt={projekt} />}
+      {schritt === 3 && <SchrittGesamt projekt={projekt} onChange={setProjekt} />}
+      {schritt === 4 && <SchrittStrings projekt={projekt} onChange={setProjekt} />}
+      {schritt === 5 && <SchrittExport projekt={projekt} />}
 
       <div className="flex justify-between">
         <button

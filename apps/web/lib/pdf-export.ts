@@ -68,6 +68,7 @@ export async function erzeugeBelegungsPdf(
   projekt: Projekt,
   result: StringPlanResult | null,
   svgVonFlaeche: (flaecheId: string) => SVGSVGElement | null,
+  svgGesamt?: () => SVGSVGElement | null,
 ): Promise<void> {
   const { jsPDF } = await import('jspdf');
   const modul = modulById(projekt.modulId);
@@ -81,6 +82,10 @@ export async function erzeugeBelegungsPdf(
     const svg = svgVonFlaeche(f.id);
     if (svg) bilder.set(f.id, await svgZuJpeg(svg, 1600));
   }
+
+  // Gesamtansicht (alle Flächen auf einem Drohnenfoto), falls vorhanden.
+  const gesamtSvg = svgGesamt?.() ?? null;
+  const gesamtBild = gesamtSvg ? await svgZuJpeg(gesamtSvg, 1600) : null;
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const SEITE_B = 210;
@@ -191,14 +196,26 @@ export async function erzeugeBelegungsPdf(
   doc.line(RAND, y, SEITE_B - RAND, y);
   y += 7;
 
-  // Gesamtansicht: eine Fläche = groß auf Seite 1 (einzige Ansicht, keine Detailseite);
-  // mehrere = Übersicht in 2 Spalten, danach je Fläche eine Detailseite.
+  // Gesamtansicht: bevorzugt das Drohnenfoto mit allen Flächen (falls markiert);
+  // sonst eine Fläche = groß auf Seite 1, mehrere = Übersicht in 2 Spalten.
   const einzelflaeche = projekt.flaechen.length === 1;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20);
   doc.text('Gesamtansicht', RAND, y);
   y += 5;
+
+  if (gesamtBild) {
+    // Ein Gesamtfoto vorhanden → groß und zentriert, keine Kachel-Übersicht.
+    let bildB = NUTZ_B;
+    let bildH = bildB * gesamtBild.seitenverhaeltnis;
+    const maxH = SEITE_H - y - 18;
+    if (bildH > maxH) {
+      bildH = maxH;
+      bildB = bildH / gesamtBild.seitenverhaeltnis;
+    }
+    doc.addImage(gesamtBild.dataUrl, 'JPEG', RAND + (NUTZ_B - bildB) / 2, y, bildB, bildH);
+  } else {
   const spalten = einzelflaeche ? 1 : 2;
   const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
   let zeilenHoehe = 0;
@@ -233,6 +250,7 @@ export async function erzeugeBelegungsPdf(
     } else {
       x += zelleB + 6;
     }
+  }
   }
 
   // ---- Je Fläche eine Detailseite (nur bei mehreren Flächen) ----

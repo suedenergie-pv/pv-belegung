@@ -22,6 +22,9 @@ export type Ecken = [Punkt, Punkt, Punkt, Punkt];
 /** 3×3-Matrix, zeilenweise. */
 type M3 = [number, number, number, number, number, number, number, number, number];
 
+/** Öffentlicher Alias für eine Homographie-Matrix (Rückgabe von `homographie`). */
+export type Homographie = M3;
+
 function adjugat(m: M3): M3 {
   return [
     m[4] * m[8] - m[5] * m[7],

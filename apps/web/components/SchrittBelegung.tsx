@@ -33,6 +33,10 @@ export function SchrittBelegung({
 }) {
   const modul = modulById(projekt.modulId);
   const [zeichnung, setZeichnung] = useState<Zeichnung | null>(null);
+  // Maße einblenden — beim Kunden vor Ort abschaltbar (Genrih 07.07.)
+  const [masseZeigen, setMasseZeigen] = useState(true);
+  // „Reihe umschalten"-Modus: Klick auf ein Modul dreht dessen ganze Reihe (Band)
+  const [reihenModusId, setReihenModusId] = useState<string | null>(null);
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
     0,
@@ -44,6 +48,23 @@ export function SchrittBelegung({
       ...projekt,
       flaechen: projekt.flaechen.map((x) => (x.id === id ? { ...x, ...patch } : x)),
     });
+
+  /**
+   * Ausrichtung eines ganzen Bandes (Reihe `row`) umschalten → gemischte Belegung
+   * (Genrih 07.07.). baender wird auf die aktuelle Reihenzahl aufgefüllt (Rest =
+   * Basis), die Reihe gedreht; sind danach alle gleich der Basis, zurück auf
+   * einheitlich (baender = undefined). Deaktivierte Module werden verworfen
+   * (Spaltenzahl der Reihe ändert sich), wie beim Wechsel Quer/Hochkant.
+   */
+  const flipBand = (f: Flaeche, row: number) => {
+    const rows = rasterFuer(f, modul).rows;
+    const base = f.ausrichtung;
+    const len = Math.max(rows, f.baender?.length ?? 0, row + 1);
+    const arr: ('hoch' | 'quer')[] = Array.from({ length: len }, (_, i) => f.baender?.[i] ?? base);
+    arr[row] = arr[row] === 'quer' ? 'hoch' : 'quer';
+    const alleBasis = arr.every((b) => b === base);
+    patchFlaeche(f.id, { baender: alleBasis ? undefined : arr, inaktiv: [] });
+  };
 
   const klickM = (f: Flaeche, p: PunktM) => {
     if (!zeichnung || zeichnung.flaecheId !== f.id) return;
@@ -84,13 +105,18 @@ export function SchrittBelegung({
   return (
     <div className="space-y-4">
       <Karte className="border-akzent/30 bg-gradient-to-r from-white to-akzent/5">
-        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <div>
             <span className="text-4xl font-bold text-slate-900">{fmtDe(kwp, 2)}</span>
             <span className="ml-1 text-lg font-semibold text-slate-500">kWp</span>
           </div>
           <div className="text-sm text-slate-500">
             {gesamt} Module · {modul.name}
+          </div>
+          <div className="ml-auto">
+            <ToggleButton aktiv={masseZeigen} onClick={() => setMasseZeigen((v) => !v)}>
+              {masseZeigen ? '📏 Maße an' : '📏 Maße aus'}
+            </ToggleButton>
           </div>
         </div>
       </Karte>
@@ -122,7 +148,7 @@ export function SchrittBelegung({
                   onChange({
                     ...projekt,
                     flaechen: projekt.flaechen.map((x) =>
-                      x.id === f.id ? { ...x, ausrichtung: 'quer', inaktiv: [] } : x,
+                      x.id === f.id ? { ...x, ausrichtung: 'quer', baender: undefined, inaktiv: [] } : x,
                     ),
                   })
                 }
@@ -135,13 +161,30 @@ export function SchrittBelegung({
                   onChange({
                     ...projekt,
                     flaechen: projekt.flaechen.map((x) =>
-                      x.id === f.id ? { ...x, ausrichtung: 'hoch', inaktiv: [] } : x,
+                      x.id === f.id ? { ...x, ausrichtung: 'hoch', baender: undefined, inaktiv: [] } : x,
                     ),
                   })
                 }
               >
                 ▯ Hochkant
               </ToggleButton>
+              {belegungZeigen && (
+                <ToggleButton
+                  aktiv={reihenModusId === f.id}
+                  onClick={() => setReihenModusId(reihenModusId === f.id ? null : f.id)}
+                >
+                  ⟳ Reihe drehen
+                </ToggleButton>
+              )}
+              {f.baender && (
+                <button
+                  type="button"
+                  className="h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 hover:border-slate-400"
+                  onClick={() => patchFlaeche(f.id, { baender: undefined, inaktiv: [] })}
+                >
+                  Alle Reihen gleich
+                </button>
+              )}
 
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
                 Rand
@@ -312,6 +355,7 @@ export function SchrittBelegung({
                 flaeche={f}
                 raster={raster}
                 modul={modul}
+                masse={masseZeigen}
                 zeichnen={
                   zeichneHier
                     ? {
@@ -321,7 +365,12 @@ export function SchrittBelegung({
                       }
                     : undefined
                 }
-                onToggle={(key) =>
+                onToggle={(key) => {
+                  if (reihenModusId === f.id) {
+                    // Reihe (Band) dieses Moduls drehen statt deaktivieren
+                    flipBand(f, Number(key.split('-')[0]));
+                    return;
+                  }
                   onChange({
                     ...projekt,
                     flaechen: projekt.flaechen.map((x) =>
@@ -334,11 +383,18 @@ export function SchrittBelegung({
                           }
                         : x,
                     ),
-                  })
-                }
+                  });
+                }}
               />
             )}
-            {belegungZeigen && (
+            {belegungZeigen && reihenModusId === f.id && (
+              <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                <strong>Reihe drehen:</strong> ein Modul in der gewünschten Reihe antippen — die
+                ganze Reihe wechselt zwischen quer und hochkant. Dabei ändern sich Platz und
+                Modulzahl (wird neu gerechnet). „Alle Reihen gleich" setzt zurück.
+              </p>
+            )}
+            {belegungZeigen && reihenModusId !== f.id && (
               <p className="mt-2 text-xs text-slate-400">
                 Module antippen zum Deaktivieren.{' '}
                 {f.foto

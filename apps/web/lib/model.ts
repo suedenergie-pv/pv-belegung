@@ -61,6 +61,17 @@ export interface DachFoto {
   pxProM?: number;
 }
 
+/**
+ * Projektweites Gesamt-Drohnenfoto (ein Bild vom ganzen Dach) für die
+ * Gesamtansicht: jede Fläche wird über ihre eigenen Anker-Ecken (Flaeche.gesamtEckenPx)
+ * perspektivisch daraufgelegt. Bleibt lokal im Browser (SPEC §8.1).
+ */
+export interface GesamtFoto {
+  dataUrl: string;
+  breitePx: number;
+  hoehePx: number;
+}
+
 /** Parametrische Dachform (SPEC §9). 'trapez' deckt Walm/Krüppelwalm mit Firstbreite. */
 export type Dachform = 'rechteck' | 'trapez';
 
@@ -84,6 +95,12 @@ export interface Flaeche {
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
   /**
+   * Lage dieser Fläche auf dem projektweiten Gesamtfoto (4 Anker-Ecken in
+   * Foto-Pixeln, gleiche Konvention wie foto.eckenPx: Traufe links/rechts, First
+   * rechts/links). Nur für die Gesamtansicht — unabhängig vom Einzelflächen-Foto.
+   */
+  gesamtEckenPx?: Ecken;
+  /**
    * Foto-Markierung abgeschlossen → Belegung anzeigen. Solange false (und ein Foto
    * mit Umriss existiert), bleibt das LEERE Foto sichtbar, um Hindernisse VOR der
    * Belegung zu markieren (Genrih 07.07.: bei belegtem Dach sieht man sie nicht).
@@ -96,6 +113,12 @@ export interface Flaeche {
   umrissM?: PunktM[];
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
   hindernisse?: RechteckM[];
+  /**
+   * Ausrichtung je Band (Reihe) von oben nach unten. Fehlt/leer = alle Reihen
+   * gleich `ausrichtung`. Sobald ein Band abweicht, rechnet die Engine die Fläche
+   * als Bänder-Stapel (gemischt hoch/quer, SPEC §9).
+   */
+  baender?: ('hoch' | 'quer')[];
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
 }
@@ -138,6 +161,13 @@ export interface Projekt {
   wrId: string | null;
   /** Strings je MPPT (Index 0 = MPPT 1) */
   mppts: UiStringDef[][];
+  /** Projektweites Gesamt-Drohnenfoto für die Gesamtansicht (optional). */
+  gesamtFoto?: GesamtFoto;
+}
+
+/** Kurzes Zonen-Kürzel A/B/C/… für die Gesamtansicht (0-basiert). */
+export function zonenLabel(i: number): string {
+  return String.fromCharCode(65 + (i % 26));
 }
 
 export const AZIMUT_PRESETS = [
@@ -195,6 +225,7 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
     randM: randVon(f),
     umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
+    baender: f.baender,
   });
 }
 
@@ -347,6 +378,7 @@ export function speichereProjekte(db: ProjektDb): void {
           ...e,
           projekt: {
             ...e.projekt,
+            gesamtFoto: undefined,
             flaechen: e.projekt.flaechen.map(({ foto: _foto, ...rest }) => rest),
           },
         })),

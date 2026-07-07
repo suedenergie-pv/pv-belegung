@@ -76,4 +76,86 @@ describe('Belegungsraster (SPEC §9)', () => {
     expect(r.randM).toBe(0);
     expect(r.fugeM).toBe(0.1);
   });
+
+  it('jede Position trägt Ausrichtung + Maße (Einheitspfad)', () => {
+    const quer = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' });
+    for (const p of quer.positionen) {
+      expect(p.quer).toBe(true);
+      expect(p.wM).toBeCloseTo(1.762, 6);
+      expect(p.hM).toBeCloseTo(1.134, 6);
+    }
+    const hoch = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'hoch' });
+    for (const p of hoch.positionen) {
+      expect(p.quer).toBe(false);
+      expect(p.wM).toBeCloseTo(1.134, 6);
+      expect(p.hM).toBeCloseTo(1.762, 6);
+    }
+  });
+});
+
+describe('Gemischte Ausrichtung — Bänder (SPEC §9, 07.07.2026)', () => {
+  it('baender gleich der Basis = unveränderter Einheitspfad (kein Mix)', () => {
+    const ohne = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'hoch' });
+    const mitGleich = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'hoch',
+      baender: ['hoch', 'hoch', 'hoch'],
+    });
+    expect(mitGleich.positionen).toHaveLength(ohne.positionen.length); // 24
+    expect(mitGleich.rows).toBe(ohne.rows);
+  });
+
+  it('oberstes Band quer bei sonst hoch → gemischte Höhen, weniger Module', () => {
+    // Basis hoch (8×3 = 24). Band 0 → quer: quer(5) + hoch(8) + hoch(8) = 21.
+    const r = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'hoch',
+      baender: ['quer'],
+    });
+    expect(r.rows).toBe(3);
+    const reihe0 = r.positionen.filter((p) => p.row === 0);
+    const rest = r.positionen.filter((p) => p.row > 0);
+    expect(reihe0).toHaveLength(5);
+    expect(reihe0.every((p) => p.quer && Math.abs(p.hM - 1.134) < 1e-6)).toBe(true);
+    expect(rest.every((p) => !p.quer && Math.abs(p.hM - 1.762) < 1e-6)).toBe(true);
+    expect(r.positionen).toHaveLength(21);
+    expect(r.positionen.length).toBeLessThan(24); // Platz geht verloren
+  });
+
+  it('ein hohes (quer→hoch) Band drängt das unterste Band raus', () => {
+    // Basis quer (5×5 = 25 Module, 5 Bänder). Band 0 → hoch (höher) → nur 4 Bänder.
+    const r = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'quer',
+      baender: ['hoch'],
+    });
+    expect(r.rows).toBe(4); // von 5 auf 4 Bänder
+    const reihe0 = r.positionen.filter((p) => p.row === 0);
+    expect(reihe0).toHaveLength(8);
+    expect(reihe0.every((p) => !p.quer)).toBe(true);
+    expect(r.positionen.filter((p) => p.row > 0).every((p) => p.quer)).toBe(true);
+    expect(r.positionen).toHaveLength(23); // hoch(8) + 3× quer(5)
+  });
+
+  it('Bänder halten den Randabstand ein', () => {
+    const r = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'hoch',
+      baender: ['quer'],
+    });
+    for (const p of r.positionen) {
+      expect(p.xM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.yM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.xM + p.wM).toBeLessThanOrEqual(10 - r.randM + 1e-9);
+      expect(p.yM + p.hM).toBeLessThanOrEqual(6 - r.randM + 1e-9);
+    }
+  });
 });

@@ -38,6 +38,14 @@ export interface BelegungInput {
    * bleiben reihenübergreifend ausgerichtet. false = reines zentriertes Gitter.
    */
   optimierePosition?: boolean;
+  /**
+   * Ausrichtung je Band (Reihe) von oben (First) nach unten (Traufe). Fehlt ein
+   * Eintrag, gilt `ausrichtung` (Basis). Sobald mindestens ein Band abweicht, wird
+   * die Fläche als Stapel horizontaler Bänder gefüllt (gemischt hoch/quer, SPEC §9,
+   * 07.07.2026): jedes Band hat seine eigene Modulhöhe, darunterliegende rutschen
+   * nach — der ehrliche „Platz geht verloren"-Effekt.
+   */
+  baender?: readonly ('hoch' | 'quer')[];
 }
 
 export interface ModulPosition {
@@ -46,6 +54,11 @@ export interface ModulPosition {
   /** linke obere Ecke in Flächenkoordinaten, Meter (Ursprung: links oben) */
   xM: number;
   yM: number;
+  /** true = dieses Modul ist quer verlegt (Ausrichtung des Bandes). */
+  quer: boolean;
+  /** Modulmaße dieses Moduls in Metern — je Band verschieden bei gemischter Ausrichtung. */
+  wM: number;
+  hM: number;
 }
 
 export interface BelegungRaster {
@@ -62,13 +75,59 @@ export interface BelegungRaster {
 export function berechneRaster(input: BelegungInput): BelegungRaster {
   const randM = input.randM ?? DEFAULT_RAND_M;
   const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
-  const modulBreiteM =
-    (input.ausrichtung === 'hoch' ? input.module.widthMm : input.module.lengthMm) / 1000;
-  const modulHoeheM =
-    (input.ausrichtung === 'hoch' ? input.module.lengthMm : input.module.widthMm) / 1000;
+  const dimsFuer = (a: 'hoch' | 'quer') => ({
+    w: (a === 'hoch' ? input.module.widthMm : input.module.lengthMm) / 1000,
+    h: (a === 'hoch' ? input.module.lengthMm : input.module.widthMm) / 1000,
+  });
+  const basisA = input.ausrichtung;
+  const { w: modulBreiteM, h: modulHoeheM } = dimsFuer(basisA);
 
   const nutzB = input.breiteM - 2 * randM;
   const nutzH = input.hoeheM - 2 * randM;
+
+  const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
+  const hindernisse = input.hindernisseM ?? [];
+  const EPS = 1e-4;
+
+  const gueltigDim = (xM: number, yM: number, w: number, hh: number): boolean => {
+    const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: hh };
+    if (umriss && !rechteckImUmriss(rect, umriss, randM)) return false;
+    return !hindernisse.some((h) => rechteckeUeberlappen(rect, h));
+  };
+
+  // ---- Gemischte Ausrichtung: Bänder-Stapel (SPEC §9, 07.07.2026) ----
+  // Sobald mindestens ein Band von der Basis-Ausrichtung abweicht, wird die Fläche
+  // als Stapel horizontaler Bänder von der First-Seite (y=0) zur Traufe gefüllt.
+  // Jedes Band hat seine eigene Modulhöhe; darunterliegende rutschen nach. Kein
+  // Block-/Reihen-Optimierer hier — bewusst einfach, zentriert und vorhersehbar.
+  const mix = !!input.baender && input.baender.some((b) => b !== basisA);
+  if (mix) {
+    const positionen: ModulPosition[] = [];
+    const grenzeUnten = input.hoeheM - randM + EPS;
+    let y = randM;
+    for (let band = 0; band < 1000; band++) {
+      const a = input.baender![band] ?? basisA;
+      const { w, h } = dimsFuer(a);
+      if (y + h > grenzeUnten) break;
+      const colsB = nutzB >= w ? Math.floor((nutzB + fugeM) / (w + fugeM)) : 0;
+      if (colsB > 0) {
+        const belegtBandB = colsB * w + (colsB - 1) * fugeM;
+        const bx0 = randM + (nutzB - belegtBandB) / 2;
+        let col = 0;
+        for (let c = 0; c < colsB; c++) {
+          const xM = bx0 + c * (w + fugeM);
+          if (gueltigDim(xM, y, w, h))
+            positionen.push({ row: band, col: col++, xM, yM: y, quer: a === 'quer', wM: w, hM: h });
+        }
+      }
+      y += h + fugeM;
+    }
+    const rowsMix = positionen.reduce((m, p) => Math.max(m, p.row + 1), 0);
+    const colsMix = positionen.reduce((m, p) => Math.max(m, p.col + 1), 0);
+    return { cols: colsMix, rows: rowsMix, modulBreiteM, modulHoeheM, positionen, randM, fugeM };
+  }
+
+  // ---- Einheitliches Raster (Basis-Ausrichtung) + Optimierer (wie bisher) ----
   const cols =
     nutzB >= modulBreiteM ? Math.floor((nutzB + fugeM) / (modulBreiteM + fugeM)) : 0;
   const rows =
@@ -80,18 +139,11 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   const x0 = randM + (nutzB - belegtB) / 2;
   const y0 = randM + (nutzH - belegtH) / 2;
 
-  const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
-  const hindernisse = input.hindernisseM ?? [];
   const pitchX = modulBreiteM + fugeM;
   const pitchY = modulHoeheM + fugeM;
+  const gueltig = (xM: number, yM: number): boolean =>
+    gueltigDim(xM, yM, modulBreiteM, modulHoeheM);
 
-  const gueltig = (xM: number, yM: number): boolean => {
-    const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
-    if (umriss && !rechteckImUmriss(rect, umriss, randM)) return false;
-    return !hindernisse.some((h) => rechteckeUeberlappen(rect, h));
-  };
-
-  const EPS = 1e-4;
   const schritt = pitchX / 24;
   const yPos: number[] = [];
   for (let row = 0; row < rows; row++) yPos.push(y0 + row * pitchY);
@@ -131,7 +183,10 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   }
   const basisX0 = x0 + dx;
 
-  const ausgerichtet: ModulPosition[] = [];
+  // Roh = Position ohne Ausrichtungs-/Maß-Annotation (im Einheitspfad überall gleich).
+  type Roh = { row: number; col: number; xM: number; yM: number };
+
+  const ausgerichtet: Roh[] = [];
   for (let row = 0; row < rows; row++) {
     const yM = yPos[row]!;
     for (let col = 0; col < cols; col++) {
@@ -141,7 +196,7 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   }
 
   // (2) Reihenweiser Kandidat: je Reihe vom Block abweichen, nur bei echtem Gewinn.
-  let reihenweise: ModulPosition[] | null = null;
+  let reihenweise: Roh[] | null = null;
   if (optimieren) {
     const maxRechts = input.breiteM - randM + EPS;
     // Unwucht = |linker Rand − rechter Rand| → zentriert, wenn eine Reihe abweicht.
@@ -186,10 +241,19 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
 
   // Reihenweise nur, wenn es DEUTLICH mehr Module bringt (sonst gerade montieren).
   const schwelle = Math.max(2, Math.ceil(ausgerichtet.length * 0.1));
-  const positionen =
+  const roh =
     reihenweise && reihenweise.length >= ausgerichtet.length + schwelle
       ? reihenweise
       : ausgerichtet;
+
+  // Einheitspfad: alle Module tragen die Basis-Ausrichtung und -Maße.
+  const querBasis = basisA === 'quer';
+  const positionen: ModulPosition[] = roh.map((p) => ({
+    ...p,
+    quer: querBasis,
+    wM: modulBreiteM,
+    hM: modulHoeheM,
+  }));
 
   return { cols, rows, modulBreiteM, modulHoeheM, positionen, randM, fugeM };
 }
