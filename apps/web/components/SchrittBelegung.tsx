@@ -99,9 +99,12 @@ export function SchrittBelegung({
         const raster = rasterFuer(f, modul);
         const aktiv = aktiveModule(f, raster);
         const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
-        // Zeichnen braucht eine klickbare Ansicht: Draufsicht oder 4-Ecken-Foto
-        // (die Alt-Ansicht „nur Traufkante" hat keine Rückrechnung)
-        const zeichenbar = !f.foto || !!f.foto.eckenPx;
+        // Umriss/Hindernis-Zeichnen in SchrittBelegung nur für die Draufsicht
+        // (ohne Foto). Bei Foto passiert das in FotoHintergrund auf dem leeren Dach.
+        const zeichenbar = !f.foto;
+        // Belegung erst zeigen, wenn keine Foto-Markierung mehr läuft (Hindernisse
+        // werden VORHER auf dem leeren Foto gesetzt, Genrih 07.07.).
+        const belegungZeigen = !f.foto || !!f.markierungFertig || !!f.foto.traufePx;
         return (
           <Karte key={f.id}>
             <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -299,12 +302,12 @@ export function SchrittBelegung({
               </div>
             )}
 
-            {raster.positionen.length === 0 ? (
+            {!belegungZeigen ? null : raster.positionen.length === 0 ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
                 Fläche zu klein für dieses Modul (inkl. {Math.round(randVon(f) * 100)} cm
                 Randabstand){umrissVon(f) ? ' — oder die Dachform lässt kein Modul komplett zu' : ''}.
               </p>
-            ) : f.foto && !f.foto.traufePx && !f.foto.eckenPx ? null : (
+            ) : (
               <DachSvg
                 flaeche={f}
                 raster={raster}
@@ -335,11 +338,16 @@ export function SchrittBelegung({
                 }
               />
             )}
-            <p className="mt-2 text-xs text-slate-400">
-              Module antippen zum Deaktivieren — für Kamin/Fenster/SAT besser „Hindernis
-              markieren" (rechnet automatisch). Randabstand {Math.round(randVon(f) * 100)} cm,
-              Klemmfuge 20 mm{f.umrissM ? `, Umriss mit ${f.umrissM.length} Ecken aktiv` : ''}.
-            </p>
+            {belegungZeigen && (
+              <p className="mt-2 text-xs text-slate-400">
+                Module antippen zum Deaktivieren.{' '}
+                {f.foto
+                  ? 'Kamin/Fenster/SAT vorher über „✎ Markierung ändern" aufs leere Foto setzen.'
+                  : 'Für Kamin/Fenster/SAT „Hindernis markieren" (rechnet automatisch).'}{' '}
+                Randabstand {Math.round(randVon(f) * 100)} cm, Klemmfuge 20 mm
+                {f.umrissM ? `, Umriss mit ${f.umrissM.length} Ecken` : ''}.
+              </p>
+            )}
           </Karte>
         );
       })}

@@ -84,6 +84,12 @@ export interface Flaeche {
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
   /**
+   * Foto-Markierung abgeschlossen → Belegung anzeigen. Solange false (und ein Foto
+   * mit Umriss existiert), bleibt das LEERE Foto sichtbar, um Hindernisse VOR der
+   * Belegung zu markieren (Genrih 07.07.: bei belegtem Dach sieht man sie nicht).
+   */
+  markierungFertig?: boolean;
+  /**
    * Manuell gezeichneter Flächen-Umriss (beliebige Eckenzahl, Flächen-Koordinaten
    * in Meter). Hat Vorrang vor dachform; ohne beides gilt das Rechteck (SPEC §9).
    */
@@ -304,6 +310,11 @@ function migriereProjekt(roh: Projekt): Projekt {
     projekt.wrId = null;
     projekt.mppts = [];
   }
+  // Bestehende Foto-Flächen (Umriss schon gesetzt) gelten als fertig markiert,
+  // damit sie nach dem Update nicht plötzlich in die Markier-Ansicht springen.
+  projekt.flaechen = projekt.flaechen.map((f) =>
+    f.foto?.eckenPx && f.markierungFertig === undefined ? { ...f, markierungFertig: true } : f,
+  );
   return projekt;
 }
 

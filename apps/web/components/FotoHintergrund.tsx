@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import {
   belegungsCheck,
+  homographie,
   inverseHomographie,
   projiziere,
   sortiereEcken,
@@ -10,7 +11,7 @@ import {
   vierEckenFuerHomographie,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche, type PunktM } from '../lib/model';
+import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche, type PunktM, type RechteckM } from '../lib/model';
 
 /**
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal im Browser;
@@ -60,7 +61,7 @@ function deckbreiteDefaultCm(f: Flaeche): number {
   return art === 'blech' ? 53 : 30; // Blech: Scharen-/Falzabstand; Beton/Ton: 30 cm
 }
 
-type Modus = 'umriss' | 'ziegel';
+type Modus = 'umriss' | 'hindernis' | 'ziegel';
 
 const knopfKlasse =
   'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
@@ -86,13 +87,19 @@ export function FotoHintergrund({
   const [deckbreiteCm, setDeckbreiteCm] = useState<number | null>(null); // null = Default je Eindeckung
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const B = flaeche.breiteM;
+  const H = flaeche.hoeheM;
   const deckCm = deckbreiteCm ?? deckbreiteDefaultCm(flaeche);
   const onFoto = (f: DachFoto | undefined) => onPatch({ foto: f });
 
   const markiert = !!(foto && (foto.eckenPx || foto.traufePx));
+  // Markier-Ansicht (leeres Foto): solange ein Foto da ist und die Markierung
+  // nicht bestätigt wurde. So werden Hindernisse VOR der Belegung gesetzt.
+  const inMarkierung = !!foto && !flaeche.markierungFertig;
+  const hom = foto?.eckenPx ? homographie(B, H, foto.eckenPx) : null;
   const check =
     foto?.eckenPx != null
-      ? belegungsCheck(foto.eckenPx, flaeche.breiteM, flaeche.hoeheM, flaeche.neigungDeg, foto.pxProM)
+      ? belegungsCheck(foto.eckenPx, B, H, flaeche.neigungDeg, foto.pxProM)
       : null;
 
   const wechsleModus = (m: Modus) => {
@@ -104,19 +111,37 @@ export function FotoHintergrund({
   const umrissAbschliessen = (pts: Punkt[]) => {
     if (!foto || pts.length < 4) return;
     const ecken = sortiereEcken(vierEckenFuerHomographie(pts));
-    const hinv = inverseHomographie(flaeche.breiteM, flaeche.hoeheM, ecken);
+    const hinv = inverseHomographie(B, H, ecken);
     // > 4 Ecken → echter Umriss maskiert die Belegung (in Flächen-Koordinaten)
     let umrissM: PunktM[] | undefined;
     if (pts.length > 4 && hinv) {
-      const B = flaeche.breiteM;
-      const H = flaeche.hoeheM;
       umrissM = pts.map((p) => {
         const [x, y] = projiziere(hinv, p);
         return [Math.max(0, Math.min(B, x)), Math.max(0, Math.min(H, y))] as PunktM;
       });
     }
-    onPatch({ foto: { ...foto, eckenPx: ecken, traufePx: null }, umrissM, inaktiv: [] });
+    // markierungFertig bleibt false → jetzt Hindernisse aufs leere Foto setzen
+    onPatch({ foto: { ...foto, eckenPx: ecken, traufePx: null }, umrissM, markierungFertig: false, inaktiv: [] });
     setPunkte([]);
+    setModus('hindernis');
+  };
+
+  const hindernisSetzen = (p1: Punkt, p2: Punkt) => {
+    if (!foto?.eckenPx) return;
+    const hinv = inverseHomographie(B, H, foto.eckenPx);
+    if (!hinv) return;
+    const [ax, ay] = projiziere(hinv, p1);
+    const [bx, by] = projiziere(hinv, p2);
+    const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+    const rect: RechteckM = {
+      xM: clamp(Math.min(ax, bx), B),
+      yM: clamp(Math.min(ay, by), H),
+      breiteM: Math.abs(bx - ax),
+      hoeheM: Math.abs(by - ay),
+    };
+    if (rect.breiteM > 0.05 && rect.hoeheM > 0.05) {
+      onPatch({ hindernisse: [...(flaeche.hindernisse ?? []), rect], inaktiv: [] });
+    }
   };
 
   const klick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -137,7 +162,18 @@ export function FotoHintergrund({
       const streckeM = (anzahlZiegel * deckCm) / 100;
       if (distPx > 0 && streckeM > 0) onFoto({ ...foto, pxProM: distPx / streckeM });
       setPunkte([]);
-      setModus('umriss');
+      setModus(foto.eckenPx ? 'hindernis' : 'umriss');
+      return;
+    }
+
+    if (modus === 'hindernis') {
+      const neu: Punkt[] = [...punkte, [x, y]];
+      if (neu.length < 2) {
+        setPunkte(neu);
+        return;
+      }
+      hindernisSetzen(neu[0]!, neu[1]!);
+      setPunkte([]);
       return;
     }
 
@@ -178,6 +214,20 @@ export function FotoHintergrund({
         </button>
         {foto && (
           <>
+            {flaeche.markierungFertig && (
+              <button
+                type="button"
+                className={knopfKlasse}
+                title="Zurück aufs leere Foto, um Hindernisse zu setzen oder den Umriss zu ändern"
+                onClick={() => {
+                  setPunkte([]);
+                  setModus('hindernis');
+                  onPatch({ markierungFertig: false });
+                }}
+              >
+                ✎ Markierung ändern
+              </button>
+            )}
             {markiert && (
               <button
                 type="button"
@@ -185,7 +235,12 @@ export function FotoHintergrund({
                 onClick={() => {
                   zurueckAufNull();
                   const { eckenPx: _e, ...rest } = foto;
-                  onPatch({ foto: { ...rest, traufePx: null }, umrissM: undefined, inaktiv: [] });
+                  onPatch({
+                    foto: { ...rest, traufePx: null },
+                    umrissM: undefined,
+                    markierungFertig: false,
+                    inaktiv: [],
+                  });
                 }}
               >
                 Umriss neu zeichnen
@@ -263,9 +318,9 @@ export function FotoHintergrund({
         </div>
       )}
 
-      {foto && !markiert && (
+      {foto && inMarkierung && (
         <div className="mt-3">
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               className={modusKnopfKlasse(modus === 'umriss')}
@@ -273,6 +328,15 @@ export function FotoHintergrund({
             >
               Umriss zeichnen
             </button>
+            {foto.eckenPx && (
+              <button
+                type="button"
+                className={modusKnopfKlasse(modus === 'hindernis')}
+                onClick={() => wechsleModus('hindernis')}
+              >
+                ▭ Hindernis markieren
+              </button>
+            )}
             <button
               type="button"
               className={modusKnopfKlasse(modus === 'ziegel')}
@@ -288,7 +352,7 @@ export function FotoHintergrund({
                   className="h-9 rounded-lg bg-akzent px-3 text-sm font-semibold text-white disabled:opacity-40"
                   onClick={() => umrissAbschliessen(punkte)}
                 >
-                  ✓ Fertig ({punkte.length} Ecken)
+                  ✓ Umriss fertig ({punkte.length} Ecken)
                 </button>
                 <button
                   type="button"
@@ -334,16 +398,34 @@ export function FotoHintergrund({
                 </label>
               </>
             )}
+            {/* Erst nach dem Umriss: das Dach belegen (Hindernisse vorher setzen). */}
+            {foto.eckenPx && (
+              <button
+                type="button"
+                className="ml-auto h-9 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                onClick={() => {
+                  setPunkte([]);
+                  onPatch({ markierungFertig: true });
+                }}
+              >
+                ✓ Dach belegen →
+              </button>
+            )}
           </div>
 
           {modus === 'umriss' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               <strong>Umriss zeichnen:</strong> die Ecken der Dachfläche der Reihe nach anklicken
               — <strong>mindestens 4</strong>, für Walm/L-Form beliebig mehr. Schließen: auf den
-              ersten Punkt klicken oder „Fertig". Die Module werden perspektivisch exakt
-              eingepasst (auch bei schrägem Foto), die unterste Kante gilt als Traufe (danach
-              ggf. „↻ Traufe wechseln").
+              ersten Punkt klicken oder „Umriss fertig". Danach die Hindernisse aufs noch leere
+              Dach setzen, erst dann „Dach belegen".
               {foto.pxProM === undefined ? ' Für den Maß-Check vorher „Ziegel zählen".' : ''}
+            </p>
+          ) : modus === 'hindernis' ? (
+            <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+              <strong>Hindernis markieren:</strong> Kamin, Dachfenster, SAT usw. mit{' '}
+              <strong>2 Klicks</strong> (gegenüberliegende Ecken) einrahmen — solange das Dach noch
+              leer ist. Diese Flächen bleiben bei der Belegung frei. Mehrere möglich.
             </p>
           ) : (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
@@ -369,6 +451,44 @@ export function FotoHintergrund({
               onClick={klick}
             >
               <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+
+              {/* Bereits markierter Umriss (Foto-Pixel) */}
+              {foto.eckenPx && (
+                <polygon
+                  points={(flaeche.umrissM && hom
+                    ? flaeche.umrissM.map((p) => projiziere(hom, [p[0], p[1]]))
+                    : foto.eckenPx
+                  )
+                    .map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`)
+                    .join(' ')}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth={foto.breitePx * 0.002}
+                  strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
+                />
+              )}
+
+              {/* Bereits markierte Hindernisse (projiziert) */}
+              {hom &&
+                (flaeche.hindernisse ?? []).map((r, i) => (
+                  <polygon
+                    key={i}
+                    points={[
+                      [r.xM, r.yM],
+                      [r.xM + r.breiteM, r.yM],
+                      [r.xM + r.breiteM, r.yM + r.hoeheM],
+                      [r.xM, r.yM + r.hoeheM],
+                    ]
+                      .map((p) => projiziere(hom, p as Punkt))
+                      .map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`)
+                      .join(' ')}
+                    fill="rgba(239,68,68,0.4)"
+                    stroke="#ef4444"
+                    strokeWidth={foto.breitePx * 0.002}
+                  />
+                ))}
+
+              {/* Laufende Zeichnung */}
               {punkte.length >= 2 && (
                 <polyline
                   points={punkte.map(([px, py]) => `${px},${py}`).join(' ')}
@@ -378,7 +498,6 @@ export function FotoHintergrund({
                   strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
                 />
               )}
-              {/* Schließ-Hinweis: gestrichelte Linie zurück zum ersten Punkt (ab 4 Ecken) */}
               {modus === 'umriss' && punkte.length >= 4 && (
                 <line
                   x1={punkte[punkte.length - 1]![0]}
@@ -397,21 +516,55 @@ export function FotoHintergrund({
                   cx={px}
                   cy={py}
                   r={foto.breitePx * (i === 0 && modus === 'umriss' && punkte.length >= 4 ? 0.011 : 0.007)}
-                  fill={modus === 'ziegel' ? '#0ea5e9' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
+                  fill={
+                    modus === 'ziegel'
+                      ? '#0ea5e9'
+                      : modus === 'hindernis'
+                        ? '#ef4444'
+                        : i === 0 && punkte.length >= 4
+                          ? '#ea580c'
+                          : '#f97316'
+                  }
                   stroke="#ffffff"
                   strokeWidth={foto.breitePx * 0.002}
                 />
               ))}
             </svg>
           </div>
+
+          {modus === 'hindernis' && (flaeche.hindernisse ?? []).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(flaeche.hindernisse ?? []).map((h, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  title="Hindernis entfernen"
+                  className="h-8 rounded-lg border border-red-200 bg-red-50 px-2.5 text-sm font-medium text-red-700 hover:border-red-300"
+                  onClick={() =>
+                    onPatch({
+                      hindernisse: (flaeche.hindernisse ?? []).filter((_, j) => j !== i),
+                      inaktiv: [],
+                    })
+                  }
+                >
+                  {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m ✕
+                </button>
+              ))}
+            </div>
+          )}
+
           <p className="mt-1 text-xs text-slate-500">
             {modus === 'ziegel'
               ? punkte.length === 0
                 ? 'Anfang der Ziegel-Strecke anklicken.'
                 : `Punkt 1 gesetzt — jetzt das Ende der ${anzahlZiegel}-Ziegel-Strecke anklicken.`
-              : punkte.length < 4
-                ? `Ecke ${punkte.length + 1} anklicken (mindestens 4 Ecken).`
-                : 'Weitere Ecken möglich — oder ersten Punkt anklicken / „Fertig" zum Schließen.'}
+              : modus === 'hindernis'
+                ? punkte.length === 0
+                  ? 'Erste Ecke des Hindernisses anklicken (Kamin, Fenster, SAT …).'
+                  : 'Jetzt die gegenüberliegende Ecke anklicken.'
+                : punkte.length < 4
+                  ? `Ecke ${punkte.length + 1} anklicken (mindestens 4 Ecken).`
+                  : 'Weitere Ecken möglich — oder ersten Punkt anklicken / „Umriss fertig".'}
           </p>
         </div>
       )}
