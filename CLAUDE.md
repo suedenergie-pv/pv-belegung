@@ -54,12 +54,12 @@ Preview-Falle unten) und SPEC §9/§13. Arbeitsstand: alles committet & deployt,
 Live-URL https://suedenergie-pv.github.io/pv-belegung/ (jeder Push auf main deployt).
 
 ✅ Projektliste, Dachform (Trapez), Jolywood-Rendering, PDF-Kleinkram,
-Stringcheck-Umbenennung, Belegungs-Optimierer — alle erledigt (5. Session, s.u.).
+Stringcheck-Umbenennung, Belegungs-Optimierer, SüdEnergie-Logo im PDF-Kopf
+(Icon auf Versalhöhe, `lib/logo.ts`) — alle erledigt (5. Session, s.u.).
 
 **Noch offen:**
 1. **PV*SOL-Gegenrechnung (das Gate, Genrih)** — weiterhin der wichtigste Punkt.
-2. SüdEnergie-Logo in den PDF-Kopf — braucht die Logo-Datei von Genrih (fragen).
-3. Ideen: Foto-Feinpositionierung, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
+2. Ideen: Foto-Feinpositionierung, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
 
 **Regeln dabei:** Engine rechnet, UI rechnet nie (SPEC §3.4/§3.5). Elektrik nur
 aus Datenblatt-PDFs. Jede Engine-Änderung mit Tests (`npx vitest run --root
