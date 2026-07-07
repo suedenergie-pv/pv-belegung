@@ -6,6 +6,8 @@ import {
   berechneRaster,
   besterVersatz,
   checkStringPlan,
+  rechteckeUeberlappen,
+  rechteckImUmriss,
   trapezUmriss,
   type BelegungInput,
   type BelegungRaster,
@@ -127,6 +129,13 @@ export interface Flaeche {
    */
   versatzXM?: number;
   versatzYM?: number;
+  /**
+   * Manuell gesetzte Zusatzmodule (linke obere Ecke in Flächen-Metern + Ausrichtung).
+   * Ergänzen das Raster — z. B. ein einzelnes Modul mittig, wo sich zwei Reihen
+   * treffen (Walmdach, Genrih 07.07.). Werden überall wie Rastermodule gerendert
+   * und gezählt.
+   */
+  extraModule?: { xM: number; yM: number; quer: boolean }[];
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
 }
@@ -239,8 +248,53 @@ function belegungInput(f: Flaeche, modul: ModuleType): BelegungInput {
   };
 }
 
+/** Modulmaße (Meter) in der gewünschten Ausrichtung. */
+export function modulMasse(modul: ModuleType, quer: boolean): { w: number; h: number } {
+  return {
+    w: (quer ? modul.lengthMm : modul.widthMm) / 1000,
+    h: (quer ? modul.widthMm : modul.lengthMm) / 1000,
+  };
+}
+
 export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
-  return berechneRaster(belegungInput(f, modul));
+  const raster = berechneRaster(belegungInput(f, modul));
+  const extra = f.extraModule;
+  if (!extra?.length) return raster;
+  // Manuelle Zusatzmodule als Positionen anhängen (row = -1 → eindeutige Keys "-1-i")
+  const zusatz = extra.map((e, i) => {
+    const { w, h } = modulMasse(modul, e.quer);
+    return { row: -1, col: i, xM: e.xM, yM: e.yM, quer: e.quer, wM: w, hM: h };
+  });
+  return { ...raster, positionen: [...raster.positionen, ...zusatz] };
+}
+
+/**
+ * Darf an (xM,yM) ein Zusatzmodul liegen? Innerhalb Rand/Umriss, kein Hindernis,
+ * keine Überlappung mit bestehenden aktiven Modulen. `ausserIndex` ignoriert ein
+ * bestimmtes Extra (beim Verschieben/Prüfen seiner selbst).
+ */
+export function extraModulGueltig(
+  f: Flaeche,
+  modul: ModuleType,
+  xM: number,
+  yM: number,
+  quer: boolean,
+  ausserIndex?: number,
+): boolean {
+  const { w, h } = modulMasse(modul, quer);
+  const rand = randVon(f);
+  const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
+  if (xM < rand - 1e-6 || yM < rand - 1e-6) return false;
+  if (xM + w > f.breiteM - rand + 1e-6 || yM + h > f.hoeheM - rand + 1e-6) return false;
+  const umriss = umrissVon(f);
+  if (umriss && !rechteckImUmriss(rect, umriss, rand)) return false;
+  if ((f.hindernisse ?? []).some((hnd) => rechteckeUeberlappen(rect, hnd))) return false;
+  for (const p of rasterFuer(f, modul).positionen) {
+    if (p.row === -1 && p.col === ausserIndex) continue; // sich selbst nicht prüfen
+    if (f.inaktiv.includes(`${p.row}-${p.col}`)) continue;
+    if (rechteckeUeberlappen(rect, { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM })) return false;
+  }
+  return true;
 }
 
 /** Beste Verschiebung dieser Fläche (max. Module), ohne bestehenden Versatz. */

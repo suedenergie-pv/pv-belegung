@@ -4,8 +4,10 @@ import { useState } from 'react';
 import {
   aktiveModule,
   besterVersatzFuer,
+  extraModulGueltig,
   fmtDe,
   modulById,
+  modulMasse,
   randVon,
   rasterFuer,
   umrissVon,
@@ -42,6 +44,8 @@ export function SchrittBelegung({
   // „Verschieben"-Modus (Nudge) + frei einstellbare Schrittweite in cm
   const [verschiebeModusId, setVerschiebeModusId] = useState<string | null>(null);
   const [schrittCm, setSchrittCm] = useState(1);
+  // „Modul setzen"-Modus: leeres Feld antippen → Zusatzmodul; Extra antippen → weg
+  const [modulModusId, setModulModusId] = useState<string | null>(null);
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
     0,
@@ -96,6 +100,40 @@ export function SchrittBelegung({
   /** Zurück auf automatische Lage (Versatz entfernen). */
   const versatzZuruecksetzen = (f: Flaeche) =>
     patchFlaeche(f.id, { versatzXM: undefined, versatzYM: undefined, inaktiv: [] });
+
+  /**
+   * „Modul setzen": Klick auf ein bestehendes Zusatzmodul entfernt es; sonst wird
+   * an der Klickstelle ein Zusatzmodul gesetzt — mittig auf den Klick, y auf die
+   * nächste Rasterreihe gefangen (fluchtet mit den Reihen), nur wenn es passt.
+   */
+  const addModul = (f: Flaeche, p: PunktM) => {
+    const quer = f.ausrichtung === 'quer';
+    const { w, h } = modulMasse(modul, quer);
+    const extras = f.extraModule ?? [];
+    // Auf ein vorhandenes Extra geklickt? → entfernen
+    const treffer = extras.findIndex((e) => {
+      const m = modulMasse(modul, e.quer);
+      return p[0] >= e.xM && p[0] <= e.xM + m.w && p[1] >= e.yM && p[1] <= e.yM + m.h;
+    });
+    if (treffer >= 0) {
+      patchFlaeche(f.id, { extraModule: extras.filter((_, i) => i !== treffer) });
+      return;
+    }
+    // Sonst: neues Modul, mittig auf den Klick, y auf nächste Rasterreihe snappen
+    const rand = randVon(f);
+    const reihenY = [
+      ...new Set(rasterFuer(f, modul).positionen.filter((q) => q.row >= 0).map((q) => q.yM)),
+    ];
+    let xM = p[0] - w / 2;
+    let yM = p[1] - h / 2;
+    if (reihenY.length) {
+      yM = reihenY.reduce((a, b) => (Math.abs(b - yM) < Math.abs(a - yM) ? b : a), reihenY[0]!);
+    }
+    xM = Math.max(rand, Math.min(f.breiteM - rand - w, xM));
+    yM = Math.max(rand, Math.min(f.hoeheM - rand - h, yM));
+    if (!extraModulGueltig(f, modul, xM, yM, quer)) return; // passt nicht → nichts tun
+    patchFlaeche(f.id, { extraModule: [...extras, { xM, yM, quer }] });
+  };
 
   const pfeilKlasse =
     'h-9 w-9 rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-700 hover:border-akzent';
@@ -211,7 +249,10 @@ export function SchrittBelegung({
                   onClick={() => {
                     const an = verschiebeModusId !== f.id;
                     setVerschiebeModusId(an ? f.id : null);
-                    if (an) setReihenModusId(null);
+                    if (an) {
+                      setReihenModusId(null);
+                      setModulModusId(null);
+                    }
                     // Beim Aktivieren Versatz aktivieren (Lattice ab aktueller Lage)
                     if (an && f.versatzXM === undefined)
                       patchFlaeche(f.id, { versatzXM: 0, versatzYM: 0 });
@@ -220,10 +261,29 @@ export function SchrittBelegung({
                   ↔ Verschieben
                 </ToggleButton>
               )}
+              {belegungZeigen && (
+                <ToggleButton
+                  aktiv={modulModusId === f.id}
+                  onClick={() => {
+                    const an = modulModusId !== f.id;
+                    setModulModusId(an ? f.id : null);
+                    if (an) {
+                      setReihenModusId(null);
+                      setVerschiebeModusId(null);
+                    }
+                  }}
+                >
+                  ➕ Modul setzen
+                </ToggleButton>
+              )}
               {belegungZeigen && f.versatzXM === undefined && (
                 <ToggleButton
                   aktiv={reihenModusId === f.id}
-                  onClick={() => setReihenModusId(reihenModusId === f.id ? null : f.id)}
+                  onClick={() => {
+                    const an = reihenModusId !== f.id;
+                    setReihenModusId(an ? f.id : null);
+                    if (an) setModulModusId(null);
+                  }}
                 >
                   ⟳ Reihe drehen
                 </ToggleButton>
@@ -458,13 +518,15 @@ export function SchrittBelegung({
                 modul={modul}
                 masse={masseZeigen}
                 zeichnen={
-                  zeichneHier
-                    ? {
-                        aktiv: true,
-                        punkteM: zeichneHier.punkte,
-                        onKlickM: (p) => klickM(f, p),
-                      }
-                    : undefined
+                  modulModusId === f.id
+                    ? { aktiv: true, punkteM: [], onKlickM: (p) => addModul(f, p) }
+                    : zeichneHier
+                      ? {
+                          aktiv: true,
+                          punkteM: zeichneHier.punkte,
+                          onKlickM: (p) => klickM(f, p),
+                        }
+                      : undefined
                 }
                 onToggle={(key) => {
                   if (reihenModusId === f.id) {
@@ -495,7 +557,15 @@ export function SchrittBelegung({
                 Modulzahl (wird neu gerechnet). „Alle Reihen gleich" setzt zurück.
               </p>
             )}
-            {belegungZeigen && reihenModusId !== f.id && (
+            {belegungZeigen && modulModusId === f.id && (
+              <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                <strong>Modul setzen:</strong> auf eine freie Stelle tippen → dort kommt ein Modul
+                hin (mittig auf den Klick, fluchtet automatisch mit der nächsten Reihe). Passt es
+                nicht (Rand/Umriss/Hindernis/Überlappung), passiert nichts. Ein gesetztes Zusatzmodul
+                wieder antippen entfernt es. Ideal fürs einzelne Modul am Walm, wo sich zwei Reihen treffen.
+              </p>
+            )}
+            {belegungZeigen && reihenModusId !== f.id && modulModusId !== f.id && (
               <p className="mt-2 text-xs text-slate-400">
                 Module antippen zum Deaktivieren.{' '}
                 {f.foto
