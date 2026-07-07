@@ -2,6 +2,7 @@
 
 import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
 import { homographie, inverseHomographie, projiziere, projPfad, type Punkt } from '../lib/foto-geometrie';
+import { modulAssetInner, modulMatrix } from '../lib/modul-assets';
 import { DACHFARBEN, umrissVon, type Dachfarbe, type Flaeche, type PunktM } from '../lib/model';
 
 /**
@@ -61,63 +62,13 @@ function DachPattern({ id, farbe }: { id: string; farbe: Dachfarbe }) {
 }
 
 /**
- * Draufsicht einer Dachfläche (SPEC §11.1). Koordinatensystem = Meter
- * (viewBox aus Flächenmaßen), Module als <symbol>/<use> aus Katalog-mm —
- * niemals aus CSS-Layout (SPEC §3.5, §11.2). Vereinfachte LoD-Symbole.
+ * Kanonisches Modul-Asset (SPEC §11.2, von Genrih geliefert) als <g> in <defs>.
+ * Wird per <use transform="matrix(...)"> je Modul instanziert — in Draufsicht
+ * (Meter-Koordinaten) UND Foto (Homographie-projizierte Ecken), damit ein Modul
+ * überall wie ein Modul aussieht und nicht wie ein schwarzes Rechteck.
  */
-
-function ModulSymbol({ id, modul, wMm, hMm }: { id: string; modul: ModuleType; wMm: number; hMm: number }) {
-  const laengsHorizontal = wMm > hMm; // quer verlegt → Längsachse horizontal
-  const L = Math.max(wMm, hMm);
-  const Q = Math.min(wMm, hMm);
-  const reihen = modul.cells / 6; // Zellreihen entlang der Längsachse (16 bzw. 18)
-  const inset = 22;
-
-  const laengsLinien: JSX.Element[] = [];
-  const istJolywood = modul.renderSymbol === 'jolywood_niwa_black';
-  // Jolywood Niwa Black = Glas-Glas mit sichtbaren silbrigen Zellfugen (KEIN echtes
-  // Full-Black wie Aiko ABC). Deshalb hellere, kräftigere Zelllinien; Aiko bleibt schwarz.
-  for (let i = 1; i < reihen; i++) {
-    const pos = (i * L) / reihen;
-    const mitte = reihen % 2 === 0 && i === reihen / 2;
-    const stroke = istJolywood ? (mitte ? '#aab3c2' : '#8b95a6') : mitte ? '#15161a' : '#121316';
-    const width = istJolywood ? (mitte ? 16 : 7) : mitte ? 5 : 2;
-    const opacity = istJolywood ? (mitte ? 0.7 : 0.55) : 0.7;
-    laengsLinien.push(
-      laengsHorizontal ? (
-        <line key={i} x1={pos} y1={inset} x2={pos} y2={hMm - inset} stroke={stroke} strokeWidth={width} opacity={opacity} />
-      ) : (
-        <line key={i} x1={inset} y1={pos} x2={wMm - inset} y2={pos} stroke={stroke} strokeWidth={width} opacity={opacity} />
-      ),
-    );
-  }
-
-  const spaltenLinien: JSX.Element[] = [];
-  for (let j = 1; j < 6; j++) {
-    const pos = (j * Q) / 6;
-    const stroke = istJolywood ? '#8b95a6' : '#121316';
-    const width = istJolywood ? 6 : 2;
-    const opacity = istJolywood ? 0.5 : 0.7;
-    spaltenLinien.push(
-      laengsHorizontal ? (
-        <line key={j} x1={inset} y1={pos} x2={wMm - inset} y2={pos} stroke={stroke} strokeWidth={width} opacity={opacity} />
-      ) : (
-        <line key={j} x1={pos} y1={inset} x2={pos} y2={hMm - inset} stroke={stroke} strokeWidth={width} opacity={opacity} />
-      ),
-    );
-  }
-
-  // Glas: Jolywood dunkelblau-anthrazit (Glas-Optik), Aiko fast schwarz (ABC)
-  const glasFill = istJolywood ? '#151a24' : '#08090b';
-  return (
-    <symbol id={id} viewBox={`0 0 ${wMm} ${hMm}`}>
-      {/* Rahmen bewusst sichtbar (heller als Glas), damit jedes Modul einzeln lesbar ist */}
-      <rect width={wMm} height={hMm} rx={14} fill="#1c1f24" />
-      <rect x={inset} y={inset} width={wMm - 2 * inset} height={hMm - 2 * inset} rx={6} fill={glasFill} />
-      {laengsLinien}
-      {spaltenLinien}
-    </symbol>
-  );
+function ModulAsset({ id, modul }: { id: string; modul: ModuleType }) {
+  return <g id={id} dangerouslySetInnerHTML={{ __html: modulAssetInner(modul.renderSymbol) }} />;
 }
 
 export function DachSvg({
@@ -136,10 +87,11 @@ export function DachSvg({
   const B = flaeche.breiteM;
   const H = flaeche.hoeheM;
   const farbe = DACHFARBEN.find((d) => d.id === flaeche.dachfarbe) ?? DACHFARBEN[1];
-  const symId = `sym-${flaeche.id}-${flaeche.ausrichtung}-${modul.id}`;
+  const assetId = `modul-${flaeche.id}`;
   const patId = `pat-${flaeche.id}-${farbe.id}`;
   const mB = raster.modulBreiteM;
   const mH = raster.modulHoeheM;
+  const quer = flaeche.ausrichtung === 'quer';
   // Während des Zeichnens gehen Klicks an den Zeichenmodus, nicht ans Modul-Toggle
   const toggle = zeichnen?.aktiv ? undefined : onToggle;
   const umrissEff = umrissVon(flaeche);
@@ -202,14 +154,17 @@ export function DachSvg({
       {raster.positionen.map((p) => {
         const key = `${p.row}-${p.col}`;
         const aus = flaeche.inaktiv.includes(key);
+        const TL: Punkt = [p.xM, p.yM];
+        const TR: Punkt = [p.xM + mB, p.yM];
+        const BL: Punkt = [p.xM, p.yM + mH];
         return (
           <g
             key={key}
-            opacity={aus ? 0.22 : 1}
+            opacity={aus ? 0.25 : 1}
             className={toggle ? 'cursor-pointer' : undefined}
             onClick={toggle ? () => toggle(key) : undefined}
           >
-            <use href={`#${symId}`} x={p.xM} y={p.yM} width={mB} height={mH} />
+            <use href={`#${assetId}`} transform={modulMatrix(TL, TR, BL, quer)} />
             <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="transparent" />
             {aus && (
               <rect
@@ -237,7 +192,6 @@ export function DachSvg({
     // SPEC §11.2) — Maße weiterhin aus dem Engine-Raster, nie aus dem Foto.
     const h = homographie(B, H, foto.eckenPx);
     if (h) {
-      const inset = 0.022; // Rahmen ~22 mm, wie im Detail-Symbol
       const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
         [x, y],
         [x + w, y],
@@ -271,32 +225,27 @@ export function DachSvg({
             preserveAspectRatio="xMidYMid meet"
             onClick={klickM}
           >
+            <defs>
+              <ModulAsset id={assetId} modul={modul} />
+            </defs>
             <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-            <path
-              d={projPfad(h, rechteck(raster.randM, raster.randM, B - 2 * raster.randM, H - 2 * raster.randM))}
-              fill="none"
-              stroke="rgba(255,255,255,0.35)"
-              strokeWidth={foto.breitePx * 0.0012}
-              strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
-            />
             {raster.positionen.map((p) => {
               const key = `${p.row}-${p.col}`;
               const aus = flaeche.inaktiv.includes(key);
+              // Modul-Ecken in Foto-Pixel (Homographie); Asset per affiner Matrix
+              // aus 3 Ecken eingepasst (4. Ecke ≈ Parallelogramm, bei Modulgröße ok).
+              const TL = projiziere(h, [p.xM, p.yM]);
+              const TR = projiziere(h, [p.xM + mB, p.yM]);
+              const BL = projiziere(h, [p.xM, p.yM + mH]);
               return (
                 <g
                   key={key}
-                  opacity={aus ? 0.25 : 1}
+                  opacity={aus ? 0.3 : 1}
                   className={toggle ? 'cursor-pointer' : undefined}
                   onClick={toggle ? () => toggle(key) : undefined}
                 >
-                  <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="#1c1f24" />
-                  <path
-                    d={projPfad(
-                      h,
-                      rechteck(p.xM + inset, p.yM + inset, mB - 2 * inset, mH - 2 * inset),
-                    )}
-                    fill="#0a0b0e"
-                  />
+                  <use href={`#${assetId}`} transform={modulMatrix(TL, TR, BL, quer)} />
+                  <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="transparent" />
                   {aus && (
                     <path
                       d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
@@ -383,7 +332,7 @@ export function DachSvg({
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
-            <ModulSymbol id={symId} modul={modul} wMm={mB * 1000} hMm={mH * 1000} />
+            <ModulAsset id={assetId} modul={modul} />
           </defs>
           <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
           <g
@@ -418,7 +367,7 @@ export function DachSvg({
         }
       >
         <defs>
-          <ModulSymbol id={symId} modul={modul} wMm={mB * 1000} hMm={mH * 1000} />
+          <ModulAsset id={assetId} modul={modul} />
           <DachPattern id={patId} farbe={farbe} />
         </defs>
         <rect width={B} height={H} fill={`url(#${patId})`} />
