@@ -1,6 +1,6 @@
 import type { StringPlanResult } from '@pv-belegung/engine';
 import { logoPng } from './logo';
-import { aktiveModule, fmtDe, kwpGesamt, modulById, randVon, rasterFuer, wrById, zonenLabel, type Projekt } from './model';
+import { aktiveModule, fmtDe, kwpGesamt, modulById, randVon, rasterFuer, wrById, type Projekt } from './model';
 
 /**
  * PDF-Export des Belegungsplans (Hauptexport fürs Vertriebsgespräch, 06.07.2026):
@@ -185,11 +185,7 @@ export async function erzeugeBelegungsPdf(
   doc.setTextColor(40);
   for (const f of projekt.flaechen) {
     const n = aktiveModule(f, rasterFuer(f, modul));
-    doc.text(
-      `${zonenLabel(projekt.flaechen.indexOf(f))}  ${f.name} (${fmtDe(f.breiteM, 2)} × ${fmtDe(f.hoeheM, 2)} m)`,
-      SPALTEN[0],
-      y,
-    );
+    doc.text(`${f.name} (${fmtDe(f.breiteM, 2)} × ${fmtDe(f.hoeheM, 2)} m)`, SPALTEN[0], y);
     doc.text(azimutLabel(f.azimutDeg), SPALTEN[1], y);
     doc.text(`${f.neigungDeg}°`, SPALTEN[2], y);
     doc.text(`${n} (${f.ausrichtung})`, SPALTEN[3], y);
@@ -242,7 +238,7 @@ export async function erzeugeBelegungsPdf(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(90);
-      doc.text(`${zonenLabel(projekt.flaechen.indexOf(f))}  ${f.name}`, x, y + bildH + 4);
+      doc.text(f.name, x, y + bildH + 4);
     }
     zeilenHoehe = Math.max(zeilenHoehe, bildH + 8);
     spalte += 1;
@@ -268,7 +264,7 @@ export async function erzeugeBelegungsPdf(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
     doc.setTextColor(20);
-    doc.text(`${zonenLabel(projekt.flaechen.indexOf(f))}  ${f.name}`, RAND, dy);
+    doc.text(f.name, RAND, dy);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(80);
