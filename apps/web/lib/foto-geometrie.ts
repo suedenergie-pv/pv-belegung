@@ -212,6 +212,55 @@ export function sortiereEcken(punkte: [Punkt, Punkt, Punkt, Punkt]): Ecken {
   return [a, b, c, d];
 }
 
+/**
+ * Wie sortiereEcken, aber die Traufe/Sparren-Achse kommt aus einer vom Nutzer
+ * gezogenen Referenzlinie (First ODER Traufe — beide parallel zur Traufe-Achse),
+ * statt aus der „unterste Kante = Traufe"-Annahme. Behebt vertauschte Achsen bei
+ * schräg im Bild liegenden Dachflächen (Genrih 07.07.2026).
+ */
+export function orientiereEcken(
+  punkte: [Punkt, Punkt, Punkt, Punkt],
+  richtung: [Punkt, Punkt],
+): Ecken {
+  const cx = (punkte[0][0] + punkte[1][0] + punkte[2][0] + punkte[3][0]) / 4;
+  const cy = (punkte[0][1] + punkte[1][1] + punkte[2][1] + punkte[3][1]) / 4;
+  const ring = [...punkte].sort(
+    (a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx),
+  ) as [Punkt, Punkt, Punkt, Punkt];
+
+  // Richtungsvektor der Referenzlinie (normiert)
+  let rx = richtung[1][0] - richtung[0][0];
+  let ry = richtung[1][1] - richtung[0][1];
+  const rl = Math.hypot(rx, ry) || 1;
+  rx /= rl;
+  ry /= rl;
+  const align = (i: number): number => {
+    const a = ring[i]!;
+    const b = ring[(i + 1) % 4]!;
+    let ex = b[0] - a[0];
+    let ey = b[1] - a[1];
+    const el = Math.hypot(ex, ey) || 1;
+    ex /= el;
+    ey /= el;
+    return Math.abs(ex * rx + ey * ry); // 1 = parallel zur Linie
+  };
+  // Gegenüberliegendes Kantenpaar, das am besten zur Linie parallel liegt = Traufe/First-Achse
+  const paar = (align(0) + align(2)) / 2 >= (align(1) + align(3)) / 2 ? [0, 2] : [1, 3];
+  const mitteY = (i: number) => (ring[i]![1] + ring[(i + 1) % 4]![1]) / 2;
+  // Davon die im Bild tiefere Kante (größtes y) = Traufe
+  const traufeIdx = mitteY(paar[0]!) >= mitteY(paar[1]!) ? paar[0]! : paar[1]!;
+
+  let a = ring[traufeIdx]!;
+  let b = ring[(traufeIdx + 1) % 4]!;
+  let c = ring[(traufeIdx + 2) % 4]!;
+  let d = ring[(traufeIdx + 3) % 4]!;
+  if (a[0] > b[0]) {
+    // Ring-Richtung umdrehen, damit die Traufe links→rechts läuft
+    [a, b, c, d] = [b, a, d, c];
+  }
+  return [a, b, c, d];
+}
+
 /** Rotiert die Kanten-Zuordnung weiter: die bisherige linke Seite wird zur Traufe. */
 export function traufeWechseln(e: Ecken): Ecken {
   return [e[3], e[0], e[1], e[2]];

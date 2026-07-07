@@ -6,6 +6,7 @@ import {
   belegungsCheck,
   homographie,
   inverseHomographie,
+  orientiereEcken,
   projiziere,
   sortiereEcken,
   traufeWechseln,
@@ -17,12 +18,14 @@ import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche, type PunktM, type Recht
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal, SPEC §8.1).
  *
  * Ablauf (07.07.2026, nach Genrih-Feedback):
- * 1. PERSPEKTIVE: die 4 Ecken des Dach-Rechtecks markieren (auch wenn eine in der
+ * 1. FIRST: eine Linie entlang First/Traufe ziehen → legt die Traufe-Achse fest
+ *    (behebt vertauschte Hoch/Quer-Ausrichtung bei schrägen Dächern). Überspringbar.
+ * 2. PERSPEKTIVE: die 4 Ecken des Dach-Rechtecks markieren (auch wenn eine in der
  *    Luft liegt) → Homographie. Ein Fadenkreuz am Mauszeiger hilft beim Zielen.
- * 2. UMRISS (optional): den echten Rand der Dachfläche einzeichnen (beliebig viele
+ * 3. UMRISS (optional): den echten Rand der Dachfläche einzeichnen (beliebig viele
  *    Ecken; rechteckiges Dach → überspringen). Wieder mit Fadenkreuz + Vorschaulinie.
- * 3. HINDERNIS: Kamin/Fenster/SAT aufs noch leere Dach setzen.
- * 4. „Dach belegen".
+ * 4. HINDERNIS: Kamin/Fenster/SAT aufs noch leere Dach setzen.
+ * 5. „Dach belegen".
  * „Ziegel zählen" liefert den Maßstab für den Belegungs-Check.
  */
 
@@ -36,7 +39,7 @@ function deckbreiteDefaultCm(f: Flaeche): number {
   return art === 'blech' ? 53 : 30;
 }
 
-type Modus = 'perspektive' | 'umriss' | 'hindernis' | 'ziegel';
+type Modus = 'first' | 'perspektive' | 'umriss' | 'hindernis' | 'ziegel';
 
 const knopfKlasse =
   'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
@@ -56,10 +59,12 @@ export function FotoHintergrund({
 }) {
   const foto = flaeche.foto;
   const [punkte, setPunkte] = useState<Punkt[]>([]);
-  const [modus, setModus] = useState<Modus>('perspektive');
+  const [modus, setModus] = useState<Modus>('first');
   const [anzahlZiegel, setAnzahlZiegel] = useState(10);
   const [deckbreiteCm, setDeckbreiteCm] = useState<number | null>(null);
   const [mausPx, setMausPx] = useState<Punkt | null>(null);
+  // Referenzlinie First/Traufe → legt die Traufe-Achse fest (transient, nur beim Markieren)
+  const [firstLinie, setFirstLinie] = useState<[Punkt, Punkt] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const B = flaeche.breiteM;
@@ -76,7 +81,8 @@ export function FotoHintergrund({
       : null;
 
   // Fadenkreuz-Vorschau nur in den Punkt-Setz-Modi
-  const zeigtKreuz = modus === 'perspektive' || modus === 'umriss' || modus === 'hindernis';
+  const zeigtKreuz =
+    modus === 'first' || modus === 'perspektive' || modus === 'umriss' || modus === 'hindernis';
 
   const wechsleModus = (m: Modus) => {
     setModus(m);
@@ -85,7 +91,9 @@ export function FotoHintergrund({
 
   const perspektiveAbschliessen = (pts: Punkt[]) => {
     if (!foto || pts.length < 4) return;
-    const ecken = sortiereEcken([pts[0]!, pts[1]!, pts[2]!, pts[3]!]);
+    const vier: [Punkt, Punkt, Punkt, Punkt] = [pts[0]!, pts[1]!, pts[2]!, pts[3]!];
+    // Firstlinie (falls gezogen) legt die Traufe-Achse fest; sonst alter Heuristik-Fallback
+    const ecken = firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
     // Perspektive neu → Umriss (Rechteck) zurücksetzen, danach optional zeichnen
     onPatch({ foto: { ...foto, eckenPx: ecken, traufePx: null }, umrissM: undefined, markierungFertig: false, inaktiv: [] });
     setPunkte([]);
@@ -138,6 +146,14 @@ export function FotoHintergrund({
     if (!k || !foto) return;
     const [x, y] = k;
 
+    if (modus === 'first') {
+      const neu: Punkt[] = [...punkte, [x, y]];
+      if (neu.length < 2) return setPunkte(neu);
+      setFirstLinie([neu[0]!, neu[1]!]);
+      setPunkte([]);
+      return setModus('perspektive');
+    }
+
     if (modus === 'ziegel') {
       const neu: Punkt[] = [...punkte, [x, y]];
       if (neu.length < 2) return setPunkte(neu);
@@ -172,7 +188,8 @@ export function FotoHintergrund({
 
   const zurueckAufAnfang = () => {
     setPunkte([]);
-    setModus('perspektive');
+    setFirstLinie(null);
+    setModus('first');
   };
 
   const px = (v: number) => (foto ? foto.breitePx * v : 0);
@@ -217,7 +234,7 @@ export function FotoHintergrund({
               <button
                 type="button"
                 className={knopfKlasse}
-                title="Die 4 Perspektiv-Ecken neu setzen (Umriss & Hindernisse bleiben nicht)"
+                title="Ausrichtung neu: First-/Trauflinie ziehen, dann die 4 Ecken (Umriss & Hindernisse bleiben nicht)"
                 onClick={() => {
                   const { eckenPx: _e, ...rest } = foto;
                   onPatch({
@@ -227,10 +244,11 @@ export function FotoHintergrund({
                     inaktiv: [],
                   });
                   setPunkte([]);
-                  setModus('perspektive');
+                  setFirstLinie(null);
+                  setModus('first');
                 }}
               >
-                Perspektive neu (4 Ecken)
+                Ausrichtung neu (First + 4 Ecken)
               </button>
             )}
             {foto.eckenPx && (
@@ -303,9 +321,19 @@ export function FotoHintergrund({
         <div className="mt-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {!foto.eckenPx ? (
-              <button type="button" className={modusKnopfKlasse(modus === 'perspektive')} onClick={() => wechsleModus('perspektive')}>
-                Perspektive: 4 Ecken
-              </button>
+              <>
+                <button type="button" className={modusKnopfKlasse(modus === 'first')} onClick={() => wechsleModus('first')}>
+                  ① First-/Trauflinie
+                </button>
+                <button type="button" className={modusKnopfKlasse(modus === 'perspektive')} onClick={() => wechsleModus('perspektive')}>
+                  ② 4 Ecken
+                </button>
+                {modus === 'first' && (
+                  <button type="button" className={knopfKlasse} onClick={() => wechsleModus('perspektive')}>
+                    Überspringen
+                  </button>
+                )}
+              </>
             ) : (
               <>
                 <button type="button" className={modusKnopfKlasse(modus === 'umriss')} onClick={() => wechsleModus('umriss')}>
@@ -320,7 +348,7 @@ export function FotoHintergrund({
               Ziegel zählen (Maßstab)
             </button>
 
-            {modus === 'perspektive' && (
+            {(modus === 'perspektive' || modus === 'first') && (
               <button
                 type="button"
                 disabled={punkte.length === 0}
@@ -398,12 +426,21 @@ export function FotoHintergrund({
             )}
           </div>
 
-          {modus === 'perspektive' ? (
+          {modus === 'first' ? (
+            <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+              <strong>First-/Trauflinie (2 Klicks):</strong> eine Linie entlang des{' '}
+              <strong>Firsts oder der Traufe</strong> ziehen — also der waagerechten Dachkante, an
+              der die Module ausgerichtet werden. Das legt fest, was hoch und was quer ist (behebt
+              schief/verdrehte Belegungen). Danach die 4 Ecken. Simples Dach mit Traufe unten im
+              Bild? <strong>„Überspringen"</strong> genügt.
+            </p>
+          ) : modus === 'perspektive' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               <strong>Perspektive – 4 Ecken:</strong> die 4 Ecken des Dach-<strong>Rechtecks</strong>{' '}
               anklicken (Traufe + First), <strong>Reihenfolge egal</strong>. Liegt eine Ecke in der
               Luft (z. B. über der Terrasse), am <strong>Fadenkreuz</strong> ausrichten — es zeigt die
-              X/Y-Linie durch den Mauszeiger. Danach den echten Umriss zeichnen.
+              X/Y-Linie durch den Mauszeiger. Sitzt die Belegung verdreht: <strong>↻ Traufe
+              wechseln</strong>.
             </p>
           ) : modus === 'umriss' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
@@ -442,6 +479,24 @@ export function FotoHintergrund({
               onMouseLeave={() => setMausPx(null)}
             >
               <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+
+              {/* Firstlinie (Achs-Referenz) — bleibt als Guide sichtbar */}
+              {firstLinie && (
+                <g>
+                  <line
+                    x1={firstLinie[0][0]}
+                    y1={firstLinie[0][1]}
+                    x2={firstLinie[1][0]}
+                    y2={firstLinie[1][1]}
+                    stroke="#0d9488"
+                    strokeWidth={px(0.003)}
+                    strokeLinecap="round"
+                  />
+                  {firstLinie.map((p, i) => (
+                    <circle key={i} cx={p[0]} cy={p[1]} r={px(0.008)} fill="#0d9488" stroke="#fff" strokeWidth={px(0.002)} />
+                  ))}
+                </g>
+              )}
 
               {/* Bereits gesetzter Umriss / Perspektiv-Rechteck */}
               {foto.eckenPx && (
@@ -488,7 +543,7 @@ export function FotoHintergrund({
               )}
 
               {/* Vorschaulinie: letzter Punkt → Mauszeiger */}
-              {(modus === 'perspektive' || modus === 'umriss') && letzter && mausPx && (
+              {(modus === 'first' || modus === 'perspektive' || modus === 'umriss') && letzter && mausPx && (
                 <line
                   x1={letzter[0]}
                   y1={letzter[1]}
@@ -529,7 +584,7 @@ export function FotoHintergrund({
                   cx={qx}
                   cy={qy}
                   r={px(i === 0 && modus === 'umriss' && punkte.length >= 3 ? 0.011 : 0.007)}
-                  fill={modus === 'ziegel' ? '#0ea5e9' : modus === 'hindernis' ? '#ef4444' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
+                  fill={modus === 'first' ? '#0d9488' : modus === 'ziegel' ? '#0ea5e9' : modus === 'hindernis' ? '#ef4444' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
                   stroke="#ffffff"
                   strokeWidth={px(0.002)}
                 />
@@ -556,7 +611,11 @@ export function FotoHintergrund({
           )}
 
           <p className="mt-1 text-xs text-slate-500">
-            {modus === 'perspektive'
+            {modus === 'first'
+              ? punkte.length === 0
+                ? 'Anfang der First-/Trauflinie anklicken (waagerechte Dachkante).'
+                : 'Ende der Linie anklicken.'
+              : modus === 'perspektive'
               ? `Ecke ${punkte.length + 1} von 4 anklicken (Dach-Rechteck).`
               : modus === 'umriss'
                 ? punkte.length < 3
