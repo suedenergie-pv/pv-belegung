@@ -79,10 +79,13 @@ mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-R
   bringt aus der Belegung zurück aufs leere Foto. `SchrittBelegung` zeigt die Belegung
   erst bei `markierungFertig`; das dortige Umriss/Hindernis-Zeichnen ist nur noch für die
   Draufsicht (ohne Foto). Migration: bestehende Foto-Flächen = markierungFertig true.
-- **Bekannte Einschränkung:** die Foto-Homographie-Ansicht (`DachSvg` eckenPx-Zweig) rendert
-  Module als einfache schwarze Vierecke OHNE die silbrigen Jolywood-Zelllinien (die gibt es
-  nur in Draufsicht + Alt-Affin-Zweig). Falls Genrih das im Foto stört → dort ModulSymbol
-  statt Flächen-Pfade projizieren.
+- **Modul-Rendering mit kanonischen Assets** (07.07., erledigt): Genrih lieferte fertige
+  Jolywood/Aiko-SVGs (`lib/modul-assets.ts`, 260×404). `DachSvg` nutzt sie jetzt ÜBERALL —
+  Draufsicht (Meter) und Foto (Homographie-projizierte Ecken) — per `<use transform=
+  matrix(...)>` (affine Einpassung aus 3 Modul-Ecken, `modulMatrix`; `quer` dreht 90°).
+  Der alte generierte `ModulSymbol` ist raus. Auf dem Foto sehen die Module jetzt wie
+  Module aus (silberne Zelllinien/Busbars), nicht wie schwarze Rechtecke. Assets sind die
+  einzige Quelle für den Modul-Look; Änderung nur mit neuem Asset von Genrih.
 
 ## Session-Übergabe 06.07.2026 (5. Session — Opus, autonom)
 
