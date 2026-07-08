@@ -297,6 +297,30 @@ export function SchrittBelegung({
                   Alle Reihen gleich
                 </button>
               )}
+              {belegungZeigen && raster.positionen.length > 0 && aktiv > 0 && (
+                <button
+                  type="button"
+                  className="h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-red-600 hover:border-red-300"
+                  title="Alle Module dieser Fläche entfernen (Zusatzmodule werden gelöscht)"
+                  onClick={() =>
+                    patchFlaeche(f.id, {
+                      inaktiv: raster.positionen.map((p) => `${p.row}-${p.col}`),
+                      extraModule: undefined,
+                    })
+                  }
+                >
+                  🗑 Leeren
+                </button>
+              )}
+              {belegungZeigen && f.inaktiv.length > 0 && (
+                <button
+                  type="button"
+                  className="h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 hover:border-slate-400"
+                  onClick={() => patchFlaeche(f.id, { inaktiv: [] })}
+                >
+                  ↺ Alle zeigen
+                </button>
+              )}
 
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
                 Rand
@@ -529,9 +553,18 @@ export function SchrittBelegung({
                       : undefined
                 }
                 onToggle={(key) => {
+                  const istExtra = key.startsWith('-1-'); // Zusatzmodul (row = -1)
                   if (reihenModusId === f.id) {
-                    // Reihe (Band) dieses Moduls drehen statt deaktivieren
+                    if (istExtra) return; // Zusatzmodul hat keine Reihe zum Drehen
                     flipBand(f, Number(key.split('-')[0]));
+                    return;
+                  }
+                  if (istExtra) {
+                    // Zusatzmodul antippen → löschen (Extras sind manuell gesetzt)
+                    const idx = Number(key.slice(3));
+                    patchFlaeche(f.id, {
+                      extraModule: (f.extraModule ?? []).filter((_, i) => i !== idx),
+                    });
                     return;
                   }
                   onChange({
