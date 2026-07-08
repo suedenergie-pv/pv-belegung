@@ -44,8 +44,10 @@ export function SchrittBelegung({
   // „Verschieben"-Modus (Nudge) + frei einstellbare Schrittweite in cm
   const [verschiebeModusId, setVerschiebeModusId] = useState<string | null>(null);
   const [schrittCm, setSchrittCm] = useState(1);
-  // „Modul setzen"-Modus: leeres Feld antippen → Zusatzmodul; Extra antippen → weg
+  // „Modul setzen"-Modus: leeres Feld antippen → Zusatzmodul; Extra antippen → auswählen
   const [modulModusId, setModulModusId] = useState<string | null>(null);
+  // Index des gerade ausgewählten Zusatzmoduls (zum Verschieben/Löschen), null = keins
+  const [gewaehltExtra, setGewaehltExtra] = useState<number | null>(null);
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
     0,
@@ -101,38 +103,74 @@ export function SchrittBelegung({
   const versatzZuruecksetzen = (f: Flaeche) =>
     patchFlaeche(f.id, { versatzXM: undefined, versatzYM: undefined, inaktiv: [] });
 
-  /**
-   * „Modul setzen": Klick auf ein bestehendes Zusatzmodul entfernt es; sonst wird
-   * an der Klickstelle ein Zusatzmodul gesetzt — mittig auf den Klick, y auf die
-   * nächste Rasterreihe gefangen (fluchtet mit den Reihen), nur wenn es passt.
-   */
-  const addModul = (f: Flaeche, p: PunktM) => {
-    const quer = f.ausrichtung === 'quer';
+  /** Zusatzmodul mittig auf den Klick, y auf die nächste Rasterreihe fangen, in die Zone klemmen. */
+  const snapExtra = (f: Flaeche, p: PunktM, quer: boolean) => {
     const { w, h } = modulMasse(modul, quer);
+    const rand = randVon(f);
+    const reihenY = [
+      ...new Set(rasterFuer(f, modul).positionen.filter((q) => q.row >= 0).map((q) => q.yM)),
+    ];
+    let yM = p[1] - h / 2;
+    if (reihenY.length) {
+      yM = reihenY.reduce((a, b) => (Math.abs(b - yM) < Math.abs(a - yM) ? b : a), reihenY[0]!);
+    }
+    return {
+      xM: Math.max(rand, Math.min(f.breiteM - rand - w, p[0] - w / 2)),
+      yM: Math.max(rand, Math.min(f.hoeheM - rand - h, yM)),
+    };
+  };
+
+  /**
+   * „Modul setzen": Klick auf ein Zusatzmodul wählt es aus. Klick auf eine freie Stelle
+   * verschiebt das gewählte Modul dorthin — oder setzt ein neues (wenn keins gewählt).
+   * Nur wenn es passt (Rand/Umriss/Hindernis/keine Überlappung).
+   */
+  const modulKlick = (f: Flaeche, p: PunktM) => {
     const extras = f.extraModule ?? [];
-    // Auf ein vorhandenes Extra geklickt? → entfernen
     const treffer = extras.findIndex((e) => {
       const m = modulMasse(modul, e.quer);
       return p[0] >= e.xM && p[0] <= e.xM + m.w && p[1] >= e.yM && p[1] <= e.yM + m.h;
     });
     if (treffer >= 0) {
-      patchFlaeche(f.id, { extraModule: extras.filter((_, i) => i !== treffer) });
+      setGewaehltExtra(gewaehltExtra === treffer ? null : treffer); // an-/abwählen
       return;
     }
-    // Sonst: neues Modul, mittig auf den Klick, y auf nächste Rasterreihe snappen
-    const rand = randVon(f);
-    const reihenY = [
-      ...new Set(rasterFuer(f, modul).positionen.filter((q) => q.row >= 0).map((q) => q.yM)),
-    ];
-    let xM = p[0] - w / 2;
-    let yM = p[1] - h / 2;
-    if (reihenY.length) {
-      yM = reihenY.reduce((a, b) => (Math.abs(b - yM) < Math.abs(a - yM) ? b : a), reihenY[0]!);
+    if (gewaehltExtra != null && extras[gewaehltExtra]) {
+      // Gewähltes Modul auf die freie Stelle verschieben
+      const e = extras[gewaehltExtra]!;
+      const { xM, yM } = snapExtra(f, p, e.quer);
+      if (extraModulGueltig(f, modul, xM, yM, e.quer, gewaehltExtra))
+        patchFlaeche(f.id, {
+          extraModule: extras.map((x, i) => (i === gewaehltExtra ? { ...x, xM, yM } : x)),
+        });
+      return;
     }
-    xM = Math.max(rand, Math.min(f.breiteM - rand - w, xM));
-    yM = Math.max(rand, Math.min(f.hoeheM - rand - h, yM));
-    if (!extraModulGueltig(f, modul, xM, yM, quer)) return; // passt nicht → nichts tun
+    // Neues Modul setzen und gleich auswählen
+    const quer = f.ausrichtung === 'quer';
+    const { xM, yM } = snapExtra(f, p, quer);
+    if (!extraModulGueltig(f, modul, xM, yM, quer)) return;
     patchFlaeche(f.id, { extraModule: [...extras, { xM, yM, quer }] });
+    setGewaehltExtra(extras.length);
+  };
+
+  /** Gewähltes Zusatzmodul um schrittCm in eine Richtung schieben (validiert). */
+  const verschiebeExtra = (f: Flaeche, sx: number, sy: number) => {
+    if (gewaehltExtra == null) return;
+    const e = f.extraModule?.[gewaehltExtra];
+    if (!e) return;
+    const step = Math.max(0.01, schrittCm / 100);
+    const xM = round2(e.xM + sx * step);
+    const yM = round2(e.yM + sy * step);
+    if (!extraModulGueltig(f, modul, xM, yM, e.quer, gewaehltExtra)) return;
+    patchFlaeche(f.id, {
+      extraModule: f.extraModule!.map((x, i) => (i === gewaehltExtra ? { ...x, xM, yM } : x)),
+    });
+  };
+
+  const loescheExtra = (f: Flaeche) => {
+    if (gewaehltExtra == null) return;
+    patchFlaeche(f.id, { extraModule: (f.extraModule ?? []).filter((_, i) => i !== gewaehltExtra) });
+    setGewaehltExtra(null);
   };
 
   const pfeilKlasse =
@@ -252,6 +290,7 @@ export function SchrittBelegung({
                     if (an) {
                       setReihenModusId(null);
                       setModulModusId(null);
+                      setGewaehltExtra(null);
                     }
                     // Beim Aktivieren Versatz aktivieren (Lattice ab aktueller Lage)
                     if (an && f.versatzXM === undefined)
@@ -267,6 +306,7 @@ export function SchrittBelegung({
                   onClick={() => {
                     const an = modulModusId !== f.id;
                     setModulModusId(an ? f.id : null);
+                    setGewaehltExtra(null);
                     if (an) {
                       setReihenModusId(null);
                       setVerschiebeModusId(null);
@@ -282,7 +322,10 @@ export function SchrittBelegung({
                   onClick={() => {
                     const an = reihenModusId !== f.id;
                     setReihenModusId(an ? f.id : null);
-                    if (an) setModulModusId(null);
+                    if (an) {
+                      setModulModusId(null);
+                      setGewaehltExtra(null);
+                    }
                   }}
                 >
                   ⟳ Reihe drehen
@@ -541,9 +584,12 @@ export function SchrittBelegung({
                 raster={raster}
                 modul={modul}
                 masse={masseZeigen}
+                hervorhebenKey={
+                  modulModusId === f.id && gewaehltExtra != null ? `-1-${gewaehltExtra}` : undefined
+                }
                 zeichnen={
                   modulModusId === f.id
-                    ? { aktiv: true, punkteM: [], onKlickM: (p) => addModul(f, p) }
+                    ? { aktiv: true, punkteM: [], onKlickM: (p) => modulKlick(f, p) }
                     : zeichneHier
                       ? {
                           aktiv: true,
@@ -591,12 +637,53 @@ export function SchrittBelegung({
               </p>
             )}
             {belegungZeigen && modulModusId === f.id && (
-              <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                <strong>Modul setzen:</strong> auf eine freie Stelle tippen → dort kommt ein Modul
-                hin (mittig auf den Klick, fluchtet automatisch mit der nächsten Reihe). Passt es
-                nicht (Rand/Umriss/Hindernis/Überlappung), passiert nichts. Ein gesetztes Zusatzmodul
-                wieder antippen entfernt es. Ideal fürs einzelne Modul am Walm, wo sich zwei Reihen treffen.
-              </p>
+              <div className="mt-2 space-y-2">
+                {gewaehltExtra != null && f.extraModule?.[gewaehltExtra] && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-akzent/10 px-3 py-2">
+                    <span className="text-sm font-medium text-slate-700">Gewähltes Modul:</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      <span />
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 0, -1)} title="nach oben">↑</button>
+                      <span />
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, -1, 0)} title="nach links">←</button>
+                      <span className="flex h-9 w-9 items-center justify-center text-slate-400">✥</span>
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 1, 0)} title="nach rechts">→</button>
+                      <span />
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 0, 1)} title="nach unten">↓</button>
+                      <span />
+                    </div>
+                    <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                      Schritt
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={50}
+                        value={schrittCm}
+                        onChange={(e) => {
+                          const n = Number.parseInt(e.target.value, 10);
+                          if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
+                        }}
+                        className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
+                      />
+                      cm
+                    </label>
+                    <button type="button" className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300" onClick={() => loescheExtra(f)}>
+                      🗑 Löschen
+                    </button>
+                    <button type="button" className={aktionKlasse} onClick={() => setGewaehltExtra(null)}>
+                      ✕ Auswahl aufheben
+                    </button>
+                  </div>
+                )}
+                <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                  <strong>Modul setzen/verschieben:</strong> auf eine freie Stelle tippen → dort kommt
+                  ein Modul hin (mittig, fluchtet mit der nächsten Reihe). Ein gesetztes Modul antippen
+                  → <strong>auswählen</strong> (orange umrandet): dann per Pfeilen fein schieben, auf eine
+                  freie Stelle tippen zum Versetzen, oder löschen. Passt es nicht
+                  (Rand/Umriss/Hindernis/Überlappung), passiert nichts. Ideal fürs einzelne Modul am Walm.
+                </p>
+              </div>
             )}
             {belegungZeigen && reihenModusId !== f.id && modulModusId !== f.id && (
               <p className="mt-2 text-xs text-slate-400">

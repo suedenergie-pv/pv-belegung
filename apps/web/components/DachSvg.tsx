@@ -93,6 +93,7 @@ export function moduleAufHomographie({
   fotoBreitePx,
   druck,
   toggle,
+  hervorhebenKey,
 }: {
   h: Homographie;
   raster: BelegungRaster;
@@ -101,6 +102,8 @@ export function moduleAufHomographie({
   fotoBreitePx: number;
   druck?: boolean;
   toggle?: (key: string) => void;
+  /** Dieses Modul (key "row-col") hervorheben (z. B. ausgewähltes Zusatzmodul). */
+  hervorhebenKey?: string;
 }) {
   const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
     [x, y],
@@ -153,6 +156,14 @@ export function moduleAufHomographie({
             strokeDasharray={`${fotoBreitePx * 0.006} ${fotoBreitePx * 0.004}`}
           />
         )}
+        {key === hervorhebenKey && (
+          <path
+            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            fill="none"
+            stroke="#e8603a"
+            strokeWidth={fotoBreitePx * 0.004}
+          />
+        )}
       </g>
     );
   });
@@ -166,6 +177,7 @@ export function DachSvg({
   zeichnen,
   druck,
   masse = true,
+  hervorhebenKey,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
@@ -178,6 +190,8 @@ export function DachSvg({
   /** Maßketten (Traufe/Sparren/Umriss) einblenden — im Skizzierer umschaltbar,
    *  im Druck ohnehin immer aus. Default an. */
   masse?: boolean;
+  /** Modul (key "row-col") hervorheben (z. B. gewähltes Zusatzmodul beim Verschieben). */
+  hervorhebenKey?: string;
 }) {
   const B = flaeche.breiteM;
   const H = flaeche.hoeheM;
@@ -340,6 +354,9 @@ export function DachSvg({
                 strokeDasharray="0.08 0.06"
               />
             )}
+            {key === hervorhebenKey && (
+              <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="none" stroke="#e8603a" strokeWidth={0.06} />
+            )}
           </g>
         );
       })}
@@ -399,6 +416,7 @@ export function DachSvg({
               fotoBreitePx: foto.breitePx,
               druck,
               toggle,
+              hervorhebenKey,
             })}
             {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
             {!druck && umriss && (
