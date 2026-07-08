@@ -4,15 +4,16 @@ import { useRef, useState } from 'react';
 import { dateiZuBild } from '../lib/bild';
 import {
   belegungsCheck,
+  hindernisAusKlicks,
   homographie,
-  inverseHomographie,
   orientiereEcken,
   projiziere,
   sortiereEcken,
   traufeWechseln,
+  umrissAusKlicks,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche, type PunktM, type RechteckM } from '../lib/model';
+import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche } from '../lib/model';
 
 /**
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal, SPEC §8.1).
@@ -101,13 +102,9 @@ export function FotoHintergrund({
   };
 
   const umrissAbschliessen = (pts: Punkt[]) => {
-    if (!foto?.eckenPx || pts.length < 3) return;
-    const hinv = inverseHomographie(B, H, foto.eckenPx);
-    if (!hinv) return;
-    const umrissM: PunktM[] = pts.map((p) => {
-      const [x, y] = projiziere(hinv, p);
-      return [Math.max(0, Math.min(B, x)), Math.max(0, Math.min(H, y))] as PunktM;
-    });
+    if (!foto?.eckenPx) return;
+    const umrissM = umrissAusKlicks(pts, B, H, foto.eckenPx);
+    if (!umrissM) return;
     onPatch({ umrissM, inaktiv: [] });
     setPunkte([]);
     setModus('hindernis');
@@ -115,20 +112,8 @@ export function FotoHintergrund({
 
   const hindernisSetzen = (p1: Punkt, p2: Punkt) => {
     if (!foto?.eckenPx) return;
-    const hinv = inverseHomographie(B, H, foto.eckenPx);
-    if (!hinv) return;
-    const [ax, ay] = projiziere(hinv, p1);
-    const [bx, by] = projiziere(hinv, p2);
-    const cl = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
-    const rect: RechteckM = {
-      xM: cl(Math.min(ax, bx), B),
-      yM: cl(Math.min(ay, by), H),
-      breiteM: Math.abs(bx - ax),
-      hoeheM: Math.abs(by - ay),
-    };
-    if (rect.breiteM > 0.05 && rect.hoeheM > 0.05) {
-      onPatch({ hindernisse: [...(flaeche.hindernisse ?? []), rect], inaktiv: [] });
-    }
+    const rect = hindernisAusKlicks(p1, p2, B, H, foto.eckenPx);
+    if (rect) onPatch({ hindernisse: [...(flaeche.hindernisse ?? []), rect], inaktiv: [] });
   };
 
   const svgKoord = (e: React.MouseEvent<SVGSVGElement>): Punkt | null => {

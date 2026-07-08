@@ -14,6 +14,8 @@
  * den Ziegel-Maßstab) gegen die eingegebenen Maße hält.
  */
 
+import type { PunktM, RechteckM } from '@pv-belegung/engine';
+
 export type Punkt = [number, number];
 
 /** Ecken der Dachfläche im Foto. Reihenfolge: Traufe links, Traufe rechts, First rechts, First links. */
@@ -175,6 +177,51 @@ export function projPfad(h: M3, punkte: Punkt[]): string {
 
 function laenge(a: Punkt, b: Punkt): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+
+/**
+ * Umriss aus Foto-Klicks: Pixel → Flächen-Koordinaten (Meter) via inverser
+ * Homographie, geklemmt auf [0..breiteM]×[0..hoeheM]. Geteilt von Einzelfoto und
+ * Gesamtfoto, damit beide identisch rechnen. null bei < 3 Punkten / entarteten Ecken.
+ */
+export function umrissAusKlicks(
+  pts: Punkt[],
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+): PunktM[] | null {
+  if (pts.length < 3) return null;
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken);
+  if (!hinv) return null;
+  return pts.map((p) => {
+    const [x, y] = projiziere(hinv, p);
+    return [Math.max(0, Math.min(breiteM, x)), Math.max(0, Math.min(hoeheM, y))] as PunktM;
+  });
+}
+
+/**
+ * Hindernis-Rechteck aus zwei Foto-Klicks (gegenüberliegende Ecken) in Flächen-
+ * Koordinaten (Meter). null bei entarteten Ecken oder zu kleinem Rechteck (< 5 cm).
+ */
+export function hindernisAusKlicks(
+  p1: Punkt,
+  p2: Punkt,
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+): RechteckM | null {
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken);
+  if (!hinv) return null;
+  const [ax, ay] = projiziere(hinv, p1);
+  const [bx, by] = projiziere(hinv, p2);
+  const cl = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+  const rect: RechteckM = {
+    xM: cl(Math.min(ax, bx), breiteM),
+    yM: cl(Math.min(ay, by), hoeheM),
+    breiteM: Math.abs(bx - ax),
+    hoeheM: Math.abs(by - ay),
+  };
+  return rect.breiteM > 0.05 && rect.hoeheM > 0.05 ? rect : null;
 }
 
 /**

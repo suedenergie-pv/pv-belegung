@@ -2,8 +2,17 @@
 
 import { useRef, useState } from 'react';
 import { dateiZuBild } from '../lib/bild';
-import { orientiereEcken, sortiereEcken, traufeWechseln, type Punkt } from '../lib/foto-geometrie';
-import { modulById, zonenLabel, type Flaeche, type Projekt } from '../lib/model';
+import {
+  hindernisAusKlicks,
+  homographie,
+  orientiereEcken,
+  projPfad,
+  sortiereEcken,
+  traufeWechseln,
+  umrissAusKlicks,
+  type Punkt,
+} from '../lib/foto-geometrie';
+import { fmtDe, modulById, zonenLabel, type Flaeche, type Projekt } from '../lib/model';
 import { ModulAsset } from './DachSvg';
 import { GESAMT_ASSET_ID, gesamtFlaechenInhalt } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
@@ -25,22 +34,26 @@ export function SchrittGesamt({
   const modul = modulById(projekt.modulId);
   const foto = projekt.gesamtFoto;
   const inputRef = useRef<HTMLInputElement>(null);
-  // Fläche, deren Ecken gerade gesetzt werden (null = nur ansehen)
+  // Fläche, die gerade markiert/bearbeitet wird (null = nur ansehen)
   const [platziereId, setPlatziereId] = useState<string | null>(null);
-  // Erst First-/Trauflinie (legt die Ausrichtung fest), dann die 4 Ecken
-  const [phase, setPhase] = useState<'first' | 'ecken'>('first');
+  // Ablauf: first → ecken (platzieren); danach edit mit umriss/hindernis (bearbeiten)
+  const [phase, setPhase] = useState<'first' | 'ecken' | 'edit' | 'umriss' | 'hindernis'>('first');
   const [firstLinie, setFirstLinie] = useState<[Punkt, Punkt] | null>(null);
   const [punkte, setPunkte] = useState<Punkt[]>([]);
   const [mausPx, setMausPx] = useState<Punkt | null>(null);
 
+  // Beim Anwählen: platzierte Fläche → direkt in den Bearbeiten-Modus, sonst platzieren.
   const starteMarkierung = (id: string | null) => {
     setPlatziereId(id);
-    setPhase('first');
+    const f = id ? projekt.flaechen.find((x) => x.id === id) : null;
+    setPhase(f?.gesamtEckenPx ? 'edit' : 'first');
     setFirstLinie(null);
     setPunkte([]);
   };
 
   const px = (v: number) => (foto ? foto.breitePx * v : 0);
+  const knopf =
+    'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
 
   const patchFlaeche = (id: string, patch: Partial<Flaeche>) =>
     onChange({
@@ -59,9 +72,12 @@ export function SchrittGesamt({
   };
 
   const klick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!platziereId) return;
+    if (!platziereId || !foto) return;
     const k = svgKoord(e);
     if (!k) return;
+    const f = projekt.flaechen.find((x) => x.id === platziereId);
+    if (!f) return;
+
     if (phase === 'first') {
       const neu: Punkt[] = [...punkte, k];
       if (neu.length < 2) return setPunkte(neu);
@@ -69,15 +85,54 @@ export function SchrittGesamt({
       setPunkte([]);
       return setPhase('ecken');
     }
-    const neu: Punkt[] = [...punkte, k];
-    if (neu.length >= 4) {
-      const vier: [Punkt, Punkt, Punkt, Punkt] = [neu[0]!, neu[1]!, neu[2]!, neu[3]!];
-      const ecken = firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
-      patchFlaeche(platziereId, { gesamtEckenPx: ecken });
-      starteMarkierung(null);
-      return;
+
+    if (phase === 'ecken') {
+      const neu: Punkt[] = [...punkte, k];
+      if (neu.length >= 4) {
+        const vier: [Punkt, Punkt, Punkt, Punkt] = [neu[0]!, neu[1]!, neu[2]!, neu[3]!];
+        const ecken = firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
+        // Neu platziert → Umriss/Hindernisse zurücksetzen, in den Bearbeiten-Modus
+        patchFlaeche(platziereId, { gesamtEckenPx: ecken, umrissM: undefined, hindernisse: [], inaktiv: [] });
+        setPunkte([]);
+        setFirstLinie(null);
+        return setPhase('edit');
+      }
+      return setPunkte(neu);
     }
-    setPunkte(neu);
+
+    if (phase === 'umriss') {
+      if (!f.gesamtEckenPx) return;
+      // Klick nahe erstem Punkt schließt (ab 3 Ecken)
+      if (punkte.length >= 3) {
+        const [fx, fy] = punkte[0]!;
+        if (Math.hypot(k[0] - fx, k[1] - fy) <= foto.breitePx * 0.025) {
+          const umrissM = umrissAusKlicks(punkte, f.breiteM, f.hoeheM, f.gesamtEckenPx);
+          if (umrissM) patchFlaeche(platziereId, { umrissM, inaktiv: [] });
+          setPunkte([]);
+          return setPhase('edit');
+        }
+      }
+      return setPunkte([...punkte, k]);
+    }
+
+    if (phase === 'hindernis') {
+      if (!f.gesamtEckenPx) return;
+      const neu: Punkt[] = [...punkte, k];
+      if (neu.length < 2) return setPunkte(neu);
+      const rect = hindernisAusKlicks(neu[0]!, neu[1]!, f.breiteM, f.hoeheM, f.gesamtEckenPx);
+      if (rect) patchFlaeche(platziereId, { hindernisse: [...(f.hindernisse ?? []), rect], inaktiv: [] });
+      return setPunkte([]);
+    }
+    // phase 'edit': Klicks steuern nichts (die Knöpfe schalten den Modus)
+  };
+
+  const umrissAbschliessen = () => {
+    const f = projekt.flaechen.find((x) => x.id === platziereId);
+    if (!f?.gesamtEckenPx) return;
+    const umrissM = umrissAusKlicks(punkte, f.breiteM, f.hoeheM, f.gesamtEckenPx);
+    if (umrissM) patchFlaeche(f.id, { umrissM, inaktiv: [] });
+    setPunkte([]);
+    setPhase('edit');
   };
 
   const starteFoto = async (file: File) => {
@@ -87,6 +142,13 @@ export function SchrittGesamt({
   };
 
   const platziert = projekt.flaechen.filter((f) => f.gesamtEckenPx).length;
+  const platF = platziereId ? projekt.flaechen.find((f) => f.id === platziereId) : undefined;
+  const platHom =
+    platF?.gesamtEckenPx ? homographie(platF.breiteM, platF.hoeheM, platF.gesamtEckenPx) : null;
+  // Nur beim aktiven Zeichnen die Fläche ausblenden (leeres Dach); im „edit"-Ruhezustand
+  // bleiben die Module sichtbar — dann keine Skizzenlinien in der Ansicht.
+  const zeichnetGerade =
+    phase === 'first' || phase === 'ecken' || phase === 'umriss' || phase === 'hindernis';
 
   return (
     <div className="space-y-4">
@@ -175,28 +237,121 @@ export function SchrittGesamt({
               })}
             </div>
 
-            {platziereId && (
-              <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-                <strong>{projekt.flaechen.find((f) => f.id === platziereId)?.name}:</strong>{' '}
-                {phase === 'first' ? (
-                  <>
-                    <strong>First-/Trauflinie</strong> ziehen (2 Klicks entlang der waagerechten
-                    Dachkante) — legt fest, was hoch und was quer ist.{' '}
-                    <button type="button" className="underline" onClick={() => { setPunkte([]); setPhase('ecken'); }}>
-                      Überspringen
+            {platziereId && platF && (
+              <div className="mt-3 space-y-2">
+                {phase === 'edit' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700">{platF.name}:</span>
+                    <button type="button" className={knopf} onClick={() => { setPunkte([]); setPhase('umriss'); }}>
+                      ⬠ Umriss zeichnen{platF.umrissM ? ' (neu)' : ''}
                     </button>
-                    {' · '}
-                  </>
-                ) : (
-                  <>
-                    die <strong>4 Ecken</strong> der Fläche anklicken (Reihenfolge egal). Ecke{' '}
-                    {punkte.length + 1} von 4.{' '}
-                  </>
+                    <button type="button" className={knopf} onClick={() => { setPunkte([]); setPhase('hindernis'); }}>
+                      ▭ Hindernis markieren
+                    </button>
+                    {platF.umrissM && (
+                      <button type="button" className={knopf} onClick={() => patchFlaeche(platF.id, { umrissM: undefined, inaktiv: [] })}>
+                        Umriss entfernen
+                      </button>
+                    )}
+                    <button type="button" className={knopf} onClick={() => { setFirstLinie(null); setPunkte([]); setPhase('first'); }}>
+                      Ausrichtung neu
+                    </button>
+                    <button
+                      type="button"
+                      className="ml-auto h-9 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                      onClick={() => starteMarkierung(null)}
+                    >
+                      ✓ Fertig
+                    </button>
+                  </div>
                 )}
-                <button type="button" className="underline" onClick={() => starteMarkierung(null)}>
-                  Abbrechen
-                </button>
-              </p>
+
+                {(phase === 'edit' || phase === 'hindernis') && (platF.hindernisse ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {(platF.hindernisse ?? []).map((h, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        title="Hindernis entfernen"
+                        className="h-8 rounded-lg border border-red-200 bg-red-50 px-2.5 text-sm font-medium text-red-700 hover:border-red-300"
+                        onClick={() =>
+                          patchFlaeche(platF.id, {
+                            hindernisse: (platF.hindernisse ?? []).filter((_, j) => j !== i),
+                            inaktiv: [],
+                          })
+                        }
+                      >
+                        {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m ✕
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                  {phase === 'first' ? (
+                    <>
+                      <strong>{platF.name} — First-/Trauflinie:</strong> 2 Klicks entlang der
+                      waagerechten Dachkante.{' '}
+                      <button type="button" className="underline" onClick={() => { setPunkte([]); setPhase('ecken'); }}>
+                        Überspringen
+                      </button>{' '}
+                    </>
+                  ) : phase === 'ecken' ? (
+                    <>
+                      <strong>{platF.name} — 4 Ecken</strong> anklicken (Reihenfolge egal). Ecke{' '}
+                      {punkte.length + 1} von 4.{' '}
+                    </>
+                  ) : phase === 'umriss' ? (
+                    <>
+                      <strong>Umriss zeichnen:</strong> den Rand der Fläche der Reihe nach anklicken;
+                      schließen mit dem ersten Punkt oder „Umriss fertig".{' '}
+                      <button
+                        type="button"
+                        disabled={punkte.length < 3}
+                        className="font-semibold text-emerald-700 underline disabled:opacity-40"
+                        onClick={umrissAbschliessen}
+                      >
+                        ✓ Umriss fertig ({punkte.length})
+                      </button>{' '}
+                      <button
+                        type="button"
+                        disabled={punkte.length === 0}
+                        className="underline disabled:opacity-40"
+                        onClick={() => setPunkte(punkte.slice(0, -1))}
+                      >
+                        ↶ Punkt zurück
+                      </button>{' '}
+                    </>
+                  ) : phase === 'hindernis' ? (
+                    <>
+                      <strong>Hindernis markieren:</strong>{' '}
+                      {punkte.length === 0 ? 'erste Ecke' : 'gegenüberliegende Ecke'} anklicken
+                      (Kamin/Fenster/SAT).{' '}
+                      <button type="button" className="underline" onClick={() => { setPunkte([]); setPhase('edit'); }}>
+                        ✓ Fertig
+                      </button>{' '}
+                    </>
+                  ) : (
+                    <>
+                      <strong>{platF.name}</strong> ist platziert. Umriss/Hindernisse zeichnen oder
+                      „Fertig".{' '}
+                    </>
+                  )}
+                  {phase !== 'edit' && (
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => {
+                        setPunkte([]);
+                        if (platF.gesamtEckenPx) setPhase('edit');
+                        else starteMarkierung(null);
+                      }}
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </p>
+              </div>
             )}
 
             <div
@@ -220,8 +375,29 @@ export function SchrittGesamt({
                 </defs>
                 <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
 
-                {/* Platzierte Flächen (geteilt mit dem PDF-Export, GesamtSvg) */}
-                {gesamtFlaechenInhalt({ projekt, foto, ausblendenId: platziereId })}
+                {/* Platzierte Flächen (geteilt mit dem PDF-Export, GesamtSvg). Nur WÄHREND
+                    des aktiven Zeichnens wird die bearbeitete Fläche ausgeblendet (leeres Dach
+                    zum Zeichnen); sonst bleiben die Module sichtbar — keine Skizzenlinien. */}
+                {gesamtFlaechenInhalt({ projekt, foto, ausblendenId: zeichnetGerade ? platziereId : undefined })}
+
+                {/* Beim Hindernis-Zeichnen die bereits gesetzten Hindernisse (rot) zeigen —
+                    kein oranger Umriss (der Umriss ist an den Modulen/an der Zeichenvorschau
+                    ablesbar). */}
+                {platHom && platF && phase === 'hindernis' &&
+                  (platF.hindernisse ?? []).map((r, i) => (
+                    <path
+                      key={i}
+                      d={projPfad(platHom, [
+                        [r.xM, r.yM],
+                        [r.xM + r.breiteM, r.yM],
+                        [r.xM + r.breiteM, r.yM + r.hoeheM],
+                        [r.xM, r.yM + r.hoeheM],
+                      ] as Punkt[])}
+                      fill="rgba(239,68,68,0.4)"
+                      stroke="#ef4444"
+                      strokeWidth={px(0.002)}
+                    />
+                  ))}
 
                 {/* Gezogene First-/Trauflinie als Achs-Guide */}
                 {firstLinie && (
@@ -271,6 +447,18 @@ export function SchrittGesamt({
                     stroke="#f97316"
                     strokeWidth={px(0.0025)}
                     strokeDasharray={`${px(0.008)} ${px(0.005)}`}
+                  />
+                )}
+                {phase === 'umriss' && punkte.length >= 3 && (
+                  <line
+                    x1={punkte[punkte.length - 1]![0]}
+                    y1={punkte[punkte.length - 1]![1]}
+                    x2={punkte[0]![0]}
+                    y2={punkte[0]![1]}
+                    stroke="#f97316"
+                    strokeOpacity={0.4}
+                    strokeWidth={px(0.0016)}
+                    strokeDasharray={`${px(0.004)} ${px(0.004)}`}
                   />
                 )}
                 {platziereId &&
