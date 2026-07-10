@@ -351,6 +351,12 @@ export interface BelegungsCheck {
   meldungen: string[];
   /** Maß-Vorschlag aus dem Foto (nur mit Ziegel-Maßstab), auf 0,1 m gerundet */
   vorschlag: { breiteM: number; hoeheM: number } | null;
+  /**
+   * Firstbreiten-Vorschlag (nur Trapez): weicht der GEKLICKTE First deutlich vom
+   * eingegebenen firstBreiteM ab, kippen die Modulspalten sichtbar gegen die
+   * Ziegellinien (Genrih 08.07.). Vorschlag ≈ breiteM × geklicktes Verhältnis.
+   */
+  vorschlagFirstM: number | null;
 }
 
 /**
@@ -374,6 +380,7 @@ export function belegungsCheck(
         'Die 4 Ecken bilden kein sauberes Viereck — Reihenfolge prüfen: Traufe links → Traufe rechts → First rechts → First links.',
       ],
       vorschlag: null,
+      vorschlagFirstM: null,
     };
   }
 
@@ -420,7 +427,22 @@ export function belegungsCheck(
   // Beim Trapez ist ein kurzer First im Foto RICHTIG — gegen das erwartete
   // Verhältnis (firstBreiteM/breiteM) prüfen, nicht gegen 1.
   const relativ = perspektive / (erwarteterFirstAnteil || 1);
-  if (relativ < 0.8 || relativ > 1.25) {
+  let vorschlagFirstM: number | null = null;
+  if (erwarteterFirstAnteil < 0.98) {
+    // Trapez: Klick-Verhältnis gegen Maß-Verhältnis. Diskrepanz kippt die
+    // Modulspalten sichtbar gegen die Ziegellinien (Genrih 08.07.) — laut warnen
+    // und die aus dem Foto abgeleitete Firstbreite zum Übernehmen anbieten.
+    if (relativ > 1.12 || relativ < 0.88) {
+      status = 'warnung';
+      vorschlagFirstM = Math.round(breiteM * perspektive * 10) / 10;
+      meldungen.push(
+        `Der markierte First ist ${Math.round(perspektive * 100)} % der Traufe — laut deinen Maßen ` +
+          `müssten es ~${Math.round(erwarteterFirstAnteil * 100)} % sein. Dadurch kippen die Module ` +
+          `gegen die Ziegellinien! Firstbreite prüfen — Foto-Vorschlag: ` +
+          `${vorschlagFirstM.toLocaleString('de-DE')} m.`,
+      );
+    }
+  } else if (relativ < 0.8 || relativ > 1.25) {
     meldungen.push(
       'Foto ist deutlich schräg aufgenommen (First/Traufe-Verhältnis ' +
         `${Math.round(perspektive * 100)} %, erwartet ~${Math.round(erwarteterFirstAnteil * 100)} %) — ` +
@@ -428,5 +450,5 @@ export function belegungsCheck(
     );
   }
 
-  return { status, meldungen, vorschlag };
+  return { status, meldungen, vorschlag, vorschlagFirstM };
 }

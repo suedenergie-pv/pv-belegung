@@ -316,6 +316,16 @@ export function FotoHintergrund({
                 {fmtDe(check.vorschlag.hoeheM, 1)} m)
               </button>
             )}
+            {check?.vorschlagFirstM != null && (
+              <button
+                type="button"
+                className="h-9 rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-amber-800 hover:border-amber-400"
+                title="Behebt schief kippende Module: Firstbreite an den markierten First angleichen"
+                onClick={() => onPatch({ firstBreiteM: check.vorschlagFirstM!, inaktiv: [] })}
+              >
+                ⚠ Firstbreite aus Foto übernehmen ({fmtDe(check.vorschlagFirstM, 1)} m)
+              </button>
+            )}
             <button
               type="button"
               className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-red-500 hover:border-red-300"
