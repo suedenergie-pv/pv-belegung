@@ -51,6 +51,50 @@ function modusKnopfKlasse(aktiv: boolean): string {
   }`;
 }
 
+/**
+ * Schritt-Chip der Markier-Kette ①–④ (U3, 08.07.): zeigt Fortschritt (✓),
+ * aktiven Schritt und gesperrte Schritte — die Vertriebler sehen, WO im Ablauf
+ * sie sind, statt lose Modus-Knöpfe zu raten.
+ */
+function SchrittChip({
+  nr,
+  label,
+  aktiv,
+  erledigt,
+  gesperrt,
+  titel,
+  onClick,
+}: {
+  nr: string;
+  label: string;
+  aktiv: boolean;
+  erledigt: boolean;
+  gesperrt?: boolean;
+  titel?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={gesperrt}
+      title={titel}
+      onClick={onClick}
+      className={`h-9 rounded-lg border px-3 text-sm font-medium ${
+        aktiv
+          ? 'border-akzent bg-akzent text-white'
+          : gesperrt
+            ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300'
+            : erledigt
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+      }`}
+    >
+      {erledigt && !aktiv ? '✓ ' : ''}
+      {nr} {label}
+    </button>
+  );
+}
+
 export function FotoHintergrund({
   flaeche,
   onPatch,
@@ -306,29 +350,49 @@ export function FotoHintergrund({
       {foto && inMarkierung && (
         <div className="mt-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            {!foto.eckenPx ? (
-              <>
-                <button type="button" className={modusKnopfKlasse(modus === 'first')} onClick={() => wechsleModus('first')}>
-                  ① First-/Trauflinie
-                </button>
-                <button type="button" className={modusKnopfKlasse(modus === 'perspektive')} onClick={() => wechsleModus('perspektive')}>
-                  ② 4 Ecken
-                </button>
-                {modus === 'first' && (
-                  <button type="button" className={knopfKlasse} onClick={() => wechsleModus('perspektive')}>
-                    Überspringen
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <button type="button" className={modusKnopfKlasse(modus === 'umriss')} onClick={() => wechsleModus('umriss')}>
-                  ⬠ Umriss zeichnen
-                </button>
-                <button type="button" className={modusKnopfKlasse(modus === 'hindernis')} onClick={() => wechsleModus('hindernis')}>
-                  ▭ Hindernis markieren
-                </button>
-              </>
+            {/* Schrittanzeige ①–④: immer sichtbar, ✓ = erledigt, grau = noch gesperrt */}
+            <SchrittChip
+              nr="①"
+              label="Ausrichtung"
+              aktiv={modus === 'first'}
+              erledigt={!!firstLinie || !!foto.eckenPx}
+              onClick={() => wechsleModus('first')}
+            />
+            <SchrittChip
+              nr="②"
+              label="4 Ecken"
+              aktiv={modus === 'perspektive'}
+              erledigt={!!foto.eckenPx}
+              onClick={() => wechsleModus('perspektive')}
+            />
+            <SchrittChip
+              nr="③"
+              label="Umriss"
+              aktiv={modus === 'umriss'}
+              erledigt={!!flaeche.umrissM || (firstB !== undefined && !!foto.eckenPx)}
+              gesperrt={!foto.eckenPx}
+              titel={
+                !foto.eckenPx
+                  ? 'Erst die 4 Ecken setzen'
+                  : firstB !== undefined
+                    ? 'Trapez-Form kommt automatisch — Umriss nur für Sonderformen'
+                    : 'Nur nötig, wenn das Dach kein Rechteck ist'
+              }
+              onClick={() => wechsleModus('umriss')}
+            />
+            <SchrittChip
+              nr="④"
+              label="Hindernisse"
+              aktiv={modus === 'hindernis'}
+              erledigt={(flaeche.hindernisse ?? []).length > 0}
+              gesperrt={!foto.eckenPx}
+              titel={!foto.eckenPx ? 'Erst die 4 Ecken setzen' : 'Kamin/Fenster/SAT einrahmen'}
+              onClick={() => wechsleModus('hindernis')}
+            />
+            {modus === 'first' && (
+              <button type="button" className={knopfKlasse} onClick={() => wechsleModus('perspektive')}>
+                ➡ Überspringen (Traufe ist unten)
+              </button>
             )}
             <button type="button" className={modusKnopfKlasse(modus === 'ziegel')} onClick={() => wechsleModus('ziegel')}>
               Ziegel zählen (Maßstab)
@@ -443,7 +507,9 @@ export function FotoHintergrund({
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               <strong>Umriss zeichnen:</strong> den echten Rand der Dachfläche der Reihe nach
               anklicken (Fadenkreuz hilft beim Zielen). Schließen: ersten Punkt oder „Umriss fertig".{' '}
-              <strong>Rechteckiges Dach → einfach „Dach belegen"</strong> (Umriss = das Rechteck).
+              <strong>Rechteckiges Dach → einfach „Dach belegen"</strong> (Umriss = das Rechteck).{' '}
+              <em>Warum zwei Schritte? Die 4 Ecken sagen dem Tool, WIE das Dach im Foto liegt — der
+              Umriss sagt ihm die FORM.</em>
             </p>
           ) : modus === 'hindernis' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">

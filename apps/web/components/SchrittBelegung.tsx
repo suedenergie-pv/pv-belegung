@@ -28,6 +28,43 @@ interface Zeichnung {
   punkte: PunktM[];
 }
 
+/**
+ * Segment-Knopf der Werkzeugleiste (U1, 08.07.): Werkzeuge liegen als Gruppe auf
+ * grauem Grund, das aktive als weiße „Pille" — wie in einem Zeichenprogramm. Trennt
+ * die exklusiven MODI optisch von Aktionen und Einstellungen.
+ */
+function WerkzeugKnopf({
+  aktiv,
+  disabled,
+  title,
+  onClick,
+  children,
+}: {
+  aktiv: boolean;
+  disabled?: boolean;
+  title?: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className={`h-10 rounded-lg px-3 text-sm font-medium transition ${
+        disabled
+          ? 'cursor-not-allowed text-slate-300'
+          : aktiv
+            ? 'bg-white font-semibold text-akzent shadow'
+            : 'text-slate-600 hover:text-slate-900'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function SchrittBelegung({
   projekt,
   onChange,
@@ -254,122 +291,134 @@ export function SchrittBelegung({
               </span>
             </div>
 
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <ToggleButton
-                aktiv={f.ausrichtung === 'quer'}
-                onClick={() =>
-                  onChange({
-                    ...projekt,
-                    flaechen: projekt.flaechen.map((x) =>
-                      x.id === f.id ? { ...x, ausrichtung: 'quer', baender: undefined, inaktiv: [] } : x,
-                    ),
-                  })
-                }
-              >
-                ▭ Quer
-              </ToggleButton>
-              <ToggleButton
-                aktiv={f.ausrichtung === 'hoch'}
-                onClick={() =>
-                  onChange({
-                    ...projekt,
-                    flaechen: projekt.flaechen.map((x) =>
-                      x.id === f.id ? { ...x, ausrichtung: 'hoch', baender: undefined, inaktiv: [] } : x,
-                    ),
-                  })
-                }
-              >
-                ▯ Hochkant
-              </ToggleButton>
-              {belegungZeigen && (
-                <ToggleButton
-                  aktiv={verschiebeModusId === f.id}
-                  disabled={!!f.baender}
-                  title={f.baender ? 'Erst „Alle Reihen gleich" — Verschieben geht nur bei einheitlichen Reihen' : undefined}
-                  onClick={() => {
-                    if (f.baender) return;
-                    const an = verschiebeModusId !== f.id;
-                    setVerschiebeModusId(an ? f.id : null);
-                    if (an) {
-                      setReihenModusId(null);
-                      setModulModusId(null);
-                      setGewaehltExtra(null);
-                    }
-                    // Beim Aktivieren Versatz aktivieren (Lattice ab aktueller Lage)
-                    if (an && f.versatzXM === undefined)
-                      patchFlaeche(f.id, { versatzXM: 0, versatzYM: 0 });
-                  }}
-                >
-                  ↔ Verschieben
-                </ToggleButton>
-              )}
-              {belegungZeigen && (
-                <ToggleButton
-                  aktiv={modulModusId === f.id}
-                  onClick={() => {
-                    const an = modulModusId !== f.id;
-                    setModulModusId(an ? f.id : null);
-                    setGewaehltExtra(null);
-                    if (an) {
-                      setReihenModusId(null);
+            {/* Zeile 1 — WERKZEUGE (exklusive Modi, wie in einem Zeichenprogramm) + Aktionen */}
+            {belegungZeigen && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1">
+                  <WerkzeugKnopf
+                    aktiv={verschiebeModusId !== f.id && modulModusId !== f.id && reihenModusId !== f.id}
+                    title="Standard: Module antippen zum Deaktivieren/Aktivieren"
+                    onClick={() => {
                       setVerschiebeModusId(null);
-                    }
-                  }}
-                >
-                  ➕ Modul setzen
-                </ToggleButton>
-              )}
-              {belegungZeigen && (
-                <ToggleButton
-                  aktiv={reihenModusId === f.id}
-                  disabled={f.versatzXM !== undefined}
-                  title={f.versatzXM !== undefined ? 'Erst Versatz zurücksetzen (↔ Verschieben → „↺ Zurücksetzen")' : undefined}
-                  onClick={() => {
-                    if (f.versatzXM !== undefined) return;
-                    const an = reihenModusId !== f.id;
-                    setReihenModusId(an ? f.id : null);
-                    if (an) {
                       setModulModusId(null);
+                      setReihenModusId(null);
                       setGewaehltExtra(null);
-                    }
-                  }}
-                >
-                  ⟳ Reihe drehen
-                </ToggleButton>
-              )}
-              {f.baender && (
-                <button
-                  type="button"
-                  className="h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 hover:border-slate-400"
-                  onClick={() => patchFlaeche(f.id, { baender: undefined, inaktiv: [] })}
-                >
-                  Alle Reihen gleich
-                </button>
-              )}
-              {belegungZeigen && raster.positionen.length > 0 && aktiv > 0 && (
-                <button
-                  type="button"
-                  className="h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-red-600 hover:border-red-300"
-                  title="Alle Module dieser Fläche entfernen (Zusatzmodule werden gelöscht)"
+                    }}
+                  >
+                    🖱 Antippen
+                  </WerkzeugKnopf>
+                  <WerkzeugKnopf
+                    aktiv={verschiebeModusId === f.id}
+                    disabled={!!f.baender}
+                    title={f.baender ? 'Erst „Alle Reihen gleich“ — Verschieben geht nur bei einheitlichen Reihen' : 'Ganze Belegung cm-weise schieben'}
+                    onClick={() => {
+                      if (f.baender) return;
+                      const an = verschiebeModusId !== f.id;
+                      setVerschiebeModusId(an ? f.id : null);
+                      if (an) {
+                        setReihenModusId(null);
+                        setModulModusId(null);
+                        setGewaehltExtra(null);
+                      }
+                      // Beim Aktivieren Versatz aktivieren (Lattice ab aktueller Lage)
+                      if (an && f.versatzXM === undefined)
+                        patchFlaeche(f.id, { versatzXM: 0, versatzYM: 0 });
+                    }}
+                  >
+                    ↔ Verschieben
+                  </WerkzeugKnopf>
+                  <WerkzeugKnopf
+                    aktiv={modulModusId === f.id}
+                    title="Einzelnes Zusatzmodul setzen, verschieben oder entfernen"
+                    onClick={() => {
+                      const an = modulModusId !== f.id;
+                      setModulModusId(an ? f.id : null);
+                      setGewaehltExtra(null);
+                      if (an) {
+                        setReihenModusId(null);
+                        setVerschiebeModusId(null);
+                      }
+                    }}
+                  >
+                    ➕ Modul setzen
+                  </WerkzeugKnopf>
+                  <WerkzeugKnopf
+                    aktiv={reihenModusId === f.id}
+                    disabled={f.versatzXM !== undefined}
+                    title={f.versatzXM !== undefined ? 'Erst Versatz zurücksetzen (↔ Verschieben → „↺ Zurücksetzen“)' : 'Ganze Reihe zwischen quer und hochkant umschalten'}
+                    onClick={() => {
+                      if (f.versatzXM !== undefined) return;
+                      const an = reihenModusId !== f.id;
+                      setReihenModusId(an ? f.id : null);
+                      if (an) {
+                        setModulModusId(null);
+                        setGewaehltExtra(null);
+                      }
+                    }}
+                  >
+                    ⟳ Reihe drehen
+                  </WerkzeugKnopf>
+                </div>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  {f.baender && (
+                    <button type="button" className={aktionKlasse} onClick={() => patchFlaeche(f.id, { baender: undefined, inaktiv: [] })}>
+                      Alle Reihen gleich
+                    </button>
+                  )}
+                  {raster.positionen.length > 0 && aktiv > 0 && (
+                    <button
+                      type="button"
+                      className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                      title="Alle Module dieser Fläche entfernen (Zusatzmodule werden gelöscht)"
+                      onClick={() =>
+                        patchFlaeche(f.id, {
+                          inaktiv: raster.positionen.map((p) => `${p.row}-${p.col}`),
+                          extraModule: undefined,
+                        })
+                      }
+                    >
+                      🗑 Leeren
+                    </button>
+                  )}
+                  {f.inaktiv.length > 0 && (
+                    <button type="button" className={aktionKlasse} onClick={() => patchFlaeche(f.id, { inaktiv: [] })}>
+                      ↺ Alle zeigen
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Zeile 2 — EINSTELLUNGEN: Ausrichtung, Randabstand, Dachfarbe */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                <WerkzeugKnopf
+                  aktiv={f.ausrichtung === 'quer'}
                   onClick={() =>
-                    patchFlaeche(f.id, {
-                      inaktiv: raster.positionen.map((p) => `${p.row}-${p.col}`),
-                      extraModule: undefined,
+                    onChange({
+                      ...projekt,
+                      flaechen: projekt.flaechen.map((x) =>
+                        x.id === f.id ? { ...x, ausrichtung: 'quer', baender: undefined, inaktiv: [] } : x,
+                      ),
                     })
                   }
                 >
-                  🗑 Leeren
-                </button>
-              )}
-              {belegungZeigen && f.inaktiv.length > 0 && (
-                <button
-                  type="button"
-                  className="h-12 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 hover:border-slate-400"
-                  onClick={() => patchFlaeche(f.id, { inaktiv: [] })}
+                  ▭ Quer
+                </WerkzeugKnopf>
+                <WerkzeugKnopf
+                  aktiv={f.ausrichtung === 'hoch'}
+                  onClick={() =>
+                    onChange({
+                      ...projekt,
+                      flaechen: projekt.flaechen.map((x) =>
+                        x.id === f.id ? { ...x, ausrichtung: 'hoch', baender: undefined, inaktiv: [] } : x,
+                      ),
+                    })
+                  }
                 >
-                  ↺ Alle zeigen
-                </button>
-              )}
+                  ▯ Hochkant
+                </WerkzeugKnopf>
+              </div>
 
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
                 Rand
@@ -417,55 +466,6 @@ export function SchrittBelegung({
                 ))}
               </div>
             </div>
-
-            {verschiebeModusId === f.id && (
-              <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="grid grid-cols-3 gap-1">
-                    <span />
-                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, 0, -1)} title="nach oben">↑</button>
-                    <span />
-                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, -1, 0)} title="nach links">←</button>
-                    <span className="flex h-9 w-9 items-center justify-center text-slate-400">✥</span>
-                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, 1, 0)} title="nach rechts">→</button>
-                    <span />
-                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, 0, 1)} title="nach unten">↓</button>
-                    <span />
-                  </div>
-                  <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                    Schritt
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={50}
-                      value={schrittCm}
-                      onChange={(e) => {
-                        const n = Number.parseInt(e.target.value, 10);
-                        if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
-                      }}
-                      className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
-                    />
-                    cm
-                  </label>
-                  <button type="button" className={aktionKlasse} onClick={() => bestePosition(f)}>
-                    ⌖ Beste Position
-                  </button>
-                  <button type="button" className={aktionKlasse} onClick={() => versatzZuruecksetzen(f)}>
-                    ↺ Zurücksetzen
-                  </button>
-                  <span className="text-sm text-slate-500">
-                    Versatz X {fmtDe((f.versatzXM ?? 0) * 100, 0)} cm, Y{' '}
-                    {fmtDe((f.versatzYM ?? 0) * 100, 0)} cm
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-sky-800">
-                  Ganze Anlage cm-weise schieben — Module, die ein Hindernis oder den Rand treffen,
-                  entfallen; frei werdende kommen dazu. „⌖ Beste Position" sucht die Lage mit den
-                  meisten Modulen. Modulzahl siehe oben rechts.
-                </p>
-              </div>
-            )}
 
             <FotoHintergrund
               flaeche={f}
@@ -579,62 +579,56 @@ export function SchrittBelegung({
               </div>
             )}
 
-            {!belegungZeigen ? null : raster.positionen.length === 0 ? (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                Fläche zu klein für dieses Modul (inkl. {Math.round(randVon(f) * 100)} cm
-                Randabstand){umrissVon(f) ? ' — oder die Dachform lässt kein Modul komplett zu' : ''}.
-              </p>
-            ) : (
-              <DachSvg
-                flaeche={f}
-                raster={raster}
-                modul={modul}
-                masse={masseZeigen}
-                hervorhebenKey={
-                  modulModusId === f.id && gewaehltExtra != null ? `-1-${gewaehltExtra}` : undefined
-                }
-                zeichnen={
-                  modulModusId === f.id
-                    ? { aktiv: true, punkteM: [], onKlickM: (p) => modulKlick(f, p) }
-                    : zeichneHier
-                      ? {
-                          aktiv: true,
-                          punkteM: zeichneHier.punkte,
-                          onKlickM: (p) => klickM(f, p),
-                        }
-                      : undefined
-                }
-                onToggle={(key) => {
-                  const istExtra = key.startsWith('-1-'); // Zusatzmodul (row = -1)
-                  if (reihenModusId === f.id) {
-                    if (istExtra) return; // Zusatzmodul hat keine Reihe zum Drehen
-                    flipBand(f, Number(key.split('-')[0]));
-                    return;
-                  }
-                  if (istExtra) {
-                    // Zusatzmodul antippen → löschen (Extras sind manuell gesetzt)
-                    const idx = Number(key.slice(3));
-                    patchFlaeche(f.id, {
-                      extraModule: (f.extraModule ?? []).filter((_, i) => i !== idx),
-                    });
-                    return;
-                  }
-                  onChange({
-                    ...projekt,
-                    flaechen: projekt.flaechen.map((x) =>
-                      x.id === f.id
-                        ? {
-                            ...x,
-                            inaktiv: x.inaktiv.includes(key)
-                              ? x.inaktiv.filter((k) => k !== key)
-                              : [...x.inaktiv, key],
-                          }
-                        : x,
-                    ),
-                  });
-                }}
-              />
+            {/* Aktives Werkzeug: Bedienpanel + Anleitung direkt am Dach */}
+            {verschiebeModusId === f.id && (
+              <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="grid grid-cols-3 gap-1">
+                    <span />
+                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, 0, -1)} title="nach oben">↑</button>
+                    <span />
+                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, -1, 0)} title="nach links">←</button>
+                    <span className="flex h-9 w-9 items-center justify-center text-slate-400">✥</span>
+                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, 1, 0)} title="nach rechts">→</button>
+                    <span />
+                    <button type="button" className={pfeilKlasse} onClick={() => nudge(f, 0, 1)} title="nach unten">↓</button>
+                    <span />
+                  </div>
+                  <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                    Schritt
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={50}
+                      value={schrittCm}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10);
+                        if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
+                      }}
+                      className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
+                    />
+                    cm
+                  </label>
+                  <button type="button" className={aktionKlasse} onClick={() => bestePosition(f)}>
+                    ⌖ Beste Position
+                  </button>
+                  <button type="button" className={aktionKlasse} onClick={() => versatzZuruecksetzen(f)}>
+                    ↺ Zurücksetzen
+                  </button>
+                  <span className="text-sm text-slate-500">
+                    Versatz X {fmtDe((f.versatzXM ?? 0) * 100, 0)} cm, Y{' '}
+                    {fmtDe((f.versatzYM ?? 0) * 100, 0)} cm
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-sky-800">
+                  Ganze Anlage cm-weise schieben — Module, die ein Hindernis oder den Rand treffen,
+                  entfallen; frei werdende kommen dazu. „⌖ Beste Position" sucht die Lage mit den
+                  meisten Modulen. Modulzahl siehe oben rechts.
+                </p>
+              </div>
             )}
+
             {belegungZeigen && reihenModusId === f.id && (
               <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
                 <strong>Reihe drehen:</strong> ein Modul in der gewünschten Reihe antippen — die
@@ -690,6 +684,63 @@ export function SchrittBelegung({
                   (Rand/Umriss/Hindernis/Überlappung), passiert nichts. Ideal fürs einzelne Modul am Walm.
                 </p>
               </div>
+            )}
+
+            {!belegungZeigen ? null : raster.positionen.length === 0 ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Fläche zu klein für dieses Modul (inkl. {Math.round(randVon(f) * 100)} cm
+                Randabstand){umrissVon(f) ? ' — oder die Dachform lässt kein Modul komplett zu' : ''}.
+              </p>
+            ) : (
+              <DachSvg
+                flaeche={f}
+                raster={raster}
+                modul={modul}
+                masse={masseZeigen}
+                hervorhebenKey={
+                  modulModusId === f.id && gewaehltExtra != null ? `-1-${gewaehltExtra}` : undefined
+                }
+                zeichnen={
+                  modulModusId === f.id
+                    ? { aktiv: true, punkteM: [], onKlickM: (p) => modulKlick(f, p) }
+                    : zeichneHier
+                      ? {
+                          aktiv: true,
+                          punkteM: zeichneHier.punkte,
+                          onKlickM: (p) => klickM(f, p),
+                        }
+                      : undefined
+                }
+                onToggle={(key) => {
+                  const istExtra = key.startsWith('-1-'); // Zusatzmodul (row = -1)
+                  if (reihenModusId === f.id) {
+                    if (istExtra) return; // Zusatzmodul hat keine Reihe zum Drehen
+                    flipBand(f, Number(key.split('-')[0]));
+                    return;
+                  }
+                  if (istExtra) {
+                    // Zusatzmodul antippen → löschen (Extras sind manuell gesetzt)
+                    const idx = Number(key.slice(3));
+                    patchFlaeche(f.id, {
+                      extraModule: (f.extraModule ?? []).filter((_, i) => i !== idx),
+                    });
+                    return;
+                  }
+                  onChange({
+                    ...projekt,
+                    flaechen: projekt.flaechen.map((x) =>
+                      x.id === f.id
+                        ? {
+                            ...x,
+                            inaktiv: x.inaktiv.includes(key)
+                              ? x.inaktiv.filter((k) => k !== key)
+                              : [...x.inaktiv, key],
+                          }
+                        : x,
+                    ),
+                  });
+                }}
+              />
             )}
             {belegungZeigen && reihenModusId !== f.id && modulModusId !== f.id && (
               <p className="mt-2 text-xs text-slate-400">
