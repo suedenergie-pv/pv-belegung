@@ -136,6 +136,11 @@ export interface Flaeche {
    * und gezählt.
    */
   extraModule?: { xM: number; yM: number; quer: boolean }[];
+  /**
+   * 'frei' = jede Reihe einzeln maximal fuellen (Parallelogramm-/Schraegdach,
+   * Genrih 08.07.). Default: Hybrid-Optimierer (gerade, Versatz nur bei klarem Gewinn).
+   */
+  optimierung?: 'frei';
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
   /**
@@ -274,6 +279,7 @@ function belegungInput(f: Flaeche, modul: ModuleType): BelegungInput {
     umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
     baender: f.baender,
+    optimierung: f.optimierung,
     versatzXM: f.versatzXM,
     versatzYM: f.versatzYM,
   };

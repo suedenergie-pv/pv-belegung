@@ -160,6 +160,33 @@ describe('Gemischte Ausrichtung — Bänder (SPEC §9, 07.07.2026)', () => {
   });
 });
 
+describe("Optimierung 'frei' — Parallelogramm/Schrägdach (08.07.2026)", () => {
+  // Parallelogramm mit 2,2 m Schräge: der Reihen-Versatz gewinnt nur 2 Module —
+  // unter der Auto-Schwelle (max(2, 10 %) = 3). Genrihs Fall: auto verschenkt Platz.
+  const schraeg = 2.2;
+  const basis = {
+    breiteM: 10 + schraeg,
+    hoeheM: 6,
+    module: M,
+    ausrichtung: 'quer' as const,
+    umrissM: [[schraeg, 0], [10 + schraeg, 0], [10, 6], [0, 6]] as [number, number][],
+  };
+
+  it('auto bleibt unter der Schwelle gerade (verschenkt 2 Module)', () => {
+    expect(berechneRaster(basis).positionen.length).toBe(23);
+  });
+
+  it("'frei' füllt jede Reihe maximal (+2 Module)", () => {
+    expect(berechneRaster({ ...basis, optimierung: 'frei' }).positionen.length).toBe(25);
+  });
+
+  it("'frei' ohne Umriss ändert nichts am Rechteck-Raster", () => {
+    const ohne = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' });
+    const frei = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer', optimierung: 'frei' });
+    expect(frei.positionen.length).toBe(ohne.positionen.length);
+  });
+});
+
 describe('Manueller Versatz / Nudge (07.07.2026)', () => {
   const basis = { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const };
   // Hindernis, das nur Reihe0/Spalte0 streift (x 0,40..0,65) → 1 Modul entfaellt.

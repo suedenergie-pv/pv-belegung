@@ -39,6 +39,13 @@ export interface BelegungInput {
    */
   optimierePosition?: boolean;
   /**
+   * 'frei' (Genrih 08.07., „beschissene Dächer"): jede Reihe wird einzeln maximal
+   * gefüllt — ohne die Schwelle, die den Reihen-Versatz sonst nur bei DEUTLICHEM
+   * Gewinn zulässt. Für Parallelogramm-/Schrägdächer, wo pro Reihe nur 1–2 Module
+   * gewonnen werden, in Summe aber viel. Default 'auto' = bisheriges Hybrid.
+   */
+  optimierung?: 'auto' | 'frei';
+  /**
    * Ausrichtung je Band (Reihe) von oben (First) nach unten (Traufe). Fehlt ein
    * Eintrag, gilt `ausrichtung` (Basis). Sobald mindestens ein Band abweicht, wird
    * die Fläche als Stapel horizontaler Bänder gefüllt (gemischt hoch/quer, SPEC §9,
@@ -290,8 +297,11 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
     }
   }
 
-  // Reihenweise nur, wenn es DEUTLICH mehr Module bringt (sonst gerade montieren).
-  const schwelle = Math.max(2, Math.ceil(ausgerichtet.length * 0.1));
+  // Auswahl: 'frei' nimmt den reihenweisen Kandidaten, sobald er mindestens
+  // gleichzieht (jede Reihe maximal füllen — Parallelogramm/Schrägdach).
+  // 'auto' (Default) nur bei DEUTLICHEM Gewinn (sonst gerade montieren).
+  const schwelle =
+    input.optimierung === 'frei' ? 0 : Math.max(2, Math.ceil(ausgerichtet.length * 0.1));
   const roh =
     reihenweise && reihenweise.length >= ausgerichtet.length + schwelle
       ? reihenweise

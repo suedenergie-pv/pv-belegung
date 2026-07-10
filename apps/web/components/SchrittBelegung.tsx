@@ -420,6 +420,24 @@ export function SchrittBelegung({
                 </WerkzeugKnopf>
               </div>
 
+              <button
+                type="button"
+                title="Für schiefe Dächer (Parallelogramm, Schrägschnitt): jede Reihe wird einzeln maximal gefüllt, ohne dass die Spalten fluchten müssen. Standard: gerade Montage, Versatz nur bei klarem Gewinn."
+                onClick={() =>
+                  patchFlaeche(f.id, {
+                    optimierung: f.optimierung === 'frei' ? undefined : 'frei',
+                    inaktiv: [],
+                  })
+                }
+                className={`h-9 rounded-lg border px-3 text-sm font-medium ${
+                  f.optimierung === 'frei'
+                    ? 'border-akzent bg-akzent text-white'
+                    : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                }`}
+              >
+                🧩 Reihen frei versetzen
+              </button>
+
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
                 Rand
                 <input
