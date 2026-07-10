@@ -146,6 +146,16 @@ export interface Flaeche {
  * (Rechteck) kein Umriss → volles Raster. So hat die digitale Fläche von Anfang
  * an die richtige Form, auch ohne Foto.
  */
+/**
+ * Firstbreite für die Foto-Perspektive (08.07.2026): Bei einer Trapez-Fläche
+ * klickt der Nutzer die 4 ECHTEN Trapez-Ecken im Foto an — die Homographie muss
+ * dann Trapez→Trapez rechnen statt Rechteck→Trapez (sonst verzerrt alles).
+ * Rechteck-Flächen (oder manuell gezeichneter Umriss) → undefined = wie bisher.
+ */
+export function perspektiveFirstBreite(f: Flaeche): number | undefined {
+  return f.dachform === 'trapez' ? (f.firstBreiteM ?? f.breiteM * 0.6) : undefined;
+}
+
 export function umrissVon(f: Flaeche): PunktM[] | undefined {
   if (f.umrissM && f.umrissM.length >= 3) return f.umrissM;
   if (f.dachform === 'trapez') {

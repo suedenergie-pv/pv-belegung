@@ -10,7 +10,15 @@ import {
   type Punkt,
 } from '../lib/foto-geometrie';
 import { modulAssetInner, modulMatrix, modulMatrixDreiecke } from '../lib/modul-assets';
-import { DACHFARBEN, fmtDe, umrissVon, type Dachfarbe, type Flaeche, type PunktM } from '../lib/model';
+import {
+  DACHFARBEN,
+  fmtDe,
+  perspektiveFirstBreite,
+  umrissVon,
+  type Dachfarbe,
+  type Flaeche,
+  type PunktM,
+} from '../lib/model';
 
 /**
  * Zeichenmodus (SPEC §9, 06.07.2026): Klicks werden in Flächen-Koordinaten
@@ -369,7 +377,7 @@ export function DachSvg({
     // Perspektivischer Modus: 4 markierte Ecken → Homographie Fläche→Foto.
     // Jedes Modul wird als projiziertes Viereck gezeichnet (LoD vereinfacht,
     // SPEC §11.2) — Maße weiterhin aus dem Engine-Raster, nie aus dem Foto.
-    const h = homographie(B, H, foto.eckenPx);
+    const h = homographie(B, H, foto.eckenPx, perspektiveFirstBreite(flaeche));
     if (h) {
       const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
         [x, y],
@@ -379,7 +387,7 @@ export function DachSvg({
       ];
       const klickM = zeichnen?.aktiv
         ? (e: React.MouseEvent<SVGSVGElement>) => {
-            const inv = inverseHomographie(B, H, foto.eckenPx!);
+            const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveFirstBreite(flaeche));
             if (!inv) return;
             const rect = e.currentTarget.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return;

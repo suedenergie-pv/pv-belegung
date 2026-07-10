@@ -66,14 +66,28 @@ function basisZu(p: Ecken): M3 {
 /**
  * Homographie Flächen-Koordinaten (Meter, Ursprung First links, y zur Traufe)
  * → Foto-Pixel. null bei entarteten Ecken.
+ *
+ * `firstBreiteM` (Trapez/Walm, 08.07.2026, Genrih): Ist die Fläche ein Trapez,
+ * klickt der Nutzer die 4 ECHTEN Trapez-Ecken an (kurzer First oben). Dann werden
+ * die Quellpunkte auf die Trapez-Ecken in Flächen-Koordinaten gelegt — vorher
+ * wurde das Rechteck ins Trapez gestreckt und alles verzerrte. Ohne firstBreiteM
+ * (Rechteck-Fläche) bleibt alles wie bisher.
  */
-export function homographie(breiteM: number, hoeheM: number, ecken: Ecken): M3 | null {
+export function homographie(
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  firstBreiteM?: number,
+): M3 | null {
   if (breiteM <= 0 || hoeheM <= 0) return null;
+  // Walmspitze (First ~0) entartet die Homographie — auf 5 % Traufbreite klemmen.
+  const f = firstBreiteM === undefined ? breiteM : Math.max(firstBreiteM, breiteM * 0.05);
+  const inset = (breiteM - f) / 2;
   const src: Ecken = [
     [0, hoeheM],
     [breiteM, hoeheM],
-    [breiteM, 0],
-    [0, 0],
+    [breiteM - inset, 0],
+    [inset, 0],
   ];
   const h = mult(basisZu(ecken), adjugat(basisZu(src)));
   return h.every((n) => Number.isFinite(n)) ? h : null;
@@ -89,8 +103,13 @@ export function projiziere(h: M3, [x, y]: Punkt): Punkt {
  * die Inverse bis auf Skalierung die Adjugate — Grundlage für „Umriss zeichnen"
  * und Hindernis-Markierung direkt im Foto (SPEC §9, 06.07.2026).
  */
-export function inverseHomographie(breiteM: number, hoeheM: number, ecken: Ecken): M3 | null {
-  const h = homographie(breiteM, hoeheM, ecken);
+export function inverseHomographie(
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  firstBreiteM?: number,
+): M3 | null {
+  const h = homographie(breiteM, hoeheM, ecken, firstBreiteM);
   if (!h) return null;
   const inv = adjugat(h);
   return inv.every((n) => Number.isFinite(n)) && (inv[6] || inv[7] || inv[8]) ? inv : null;
@@ -189,9 +208,10 @@ export function umrissAusKlicks(
   breiteM: number,
   hoeheM: number,
   ecken: Ecken,
+  firstBreiteM?: number,
 ): PunktM[] | null {
   if (pts.length < 3) return null;
-  const hinv = inverseHomographie(breiteM, hoeheM, ecken);
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, firstBreiteM);
   if (!hinv) return null;
   return pts.map((p) => {
     const [x, y] = projiziere(hinv, p);
@@ -209,8 +229,9 @@ export function hindernisAusKlicks(
   breiteM: number,
   hoeheM: number,
   ecken: Ecken,
+  firstBreiteM?: number,
 ): RechteckM | null {
-  const hinv = inverseHomographie(breiteM, hoeheM, ecken);
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, firstBreiteM);
   if (!hinv) return null;
   const [ax, ay] = projiziere(hinv, p1);
   const [bx, by] = projiziere(hinv, p2);
@@ -342,6 +363,8 @@ export function belegungsCheck(
   hoeheM: number,
   neigungDeg: number,
   pxProM: number | undefined,
+  /** Erwartetes First/Traufe-Verhältnis (Trapez: firstBreiteM/breiteM, sonst 1). */
+  erwarteterFirstAnteil = 1,
 ): BelegungsCheck {
   const meldungen: string[] = [];
   if (!eckenPlausibel(ecken)) {
@@ -394,11 +417,14 @@ export function belegungsCheck(
     );
   }
 
-  if (perspektive < 0.8 || perspektive > 1.25) {
+  // Beim Trapez ist ein kurzer First im Foto RICHTIG — gegen das erwartete
+  // Verhältnis (firstBreiteM/breiteM) prüfen, nicht gegen 1.
+  const relativ = perspektive / (erwarteterFirstAnteil || 1);
+  if (relativ < 0.8 || relativ > 1.25) {
     meldungen.push(
       'Foto ist deutlich schräg aufgenommen (First/Traufe-Verhältnis ' +
-        `${Math.round(perspektive * 100)} %) — Platzierung ist perspektivisch korrekt, ` +
-        'die Höhen-Schätzung aus dem Foto aber nur grob. Aufmaß geht vor.',
+        `${Math.round(perspektive * 100)} %, erwartet ~${Math.round(erwarteterFirstAnteil * 100)} %) — ` +
+        'Platzierung ist perspektivisch korrekt, die Höhen-Schätzung aus dem Foto aber nur grob. Aufmaß geht vor.',
     );
   }
 

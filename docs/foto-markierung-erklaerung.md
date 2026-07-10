@@ -72,10 +72,13 @@ echte **Form** sagt es nichts.
 
 ## Komplexe Dachformen
 
-- **Walmdach (Dreieck/Trapez):** Rechteck = die 4 Ecken der gedachten Vollebene
-  (die Spitze liegt „in der Luft" oberhalb der echten Dachspitze); dann Umriss = das
-  echte Dreieck/Trapez. First-/Trauflinie zuerst, damit hoch/quer stimmt.
-- **L-Form / Erker / Gauben:** Rechteck über die Hauptebene, Umriss entlang der
+- **Walmdach (Trapez) — der einfache Weg:** Im Schritt „Dachflächen" die Form
+  **Trapez** wählen und die Firstbreite eingeben. Dann im Foto einfach die
+  **4 echten Trapez-Ecken** anklicken (2 an der Traufe, 2 am kurzen First) —
+  **keine Ecken in die Luft verlängern!** Das Tool kennt die Trapez-Geometrie und
+  rechnet Perspektive + Form automatisch. Kein Umriss nötig.
+- **L-Form / Erker / Gauben** (keine Trapez-Form wählbar): Rechteck über die
+  Hauptebene (Ecken notfalls „in der Luft" verlängert), dann Umriss entlang der
   echten Kante; Kamin/Fenster/SAT separat als Hindernis markieren.
 
 ---

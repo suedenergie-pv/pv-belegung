@@ -1,7 +1,14 @@
 'use client';
 
 import { homographie } from '../lib/foto-geometrie';
-import { modulById, rasterFuer, zonenLabel, type GesamtFoto, type Projekt } from '../lib/model';
+import {
+  modulById,
+  perspektiveFirstBreite,
+  rasterFuer,
+  zonenLabel,
+  type GesamtFoto,
+  type Projekt,
+} from '../lib/model';
 import { ModulAsset, moduleAufHomographie } from './DachSvg';
 
 /**
@@ -34,7 +41,7 @@ export function gesamtFlaechenInhalt({
   const px = (v: number) => foto.breitePx * v;
   return projekt.flaechen.map((f, i) => {
     if (!f.gesamtEckenPx || f.id === ausblendenId) return null;
-    const h = homographie(f.breiteM, f.hoeheM, f.gesamtEckenPx);
+    const h = homographie(f.breiteM, f.hoeheM, f.gesamtEckenPx, perspektiveFirstBreite(f));
     if (!h) return null;
     const raster = rasterFuer(f, modul);
     const mitte = f.gesamtEckenPx.reduce<[number, number]>(

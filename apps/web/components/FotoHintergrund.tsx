@@ -13,7 +13,7 @@ import {
   umrissAusKlicks,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { DACHFARBEN, fmtDe, type DachFoto, type Flaeche } from '../lib/model';
+import { DACHFARBEN, fmtDe, perspektiveFirstBreite, type DachFoto, type Flaeche } from '../lib/model';
 
 /**
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal, SPEC §8.1).
@@ -75,10 +75,11 @@ export function FotoHintergrund({
 
   const markiert = !!(foto && (foto.eckenPx || foto.traufePx));
   const inMarkierung = !!foto && !flaeche.markierungFertig;
-  const hom = foto?.eckenPx ? homographie(B, H, foto.eckenPx) : null;
+  const firstB = perspektiveFirstBreite(flaeche);
+  const hom = foto?.eckenPx ? homographie(B, H, foto.eckenPx, firstB) : null;
   const check =
     foto?.eckenPx != null
-      ? belegungsCheck(foto.eckenPx, B, H, flaeche.neigungDeg, foto.pxProM)
+      ? belegungsCheck(foto.eckenPx, B, H, flaeche.neigungDeg, foto.pxProM, firstB !== undefined ? firstB / B : 1)
       : null;
 
   // Fadenkreuz-Vorschau nur in den Punkt-Setz-Modi
@@ -103,7 +104,7 @@ export function FotoHintergrund({
 
   const umrissAbschliessen = (pts: Punkt[]) => {
     if (!foto?.eckenPx) return;
-    const umrissM = umrissAusKlicks(pts, B, H, foto.eckenPx);
+    const umrissM = umrissAusKlicks(pts, B, H, foto.eckenPx, firstB);
     if (!umrissM) return;
     onPatch({ umrissM, inaktiv: [] });
     setPunkte([]);
@@ -112,7 +113,7 @@ export function FotoHintergrund({
 
   const hindernisSetzen = (p1: Punkt, p2: Punkt) => {
     if (!foto?.eckenPx) return;
-    const rect = hindernisAusKlicks(p1, p2, B, H, foto.eckenPx);
+    const rect = hindernisAusKlicks(p1, p2, B, H, foto.eckenPx, firstB);
     if (rect) onPatch({ hindernisse: [...(flaeche.hindernisse ?? []), rect], inaktiv: [] });
   };
 
@@ -420,13 +421,24 @@ export function FotoHintergrund({
               Bild? <strong>„Überspringen"</strong> genügt.
             </p>
           ) : modus === 'perspektive' ? (
-            <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Perspektive – 4 Ecken:</strong> die 4 Ecken des Dach-<strong>Rechtecks</strong>{' '}
-              anklicken (Traufe + First), <strong>Reihenfolge egal</strong>. Liegt eine Ecke in der
-              Luft (z. B. über der Terrasse), am <strong>Fadenkreuz</strong> ausrichten — es zeigt die
-              X/Y-Linie durch den Mauszeiger. Sitzt die Belegung verdreht: <strong>↻ Traufe
-              wechseln</strong>.
-            </p>
+            firstB !== undefined ? (
+              <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                <strong>Perspektive – 4 Ecken (Trapez/Walm):</strong> die 4 <strong>echten
+                Trapez-Ecken</strong> anklicken — 2 an der Traufe, 2 am kurzen First oben.{' '}
+                <strong>Keine Ecken in die Luft verlängern!</strong> Das Tool kennt die Firstbreite
+                ({fmtDe(firstB, 1)} m) aus Schritt 2 und rechnet die Form automatisch — kein Umriss
+                nötig. Reihenfolge egal.
+              </p>
+            ) : (
+              <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                <strong>Perspektive – 4 Ecken:</strong> die 4 Ecken des Dach-<strong>Rechtecks</strong>{' '}
+                anklicken (Traufe + First), <strong>Reihenfolge egal</strong>. Liegt eine Ecke in der
+                Luft (z. B. über der Terrasse), am <strong>Fadenkreuz</strong> ausrichten — es zeigt
+                die X/Y-Linie durch den Mauszeiger. Sitzt die Belegung verdreht: <strong>↻ Traufe
+                wechseln</strong>. Tipp: Bei Walm/Trapez in Schritt „Dachflächen" die Form{' '}
+                <strong>Trapez</strong> wählen — dann einfach die echten Ecken klicken.
+              </p>
+            )
           ) : modus === 'umriss' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               <strong>Umriss zeichnen:</strong> den echten Rand der Dachfläche der Reihe nach
