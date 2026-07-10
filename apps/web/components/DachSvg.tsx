@@ -31,6 +31,22 @@ export interface ZeichnenProps {
   aktiv: boolean;
   punkteM: PunktM[];
   onKlickM: (p: PunktM) => void;
+  /** Mausposition in Flächen-/Rahmen-Metern melden (für Live-Vorschau); null beim Verlassen. */
+  onMoveM?: (p: PunktM | null) => void;
+}
+
+/**
+ * Geistermodul unter dem Cursor (Live-Vorschau beim „Modul setzen", Genrih 08.07.):
+ * halbtransparentes Modul an der SNAP-Position, grün = passt / rot = passt nicht.
+ * Wird in Draufsicht als Rechteck, im Foto als homographisch projiziertes Viereck
+ * gezeichnet — also in der echten Perspektive der Anlage.
+ */
+export interface GeistModul {
+  xM: number;
+  yM: number;
+  wM: number;
+  hM: number;
+  ok: boolean;
 }
 
 /**
@@ -187,12 +203,15 @@ export function DachSvg({
   druck,
   masse = true,
   hervorhebenKey,
+  geist,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
   modul: ModuleType;
   onToggle?: (key: string) => void;
   zeichnen?: ZeichnenProps;
+  /** Live-Vorschau-Modul unter dem Cursor (Modul setzen). */
+  geist?: GeistModul | null;
   /** Druck/PDF: nur Foto + Module, keine Markierungs-Overlays (Umriss/Hindernis/
    *  Randlinie), deaktivierte Module ausblenden — soll realistisch aussehen. */
   druck?: boolean;
@@ -388,17 +407,24 @@ export function DachSvg({
         [x + w, y + hh],
         [x, y + hh],
       ];
+      const eventZuM = (e: React.MouseEvent<SVGSVGElement>): PunktM | null => {
+        const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveQuelle(flaeche));
+        if (!inv) return null;
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return null;
+        const px = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
+        const py = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
+        const [xM, yM] = projiziere(inv, [px, py]);
+        return [Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))];
+      };
       const klickM = zeichnen?.aktiv
         ? (e: React.MouseEvent<SVGSVGElement>) => {
-            const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveQuelle(flaeche));
-            if (!inv) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-            const px = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
-            const py = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
-            const [xM, yM] = projiziere(inv, [px, py]);
-            zeichnen.onKlickM([Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))]);
+            const p = eventZuM(e);
+            if (p) zeichnen.onKlickM(p);
           }
+        : undefined;
+      const moveM = zeichnen?.aktiv && zeichnen.onMoveM
+        ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
       return (
         <div
@@ -414,6 +440,8 @@ export function DachSvg({
             className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
             preserveAspectRatio="xMidYMid meet"
             onClick={klickM}
+            onMouseMove={moveM}
+            onMouseLeave={moveM ? () => zeichnen!.onMoveM!(null) : undefined}
           >
             <defs>
               <ModulAsset id={assetId} modul={modul} />
@@ -429,6 +457,16 @@ export function DachSvg({
               toggle,
               hervorhebenKey,
             })}
+            {geist && (
+              <path
+                d={projPfad(h, rechteck(geist.xM, geist.yM, geist.wM, geist.hM))}
+                fill={geist.ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}
+                stroke={geist.ok ? '#10b981' : '#ef4444'}
+                strokeWidth={foto.breitePx * 0.003}
+                strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
             {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
             {!druck && umriss && (
               <path
@@ -539,6 +577,18 @@ export function DachSvg({
               }
             : undefined
         }
+        onMouseMove={
+          zeichnen?.aktiv && zeichnen.onMoveM
+            ? (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return;
+                const xM = ((e.clientX - rect.left) / rect.width) * B;
+                const yM = ((e.clientY - rect.top) / rect.height) * H;
+                zeichnen.onMoveM!([Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))]);
+              }
+            : undefined
+        }
+        onMouseLeave={zeichnen?.aktiv && zeichnen.onMoveM ? () => zeichnen.onMoveM!(null) : undefined}
       >
         <defs>
           <ModulAsset id={assetId} modul={modul} />
@@ -546,6 +596,19 @@ export function DachSvg({
         </defs>
         <rect width={B} height={H} fill={`url(#${patId})`} />
         {belegung}
+        {geist && (
+          <rect
+            x={geist.xM}
+            y={geist.yM}
+            width={geist.wM}
+            height={geist.hM}
+            fill={geist.ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}
+            stroke={geist.ok ? '#10b981' : '#ef4444'}
+            strokeWidth={0.05}
+            strokeDasharray="0.12 0.08"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
         {!druck && masse && renderMasse(0.3, (p) => p)}
       </svg>
     </div>

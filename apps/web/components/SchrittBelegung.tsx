@@ -18,7 +18,7 @@ import {
   type PunktM,
 } from '../lib/model';
 import { DACHFARBEN } from '../lib/model';
-import { DachSvg } from './DachSvg';
+import { DachSvg, type GeistModul } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
 import { Karte, KartenTitel, ToggleButton, ZonenBadge } from './ui';
 
@@ -86,6 +86,8 @@ export function SchrittBelegung({
   const [modulModusId, setModulModusId] = useState<string | null>(null);
   // Index des gerade ausgewählten Zusatzmoduls (zum Verschieben/Löschen), null = keins
   const [gewaehltExtra, setGewaehltExtra] = useState<number | null>(null);
+  // Mausposition (Flächen-Meter) für die Geist-Vorschau beim „Modul setzen"
+  const [geistM, setGeistM] = useState<PunktM | null>(null);
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
     0,
@@ -189,6 +191,21 @@ export function SchrittBelegung({
     if (!extraModulGueltig(f, modul, xM, yM, quer)) return;
     patchFlaeche(f.id, { extraModule: [...extras, { xM, yM, quer }] });
     setGewaehltExtra(extras.length);
+  };
+
+  /**
+   * Geist-Vorschau unter dem Cursor: exakt an der SNAP-Position, die auch der
+   * Klick nähme (inkl. Reihen-Fang), grün/rot je nach Gültigkeit. Orientierung =
+   * die des gewählten Zusatzmoduls, sonst die Basis-Ausrichtung der Fläche.
+   */
+  const geistFuer = (f: Flaeche): GeistModul | null => {
+    if (!geistM) return null;
+    const gewaehlt = gewaehltExtra != null ? f.extraModule?.[gewaehltExtra] : undefined;
+    const quer = gewaehlt ? gewaehlt.quer : f.ausrichtung === 'quer';
+    const { xM, yM } = snapExtra(f, geistM, quer);
+    const { w, h } = modulMasse(modul, quer);
+    const ok = extraModulGueltig(f, modul, xM, yM, quer, gewaehltExtra ?? undefined);
+    return { xM, yM, wM: w, hM: h, ok };
   };
 
   /** Gewähltes Zusatzmodul um schrittCm in eine Richtung schieben (validiert). */
@@ -335,6 +352,7 @@ export function SchrittBelegung({
                       const an = modulModusId !== f.id;
                       setModulModusId(an ? f.id : null);
                       setGewaehltExtra(null);
+                      setGeistM(null);
                       if (an) {
                         setReihenModusId(null);
                         setVerschiebeModusId(null);
@@ -719,9 +737,15 @@ export function SchrittBelegung({
                 hervorhebenKey={
                   modulModusId === f.id && gewaehltExtra != null ? `-1-${gewaehltExtra}` : undefined
                 }
+                geist={modulModusId === f.id ? geistFuer(f) : undefined}
                 zeichnen={
                   modulModusId === f.id
-                    ? { aktiv: true, punkteM: [], onKlickM: (p) => modulKlick(f, p) }
+                    ? {
+                        aktiv: true,
+                        punkteM: [],
+                        onKlickM: (p) => modulKlick(f, p),
+                        onMoveM: (p) => setGeistM(p),
+                      }
                     : zeichneHier
                       ? {
                           aktiv: true,
