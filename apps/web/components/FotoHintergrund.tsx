@@ -478,10 +478,10 @@ export function FotoHintergrund({
 
           {modus === 'first' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>First-/Trauflinie (2 Klicks):</strong> eine Linie entlang des{' '}
-              <strong>Firsts oder der Traufe</strong> ziehen — also der waagerechten Dachkante, an
-              der die Module ausgerichtet werden. Das legt fest, was hoch und was quer ist (behebt
-              schief/verdrehte Belegungen). Danach die 4 Ecken. Simples Dach mit Traufe unten im
+              <strong>Trauflinie (2 Klicks entlang der Traufe/Dachrinne):</strong> die{' '}
+              <strong>unterste waagerechte Dachkante</strong> anklicken. Damit weiß das Programm, wo
+              unten ist — die 4 Ecken danach sind dann in <strong>beliebiger Reihenfolge</strong>
+              {' '}klickbar (behebt schief/verdrehte Belegungen). Simples Dach mit Traufe unten im
               Bild? <strong>„Überspringen"</strong> genügt.
             </p>
           ) : modus === 'perspektive' ? (

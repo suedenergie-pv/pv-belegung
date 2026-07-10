@@ -281,14 +281,17 @@ export function sortiereEcken(punkte: [Punkt, Punkt, Punkt, Punkt]): Ecken {
 }
 
 /**
- * Wie sortiereEcken, aber die Traufe/Sparren-Achse kommt aus einer vom Nutzer
- * gezogenen Referenzlinie (First ODER Traufe — beide parallel zur Traufe-Achse),
- * statt aus der „unterste Kante = Traufe"-Annahme. Behebt vertauschte Achsen bei
- * schräg im Bild liegenden Dachflächen (Genrih 07.07.2026).
+ * Ordnet 4 beliebig geklickte Ecken anhand einer vom Nutzer gezogenen TRAUFLINIE
+ * (entlang der Traufe/Dachrinne). Die Traufe ist damit EINDEUTIG bestimmt — nicht
+ * mehr über die Annahme „unterste Kante im Bild" (Genrih 08.07.2026: die Traufe
+ * gehört an die Traufe, dann ist die Klick-Reihenfolge der 4 Ecken egal).
+ * Zwei Schritte: (1) das gegenüberliegende Kantenpaar wählen, das parallel zur
+ * Linie liegt (= Traufe/First-Achse); (2) davon die Kante als Traufe nehmen, die
+ * der gezogenen Linie am nächsten liegt.
  */
 export function orientiereEcken(
   punkte: [Punkt, Punkt, Punkt, Punkt],
-  richtung: [Punkt, Punkt],
+  traufLinie: [Punkt, Punkt],
 ): Ecken {
   const cx = (punkte[0][0] + punkte[1][0] + punkte[2][0] + punkte[3][0]) / 4;
   const cy = (punkte[0][1] + punkte[1][1] + punkte[2][1] + punkte[3][1]) / 4;
@@ -296,9 +299,9 @@ export function orientiereEcken(
     (a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx),
   ) as [Punkt, Punkt, Punkt, Punkt];
 
-  // Richtungsvektor der Referenzlinie (normiert)
-  let rx = richtung[1][0] - richtung[0][0];
-  let ry = richtung[1][1] - richtung[0][1];
+  // Richtungsvektor der Trauflinie (normiert)
+  let rx = traufLinie[1][0] - traufLinie[0][0];
+  let ry = traufLinie[1][1] - traufLinie[0][1];
   const rl = Math.hypot(rx, ry) || 1;
   rx /= rl;
   ry /= rl;
@@ -314,9 +317,16 @@ export function orientiereEcken(
   };
   // Gegenüberliegendes Kantenpaar, das am besten zur Linie parallel liegt = Traufe/First-Achse
   const paar = (align(0) + align(2)) / 2 >= (align(1) + align(3)) / 2 ? [0, 2] : [1, 3];
-  const mitteY = (i: number) => (ring[i]![1] + ring[(i + 1) % 4]![1]) / 2;
-  // Davon die im Bild tiefere Kante (größtes y) = Traufe
-  const traufeIdx = mitteY(paar[0]!) >= mitteY(paar[1]!) ? paar[0]! : paar[1]!;
+  // Mittelpunkt der gezogenen Trauflinie
+  const lx = (traufLinie[0][0] + traufLinie[1][0]) / 2;
+  const ly = (traufLinie[0][1] + traufLinie[1][1]) / 2;
+  const abstandZurLinie = (i: number): number => {
+    const mx = (ring[i]![0] + ring[(i + 1) % 4]![0]) / 2;
+    const my = (ring[i]![1] + ring[(i + 1) % 4]![1]) / 2;
+    return Math.hypot(mx - lx, my - ly);
+  };
+  // Von den beiden achsparallelen Kanten die der Trauflinie NÄCHSTE = Traufe
+  const traufeIdx = abstandZurLinie(paar[0]!) <= abstandZurLinie(paar[1]!) ? paar[0]! : paar[1]!;
 
   let a = ring[traufeIdx]!;
   let b = ring[(traufeIdx + 1) % 4]!;

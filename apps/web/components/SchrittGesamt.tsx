@@ -157,9 +157,9 @@ export function SchrittGesamt({
       <Karte>
         <KartenTitel>Gesamtansicht — alle Flächen auf einem Drohnenfoto</KartenTitel>
         <p className="mb-3 text-sm text-slate-500">
-          Ein Luftbild vom ganzen Dach hochladen, dann jede Fläche einzeichnen: erst die
-          First-/Trauflinie (legt die Ausrichtung fest), dann die 4 Ecken. So entsteht eine
-          Vorschau des komplett belegten Dachs — perspektivisch exakt, auch bei schrägen Aufnahmen.
+          Ein Luftbild vom ganzen Dach hochladen, dann jede Fläche einzeichnen: erst die Traufe
+          (2 Klicks entlang der Dachrinne), dann die 4 Ecken in beliebiger Reihenfolge. So entsteht
+          eine Vorschau des komplett belegten Dachs — perspektivisch exakt, auch bei schrägen Aufnahmen.
         </p>
 
         <input
@@ -294,7 +294,7 @@ export function SchrittGesamt({
                     <button
                       type="button"
                       className={knopf}
-                      title="Traufe liegt unten im Bild — Linie nicht nötig"
+                      title="Traufe liegt unten im Bild — dann ist die Linie nicht nötig"
                       onClick={() => { setPunkte([]); setPhase('ecken'); }}
                     >
                       ➡ Überspringen (Traufe ist unten)
@@ -304,13 +304,15 @@ export function SchrittGesamt({
                 <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
                   {phase === 'first' ? (
                     <>
-                      <strong>{platF.name} — First-/Trauflinie:</strong> 2 Klicks entlang der
-                      waagerechten Dachkante — legt fest, was hoch und was quer ist.{' '}
+                      <strong>{platF.name} — Trauflinie (Traufe/Dachrinne):</strong> 2 Klicks entlang
+                      der <strong>Traufe</strong> (unterste waagerechte Kante). Damit weiß das
+                      Programm, wo unten ist — die 4 Ecken danach sind dann in beliebiger
+                      Reihenfolge klickbar.{' '}
                     </>
                   ) : phase === 'ecken' ? (
                     <>
-                      <strong>{platF.name} — 4 Ecken</strong> anklicken (Reihenfolge egal). Ecke{' '}
-                      {punkte.length + 1} von 4.{' '}
+                      <strong>{platF.name} — 4 Ecken</strong> anklicken (Reihenfolge egal, die Traufe
+                      ist schon gesetzt). Ecke {punkte.length + 1} von 4.{' '}
                     </>
                   ) : phase === 'umriss' ? (
                     <>
