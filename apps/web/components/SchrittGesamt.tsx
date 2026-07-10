@@ -12,7 +12,7 @@ import {
   umrissAusKlicks,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { fmtDe, modulById, perspektiveFirstBreite, zonenLabel, type Flaeche, type Projekt } from '../lib/model';
+import { fmtDe, modulById, perspektiveFirstBreite, zonenVon, type Flaeche, type Projekt } from '../lib/model';
 import { ModulAsset } from './DachSvg';
 import { GESAMT_ASSET_ID, gesamtFlaechenInhalt } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
@@ -222,7 +222,7 @@ export function SchrittGesamt({
                       }`}
                     >
                       {gesetzt ? '✓ ' : ''}
-                      {zonenLabel(i)} · {f.name}
+                      {zonenVon(f, i)} · {f.name}
                     </button>
                     {gesetzt && !aktiv && (
                       <button
@@ -289,14 +289,23 @@ export function SchrittGesamt({
                   </div>
                 )}
 
+                {phase === 'first' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className={knopf}
+                      title="Traufe liegt unten im Bild — Linie nicht nötig"
+                      onClick={() => { setPunkte([]); setPhase('ecken'); }}
+                    >
+                      ➡ Überspringen (Traufe ist unten)
+                    </button>
+                  </div>
+                )}
                 <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
                   {phase === 'first' ? (
                     <>
                       <strong>{platF.name} — First-/Trauflinie:</strong> 2 Klicks entlang der
-                      waagerechten Dachkante.{' '}
-                      <button type="button" className="underline" onClick={() => { setPunkte([]); setPhase('ecken'); }}>
-                        Überspringen
-                      </button>{' '}
+                      waagerechten Dachkante — legt fest, was hoch und was quer ist.{' '}
                     </>
                   ) : phase === 'ecken' ? (
                     <>

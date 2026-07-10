@@ -39,19 +39,28 @@ export function ToggleButton({
   aktiv,
   onClick,
   children,
+  disabled = false,
+  title,
 }: {
   aktiv: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  /** Ausgegraut mit Tooltip statt versteckt — der Nutzer sieht, DASS es die Funktion gibt. */
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={`h-12 rounded-xl border px-4 text-sm font-medium transition ${
-        aktiv
-          ? 'border-akzent bg-akzent text-white'
-          : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+        disabled
+          ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
+          : aktiv
+            ? 'border-akzent bg-akzent text-white'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
       }`}
     >
       {children}

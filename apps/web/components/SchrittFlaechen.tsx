@@ -3,8 +3,9 @@
 import {
   AZIMUT_PRESETS,
   DACHFARBEN,
+  naechsteZone,
   neueFlaeche,
-  zonenLabel,
+  zonenVon,
   type Flaeche,
   type Projekt,
 } from '../lib/model';
@@ -62,7 +63,7 @@ export function SchrittFlaechen({
         <Karte key={f.id}>
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ZonenBadge label={zonenLabel(i)} />
+              <ZonenBadge label={zonenVon(f, i)} />
               <KartenTitel>{f.name}</KartenTitel>
             </div>
             {projekt.flaechen.length > 1 && (
@@ -221,7 +222,7 @@ export function SchrittFlaechen({
         onClick={() => {
           const nr =
             Math.max(0, ...projekt.flaechen.map((f) => Number.parseInt(f.id.slice(1), 10) || 0)) + 1;
-          onChange({ ...projekt, flaechen: [...projekt.flaechen, neueFlaeche(nr)] });
+          onChange({ ...projekt, flaechen: [...projekt.flaechen, neueFlaeche(nr, naechsteZone(projekt.flaechen))] });
         }}
       >
         + Weitere Dachfläche

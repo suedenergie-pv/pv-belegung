@@ -11,7 +11,7 @@ import {
   randVon,
   rasterFuer,
   umrissVon,
-  zonenLabel,
+  zonenVon,
   type Flaeche,
   type Projekt,
   type PunktM,
@@ -246,7 +246,7 @@ export function SchrittBelegung({
         return (
           <Karte key={f.id}>
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              <ZonenBadge label={zonenLabel(i)} />
+              <ZonenBadge label={zonenVon(f, i)} />
               <KartenTitel>{f.name}</KartenTitel>
               <span className="ml-auto text-sm text-slate-500">
                 {aktiv} / {raster.positionen.length} Module ·{' '}
@@ -281,10 +281,13 @@ export function SchrittBelegung({
               >
                 ▯ Hochkant
               </ToggleButton>
-              {belegungZeigen && !f.baender && (
+              {belegungZeigen && (
                 <ToggleButton
                   aktiv={verschiebeModusId === f.id}
+                  disabled={!!f.baender}
+                  title={f.baender ? 'Erst „Alle Reihen gleich" — Verschieben geht nur bei einheitlichen Reihen' : undefined}
                   onClick={() => {
+                    if (f.baender) return;
                     const an = verschiebeModusId !== f.id;
                     setVerschiebeModusId(an ? f.id : null);
                     if (an) {
@@ -316,10 +319,13 @@ export function SchrittBelegung({
                   ➕ Modul setzen
                 </ToggleButton>
               )}
-              {belegungZeigen && f.versatzXM === undefined && (
+              {belegungZeigen && (
                 <ToggleButton
                   aktiv={reihenModusId === f.id}
+                  disabled={f.versatzXM !== undefined}
+                  title={f.versatzXM !== undefined ? 'Erst Versatz zurücksetzen (↔ Verschieben → „↺ Zurücksetzen")' : undefined}
                   onClick={() => {
+                    if (f.versatzXM !== undefined) return;
                     const an = reihenModusId !== f.id;
                     setReihenModusId(an ? f.id : null);
                     if (an) {

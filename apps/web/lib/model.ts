@@ -138,6 +138,26 @@ export interface Flaeche {
   extraModule?: { xM: number; yM: number; quer: boolean }[];
   /** deaktivierte Module als "row-col" */
   inaktiv: string[];
+  /**
+   * Fester Zonen-Buchstabe (A/B/C …), einmal beim Anlegen vergeben. Bleibt stabil,
+   * wenn andere Flächen gelöscht werden — vorher rutschte B zu A und stimmte nicht
+   * mehr mit ausgedruckten PDFs überein (Review 08.07.).
+   */
+  zone?: string;
+}
+
+/** Anzeige-Buchstabe einer Fläche: fest vergebene zone, sonst Fallback aus dem Index. */
+export function zonenVon(f: Flaeche, index: number): string {
+  return f.zone ?? zonenLabel(index);
+}
+
+/** Nächster freier Zonen-Buchstabe beim Anlegen einer neuen Fläche. */
+export function naechsteZone(flaechen: Flaeche[]): string {
+  const belegt = new Set(flaechen.map((f, i) => zonenVon(f, i)));
+  for (let i = 0; i < 26; i++) {
+    if (!belegt.has(zonenLabel(i))) return zonenLabel(i);
+  }
+  return zonenLabel(flaechen.length);
 }
 
 /**
@@ -206,9 +226,10 @@ export const AZIMUT_PRESETS = [
   { label: 'Nord', deg: 0 },
 ] as const;
 
-export function neueFlaeche(nr: number): Flaeche {
+export function neueFlaeche(nr: number, zone?: string): Flaeche {
   return {
     id: `p${nr}`,
+    zone,
     name: `Dachfläche ${nr}`,
     breiteM: 10,
     hoeheM: 6,
@@ -225,7 +246,7 @@ export function neuesProjekt(): Projekt {
     adresse: '',
     kunde: '',
     modulId: MODULES[0]!.id,
-    flaechen: [neueFlaeche(1)],
+    flaechen: [neueFlaeche(1, 'A')],
     wrId: null,
     mppts: [],
   };
@@ -426,6 +447,12 @@ function migriereProjekt(roh: Projekt): Projekt {
   if (projekt.wrId && !INVERTERS.some((w) => w.id === projekt.wrId)) {
     projekt.wrId = null;
     projekt.mppts = [];
+  }
+  // Fehlende Zonen-Buchstaben einmalig vergeben (Bestand: nach Reihenfolge)
+  if (projekt.flaechen.some((f) => !f.zone)) {
+    const mit: Flaeche[] = [];
+    for (const f of projekt.flaechen) mit.push(f.zone ? f : { ...f, zone: naechsteZone(mit) });
+    projekt.flaechen = mit;
   }
   // Bestehende Foto-Flächen (Umriss schon gesetzt) gelten als fertig markiert,
   // damit sie nach dem Update nicht plötzlich in die Markier-Ansicht springen.

@@ -5,7 +5,7 @@ import {
   modulById,
   perspektiveFirstBreite,
   rasterFuer,
-  zonenLabel,
+  zonenVon,
   type GesamtFoto,
   type Projekt,
 } from '../lib/model';
@@ -72,7 +72,7 @@ export function gesamtFlaechenInhalt({
             fontWeight={700}
             style={{ pointerEvents: 'none' }}
           >
-            {zonenLabel(i)}
+            {zonenVon(f, i)}
           </text>
         )}
       </g>
