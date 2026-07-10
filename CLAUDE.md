@@ -40,6 +40,13 @@
   `.next/types` und brach den typecheck.
 - Nach dem Öffnen von Print-/Export-Dialogen nie screenshotten (Renderer friert ein);
   `preview_eval` verwenden.
+- Preview generell wackelig: das Fenster kollabiert oft auf 0×0 (dann sind alle
+  getBoundingClientRect-Werte 0 → Koordinaten-Klicks landen ins Leere). Vor Klick-
+  Simulationen einmal `preview_resize` auf feste Maße setzen (z. B. 1400×1000).
+- `preview_eval` läuft bei schnellen Klick-Sequenzen / großen Rückgaben oft in den
+  30-s-Timeout, OBWOHL die Aktion durchlief — nicht auf Fehlschlag schließen, sondern
+  den Zustand (localStorage/DOM) frisch nachprüfen (kleine Rückgabe hilft).
+- Der Dev-Server stoppt gelegentlich mitten in der Session — dann `preview_start` neu.
 
 ## Kontakt-Punkte, die auf Genrih warten (nicht blockierend für Schritt 1–3)
 
