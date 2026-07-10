@@ -64,30 +64,27 @@ function basisZu(p: Ecken): M3 {
 }
 
 /**
- * Homographie Flächen-Koordinaten (Meter, Ursprung First links, y zur Traufe)
- * → Foto-Pixel. null bei entarteten Ecken.
+ * Homographie Flächen-/Rahmen-Koordinaten (Meter, Ursprung First links, y zur
+ * Traufe) → Foto-Pixel. null bei entarteten Ecken.
  *
- * `firstBreiteM` (Trapez/Walm, 08.07.2026, Genrih): Ist die Fläche ein Trapez,
- * klickt der Nutzer die 4 ECHTEN Trapez-Ecken an (kurzer First oben). Dann werden
- * die Quellpunkte auf die Trapez-Ecken in Flächen-Koordinaten gelegt — vorher
- * wurde das Rechteck ins Trapez gestreckt und alles verzerrte. Ohne firstBreiteM
- * (Rechteck-Fläche) bleibt alles wie bisher.
+ * `quelle` (08.07.2026, Genrih): Ist die Fläche ein Trapez/Parallelogramm, klickt
+ * der Nutzer die 4 ECHTEN Dach-Ecken an. Dann müssen die QUELLPUNKTE die passende
+ * Form haben (Trapez- bzw. Parallelogramm-Ecken in Rahmen-Koordinaten, Reihenfolge
+ * wie `ecken`) — sonst wird ein Rechteck in die Form gestreckt und alles verzerrt.
+ * Ohne `quelle` (Rechteck-Fläche) ist die Quelle das volle Rahmen-Rechteck.
  */
 export function homographie(
   breiteM: number,
   hoeheM: number,
   ecken: Ecken,
-  firstBreiteM?: number,
+  quelle?: Ecken,
 ): M3 | null {
   if (breiteM <= 0 || hoeheM <= 0) return null;
-  // Walmspitze (First ~0) entartet die Homographie — auf 5 % Traufbreite klemmen.
-  const f = firstBreiteM === undefined ? breiteM : Math.max(firstBreiteM, breiteM * 0.05);
-  const inset = (breiteM - f) / 2;
-  const src: Ecken = [
+  const src: Ecken = quelle ?? [
     [0, hoeheM],
     [breiteM, hoeheM],
-    [breiteM - inset, 0],
-    [inset, 0],
+    [breiteM, 0],
+    [0, 0],
   ];
   const h = mult(basisZu(ecken), adjugat(basisZu(src)));
   return h.every((n) => Number.isFinite(n)) ? h : null;
@@ -107,9 +104,9 @@ export function inverseHomographie(
   breiteM: number,
   hoeheM: number,
   ecken: Ecken,
-  firstBreiteM?: number,
+  quelle?: Ecken,
 ): M3 | null {
-  const h = homographie(breiteM, hoeheM, ecken, firstBreiteM);
+  const h = homographie(breiteM, hoeheM, ecken, quelle);
   if (!h) return null;
   const inv = adjugat(h);
   return inv.every((n) => Number.isFinite(n)) && (inv[6] || inv[7] || inv[8]) ? inv : null;
@@ -208,10 +205,10 @@ export function umrissAusKlicks(
   breiteM: number,
   hoeheM: number,
   ecken: Ecken,
-  firstBreiteM?: number,
+  quelle?: Ecken,
 ): PunktM[] | null {
   if (pts.length < 3) return null;
-  const hinv = inverseHomographie(breiteM, hoeheM, ecken, firstBreiteM);
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, quelle);
   if (!hinv) return null;
   return pts.map((p) => {
     const [x, y] = projiziere(hinv, p);
@@ -229,9 +226,9 @@ export function hindernisAusKlicks(
   breiteM: number,
   hoeheM: number,
   ecken: Ecken,
-  firstBreiteM?: number,
+  quelle?: Ecken,
 ): RechteckM | null {
-  const hinv = inverseHomographie(breiteM, hoeheM, ecken, firstBreiteM);
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, quelle);
   if (!hinv) return null;
   const [ax, ay] = projiziere(hinv, p1);
   const [bx, by] = projiziere(hinv, p2);

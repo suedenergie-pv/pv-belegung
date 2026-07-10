@@ -3,7 +3,8 @@
 import { homographie } from '../lib/foto-geometrie';
 import {
   modulById,
-  perspektiveFirstBreite,
+  perspektiveQuelle,
+  rahmenBreiteVon,
   rasterFuer,
   zonenVon,
   type GesamtFoto,
@@ -41,7 +42,7 @@ export function gesamtFlaechenInhalt({
   const px = (v: number) => foto.breitePx * v;
   return projekt.flaechen.map((f, i) => {
     if (!f.gesamtEckenPx || f.id === ausblendenId) return null;
-    const h = homographie(f.breiteM, f.hoeheM, f.gesamtEckenPx, perspektiveFirstBreite(f));
+    const h = homographie(rahmenBreiteVon(f), f.hoeheM, f.gesamtEckenPx, perspektiveQuelle(f));
     if (!h) return null;
     const raster = rasterFuer(f, modul);
     const mitte = f.gesamtEckenPx.reduce<[number, number]>(

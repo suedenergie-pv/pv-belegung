@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { berechneRaster, besterVersatz, DEFAULT_RAND_M } from '../src/belegung';
+import { schraegGeometrie } from '../src/geometrie';
 import { JOLYWOOD_JW_HD96N_R2_460 } from '../src/catalog/modules';
 
 const M = JOLYWOOD_JW_HD96N_R2_460; // 1762 × 1134 mm
@@ -184,6 +185,45 @@ describe("Optimierung 'frei' — Parallelogramm/Schrägdach (08.07.2026)", () =>
     const ohne = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' });
     const frei = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer', optimierung: 'frei' });
     expect(frei.positionen.length).toBe(ohne.positionen.length);
+  });
+});
+
+describe('Schiefe Dachfläche / Parallelogramm (schraegGeometrie, 08.07.2026)', () => {
+  it('Parallelogramm: Rahmen = Traufe + Versatz, First liegt versetzt', () => {
+    // Genrihs Fall: Traufe = First = 4,5 m, Versatz 2 m, Sparren 6 m.
+    const g = schraegGeometrie(4.5, 6, 4.5, 2);
+    expect(g.rahmenBreiteM).toBeCloseTo(6.5, 6); // 4,5 + 2
+    // Ecken: Traufe l/r unten, First r/l oben (Rahmen-Koordinaten)
+    expect(g.ecken[0]).toEqual([0, 6]); // Traufe links
+    expect(g.ecken[1]).toEqual([4.5, 6]); // Traufe rechts
+    expect(g.ecken[3][0]).toBeCloseTo(2, 6); // First links = Versatz
+    expect(g.ecken[2][0]).toBeCloseTo(6.5, 6); // First rechts
+  });
+
+  it('Genrihs 4,5-m-Parallelogramm belegt (früher „passt nichts drauf")', () => {
+    const g = schraegGeometrie(4.5, 6, 4.5, 2);
+    // Im RICHTIGEN Rahmen (6,5) statt der reinen Traufe (4,5) → Module > 0.
+    const r = berechneRaster({
+      breiteM: g.rahmenBreiteM,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'quer',
+      umrissM: g.umriss,
+      optimierung: 'frei',
+    });
+    expect(r.positionen.length).toBeGreaterThan(0);
+    // Alle Module liegen im Parallelogramm-Umriss (Filter greift)
+    expect(r.positionen.length).toBeLessThan(
+      berechneRaster({ breiteM: g.rahmenBreiteM, hoeheM: 6, module: M, ausrichtung: 'quer' })
+        .positionen.length,
+    );
+  });
+
+  it('Versatz 0 + First < Traufe = symmetrisches Trapez (Rahmen = Traufe)', () => {
+    const g = schraegGeometrie(8, 5, 4, 0);
+    expect(g.rahmenBreiteM).toBeCloseTo(8, 6);
+    expect(g.ecken[3][0]).toBeCloseTo(2, 6); // First links = (8-4)/2
+    expect(g.ecken[2][0]).toBeCloseTo(6, 6); // First rechts
   });
 });
 

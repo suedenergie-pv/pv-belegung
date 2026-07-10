@@ -117,7 +117,12 @@ export function SchrittFlaechen({
               <ToggleButton
                 aktiv={(f.dachform ?? 'rechteck') === 'rechteck'}
                 onClick={() =>
-                  setFlaeche(f.id, { dachform: 'rechteck', firstBreiteM: undefined, umrissM: undefined })
+                  setFlaeche(f.id, {
+                    dachform: 'rechteck',
+                    firstBreiteM: undefined,
+                    firstVersatzM: undefined,
+                    umrissM: undefined,
+                  })
                 }
               >
                 ▭ Rechteck
@@ -128,13 +133,27 @@ export function SchrittFlaechen({
                   setFlaeche(f.id, {
                     dachform: 'trapez',
                     firstBreiteM: f.firstBreiteM ?? Math.round(f.breiteM * 0.6 * 10) / 10,
+                    firstVersatzM: undefined,
                     umrissM: undefined,
                   })
                 }
               >
                 ⬯ Trapez / Walm
               </ToggleButton>
-              {f.dachform === 'trapez' && (
+              <ToggleButton
+                aktiv={f.dachform === 'schief'}
+                onClick={() =>
+                  setFlaeche(f.id, {
+                    dachform: 'schief',
+                    firstBreiteM: f.firstBreiteM ?? f.breiteM,
+                    firstVersatzM: f.firstVersatzM ?? 1,
+                    umrissM: undefined,
+                  })
+                }
+              >
+                ⬮ Schief / Parallelogramm
+              </ToggleButton>
+              {(f.dachform === 'trapez' || f.dachform === 'schief') && (
                 <label className="flex items-center gap-1.5 text-sm text-slate-600">
                   Firstbreite oben
                   <input
@@ -152,11 +171,29 @@ export function SchrittFlaechen({
                   m
                 </label>
               )}
+              {f.dachform === 'schief' && (
+                <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                  First versetzt um
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step={0.1}
+                    value={Number.isFinite(f.firstVersatzM as number) ? (f.firstVersatzM as number) : ''}
+                    onChange={(e) =>
+                      setFlaeche(f.id, { firstVersatzM: Number.parseFloat(e.target.value) })
+                    }
+                    className="h-10 w-20 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
+                  />
+                  m (+ rechts / − links)
+                </label>
+              )}
             </div>
             <p className="mt-1 text-xs text-slate-400">
               {f.dachform === 'trapez'
                 ? 'Traufe unten = Breite, First oben schmaler (0 m = Walmspitze). Für komplexere Formen später „Umriss zeichnen" in der Belegung.'
-                : 'Rechteck ist Standard. Trapez/Walm füllt die Fläche gleich richtig — auch ohne Foto.'}
+                : f.dachform === 'schief'
+                  ? 'Für Parallelogramm-/Schrägdächer: Traufe unten, First oben seitlich versetzt. Firstbreite = Traufe ergibt ein echtes Parallelogramm.'
+                  : 'Rechteck ist Standard. Trapez/Walm bzw. Schief füllt die Fläche gleich richtig — auch ohne Foto.'}
             </p>
           </div>
 

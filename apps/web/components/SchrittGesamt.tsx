@@ -12,7 +12,7 @@ import {
   umrissAusKlicks,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { fmtDe, modulById, perspektiveFirstBreite, zonenVon, type Flaeche, type Projekt } from '../lib/model';
+import { fmtDe, modulById, perspektiveQuelle, rahmenBreiteVon, zonenVon, type Flaeche, type Projekt } from '../lib/model';
 import { ModulAsset } from './DachSvg';
 import { GESAMT_ASSET_ID, gesamtFlaechenInhalt } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
@@ -106,7 +106,7 @@ export function SchrittGesamt({
       if (punkte.length >= 3) {
         const [fx, fy] = punkte[0]!;
         if (Math.hypot(k[0] - fx, k[1] - fy) <= foto.breitePx * 0.025) {
-          const umrissM = umrissAusKlicks(punkte, f.breiteM, f.hoeheM, f.gesamtEckenPx, perspektiveFirstBreite(f));
+          const umrissM = umrissAusKlicks(punkte, rahmenBreiteVon(f), f.hoeheM, f.gesamtEckenPx, perspektiveQuelle(f));
           if (umrissM) patchFlaeche(platziereId, { umrissM, inaktiv: [] });
           setPunkte([]);
           return setPhase('edit');
@@ -119,7 +119,7 @@ export function SchrittGesamt({
       if (!f.gesamtEckenPx) return;
       const neu: Punkt[] = [...punkte, k];
       if (neu.length < 2) return setPunkte(neu);
-      const rect = hindernisAusKlicks(neu[0]!, neu[1]!, f.breiteM, f.hoeheM, f.gesamtEckenPx, perspektiveFirstBreite(f));
+      const rect = hindernisAusKlicks(neu[0]!, neu[1]!, rahmenBreiteVon(f), f.hoeheM, f.gesamtEckenPx, perspektiveQuelle(f));
       if (rect) patchFlaeche(platziereId, { hindernisse: [...(f.hindernisse ?? []), rect], inaktiv: [] });
       return setPunkte([]);
     }
@@ -129,7 +129,7 @@ export function SchrittGesamt({
   const umrissAbschliessen = () => {
     const f = projekt.flaechen.find((x) => x.id === platziereId);
     if (!f?.gesamtEckenPx) return;
-    const umrissM = umrissAusKlicks(punkte, f.breiteM, f.hoeheM, f.gesamtEckenPx, perspektiveFirstBreite(f));
+    const umrissM = umrissAusKlicks(punkte, rahmenBreiteVon(f), f.hoeheM, f.gesamtEckenPx, perspektiveQuelle(f));
     if (umrissM) patchFlaeche(f.id, { umrissM, inaktiv: [] });
     setPunkte([]);
     setPhase('edit');
@@ -145,7 +145,7 @@ export function SchrittGesamt({
   const platF = platziereId ? projekt.flaechen.find((f) => f.id === platziereId) : undefined;
   const platHom =
     platF?.gesamtEckenPx
-      ? homographie(platF.breiteM, platF.hoeheM, platF.gesamtEckenPx, perspektiveFirstBreite(platF))
+      ? homographie(rahmenBreiteVon(platF), platF.hoeheM, platF.gesamtEckenPx, perspektiveQuelle(platF))
       : null;
   // Nur beim aktiven Zeichnen die Fläche ausblenden (leeres Dach); im „edit"-Ruhezustand
   // bleiben die Module sichtbar — dann keine Skizzenlinien in der Ansicht.

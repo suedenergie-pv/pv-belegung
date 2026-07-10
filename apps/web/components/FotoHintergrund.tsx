@@ -13,7 +13,7 @@ import {
   umrissAusKlicks,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { DACHFARBEN, fmtDe, perspektiveFirstBreite, type DachFoto, type Flaeche } from '../lib/model';
+import { DACHFARBEN, fmtDe, perspektiveQuelle, rahmenBreiteVon, type DachFoto, type Flaeche } from '../lib/model';
 
 /**
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal, SPEC §8.1).
@@ -112,18 +112,27 @@ export function FotoHintergrund({
   const [firstLinie, setFirstLinie] = useState<[Punkt, Punkt] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const B = flaeche.breiteM;
+  const B = flaeche.breiteM; // Traufe (Referenzstrecke für den Maß-Check)
+  const rahmenB = rahmenBreiteVon(flaeche); // Rahmen (Homographie/Umriss/Hindernis)
   const H = flaeche.hoeheM;
   const deckCm = deckbreiteCm ?? deckbreiteDefaultCm(flaeche);
   const onFoto = (f: DachFoto | undefined) => onPatch({ foto: f });
 
   const markiert = !!(foto && (foto.eckenPx || foto.traufePx));
   const inMarkierung = !!foto && !flaeche.markierungFertig;
-  const firstB = perspektiveFirstBreite(flaeche);
-  const hom = foto?.eckenPx ? homographie(B, H, foto.eckenPx, firstB) : null;
+  // Parametrische Form (Trapez/Schief): Quell-Ecken bekannt → Nutzer klickt die
+  // echten Dach-Ecken, kein Umriss nötig. Rechteck/manueller Umriss → undefined.
+  const quelle = perspektiveQuelle(flaeche);
+  const parametrisch = quelle !== undefined;
+  const firstBreiteEff =
+    flaeche.dachform === 'trapez' || flaeche.dachform === 'schief'
+      ? flaeche.firstBreiteM ?? B
+      : undefined;
+  const erwFirstAnteil = firstBreiteEff !== undefined ? firstBreiteEff / B : 1;
+  const hom = foto?.eckenPx ? homographie(rahmenB, H, foto.eckenPx, quelle) : null;
   const check =
     foto?.eckenPx != null
-      ? belegungsCheck(foto.eckenPx, B, H, flaeche.neigungDeg, foto.pxProM, firstB !== undefined ? firstB / B : 1)
+      ? belegungsCheck(foto.eckenPx, B, H, flaeche.neigungDeg, foto.pxProM, erwFirstAnteil)
       : null;
 
   // Fadenkreuz-Vorschau nur in den Punkt-Setz-Modi
@@ -148,7 +157,7 @@ export function FotoHintergrund({
 
   const umrissAbschliessen = (pts: Punkt[]) => {
     if (!foto?.eckenPx) return;
-    const umrissM = umrissAusKlicks(pts, B, H, foto.eckenPx, firstB);
+    const umrissM = umrissAusKlicks(pts, rahmenB, H, foto.eckenPx, quelle);
     if (!umrissM) return;
     onPatch({ umrissM, inaktiv: [] });
     setPunkte([]);
@@ -157,7 +166,7 @@ export function FotoHintergrund({
 
   const hindernisSetzen = (p1: Punkt, p2: Punkt) => {
     if (!foto?.eckenPx) return;
-    const rect = hindernisAusKlicks(p1, p2, B, H, foto.eckenPx, firstB);
+    const rect = hindernisAusKlicks(p1, p2, rahmenB, H, foto.eckenPx, quelle);
     if (rect) onPatch({ hindernisse: [...(flaeche.hindernisse ?? []), rect], inaktiv: [] });
   };
 
@@ -369,13 +378,13 @@ export function FotoHintergrund({
               nr="③"
               label="Umriss"
               aktiv={modus === 'umriss'}
-              erledigt={!!flaeche.umrissM || (firstB !== undefined && !!foto.eckenPx)}
+              erledigt={!!flaeche.umrissM || (parametrisch && !!foto.eckenPx)}
               gesperrt={!foto.eckenPx}
               titel={
                 !foto.eckenPx
                   ? 'Erst die 4 Ecken setzen'
-                  : firstB !== undefined
-                    ? 'Trapez-Form kommt automatisch — Umriss nur für Sonderformen'
+                  : parametrisch
+                    ? 'Form (Trapez/Parallelogramm) kommt automatisch — Umriss nur für Sonderformen'
                     : 'Nur nötig, wenn das Dach kein Rechteck ist'
               }
               onClick={() => wechsleModus('umriss')}
@@ -485,13 +494,18 @@ export function FotoHintergrund({
               Bild? <strong>„Überspringen"</strong> genügt.
             </p>
           ) : modus === 'perspektive' ? (
-            firstB !== undefined ? (
+            parametrisch ? (
               <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-                <strong>Perspektive – 4 Ecken (Trapez/Walm):</strong> die 4 <strong>echten
-                Trapez-Ecken</strong> anklicken — 2 an der Traufe, 2 am kurzen First oben.{' '}
-                <strong>Keine Ecken in die Luft verlängern!</strong> Das Tool kennt die Firstbreite
-                ({fmtDe(firstB, 1)} m) aus Schritt 2 und rechnet die Form automatisch — kein Umriss
-                nötig. Reihenfolge egal.
+                <strong>
+                  Perspektive – 4 Ecken ({flaeche.dachform === 'schief' ? 'Parallelogramm/schief' : 'Trapez/Walm'}):
+                </strong>{' '}
+                die 4 <strong>echten Dach-Ecken</strong> anklicken — 2 an der Traufe, 2 am First
+                oben. <strong>Keine Ecken in die Luft verlängern!</strong> Das Tool kennt die Form
+                (Firstbreite {fmtDe(firstBreiteEff ?? B, 1)} m
+                {flaeche.dachform === 'schief' && flaeche.firstVersatzM
+                  ? `, Versatz ${fmtDe(flaeche.firstVersatzM, 1)} m`
+                  : ''}
+                ) aus Schritt 2 und rechnet sie automatisch — kein Umriss nötig. Reihenfolge egal.
               </p>
             ) : (
               <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">

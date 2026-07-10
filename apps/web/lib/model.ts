@@ -8,6 +8,7 @@ import {
   checkStringPlan,
   rechteckeUeberlappen,
   rechteckImUmriss,
+  schraegGeometrie,
   trapezUmriss,
   type BelegungInput,
   type BelegungRaster,
@@ -15,6 +16,7 @@ import {
   type ModuleType,
   type PunktM,
   type RechteckM,
+  type SchraegGeometrie,
   type StringPlanInput,
   type StringPlanResult,
 } from '@pv-belegung/engine';
@@ -76,8 +78,11 @@ export interface GesamtFoto {
   hoehePx: number;
 }
 
-/** Parametrische Dachform (SPEC §9). 'trapez' deckt Walm/Krüppelwalm mit Firstbreite. */
-export type Dachform = 'rechteck' | 'trapez';
+/**
+ * Parametrische Dachform (SPEC §9). 'trapez' = symmetrisches Walm/Krüppelwalm;
+ * 'schief' = Parallelogramm / schiefes Trapez (First seitlich versetzt, Genrih 08.07.).
+ */
+export type Dachform = 'rechteck' | 'trapez' | 'schief';
 
 export interface Flaeche {
   id: string;
@@ -94,8 +99,14 @@ export interface Flaeche {
   randM?: number;
   /** Parametrische Dachform (Default 'rechteck'); 'trapez' nutzt firstBreiteM. */
   dachform?: Dachform;
-  /** Firstbreite oben, Meter — nur bei dachform 'trapez' (0 = Walmspitze). */
+  /** Firstbreite oben, Meter — bei 'trapez' (0 = Walmspitze) und 'schief' (Default = Traufe). */
   firstBreiteM?: number;
+  /**
+   * Seitlicher Versatz der First-Mitte gegen die Traufe-Mitte, Meter (+ = nach
+   * rechts) — nur bei dachform 'schief'. 0 + firstBreiteM < Traufe = symmetrisches
+   * Trapez; firstBreiteM = Traufe = Parallelogramm.
+   */
+  firstVersatzM?: number;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
   /**
@@ -171,18 +182,51 @@ export function naechsteZone(flaechen: Flaeche[]): string {
  * (Rechteck) kein Umriss → volles Raster. So hat die digitale Fläche von Anfang
  * an die richtige Form, auch ohne Foto.
  */
+/** Rohe Schräg-Geometrie einer 'schief'-Fläche (Rahmen, Umriss, Perspektiv-Ecken). */
+function schraegGeoVon(f: Flaeche): SchraegGeometrie {
+  return schraegGeometrie(f.breiteM, f.hoeheM, f.firstBreiteM ?? f.breiteM, f.firstVersatzM ?? 0);
+}
+
 /**
- * Firstbreite für die Foto-Perspektive (08.07.2026): Bei einer Trapez-Fläche
- * klickt der Nutzer die 4 ECHTEN Trapez-Ecken im Foto an — die Homographie muss
- * dann Trapez→Trapez rechnen statt Rechteck→Trapez (sonst verzerrt alles).
- * Rechteck-Flächen (oder manuell gezeichneter Umriss) → undefined = wie bisher.
+ * RAHMENBREITE (Meter): die horizontale Ausdehnung der Fläche, die als breiteM in
+ * die Engine/Homographie geht. Bei 'schief' ist der Rahmen breiter als die Traufe
+ * (First seitlich versetzt) — sonst passt „nichts drauf" (Genrih 08.07.). Sonst = Traufe.
  */
-export function perspektiveFirstBreite(f: Flaeche): number | undefined {
-  return f.dachform === 'trapez' ? (f.firstBreiteM ?? f.breiteM * 0.6) : undefined;
+export function rahmenBreiteVon(f: Flaeche): number {
+  return f.dachform === 'schief' ? schraegGeoVon(f).rahmenBreiteM : f.breiteM;
+}
+
+/**
+ * Quell-Ecken für die Foto-Homographie (08.07.2026): Der Nutzer klickt die 4 ECHTEN
+ * Dach-Ecken; die Homographie muss die passende Quellform (Trapez bzw. Parallelogramm/
+ * schiefes Trapez) in Rahmen-Koordinaten liefern, sonst wird ein Rechteck in die Form
+ * gestreckt und alles verzerrt. Reihenfolge Traufe l/r, First r/l — wie die geklickten
+ * Ecken. Rechteck oder manuell gezeichneter Umriss → undefined (Rechteck-Perspektive).
+ */
+export function perspektiveQuelle(f: Flaeche): Ecken | undefined {
+  if (f.umrissM && f.umrissM.length >= 3) return undefined;
+  if (f.dachform === 'schief') {
+    const e = schraegGeoVon(f).ecken;
+    return [
+      [e[0][0], e[0][1]],
+      [e[1][0], e[1][1]],
+      [e[2][0], e[2][1]],
+      [e[3][0], e[3][1]],
+    ];
+  }
+  if (f.dachform === 'trapez') {
+    const B = f.breiteM;
+    const H = f.hoeheM;
+    const fb = Math.max(f.firstBreiteM ?? B * 0.6, B * 0.05);
+    const inset = (B - fb) / 2;
+    return [[0, H], [B, H], [B - inset, 0], [inset, 0]];
+  }
+  return undefined;
 }
 
 export function umrissVon(f: Flaeche): PunktM[] | undefined {
   if (f.umrissM && f.umrissM.length >= 3) return f.umrissM;
+  if (f.dachform === 'schief') return schraegGeoVon(f).umriss;
   if (f.dachform === 'trapez') {
     return trapezUmriss(f.breiteM, f.hoeheM, f.firstBreiteM ?? f.breiteM * 0.6);
   }
@@ -271,7 +315,8 @@ export function wrById(id: string): InverterType {
 
 function belegungInput(f: Flaeche, modul: ModuleType): BelegungInput {
   return {
-    breiteM: f.breiteM,
+    // Rahmenbreite (Traufe + Firstversatz bei 'schief'), NICHT die reine Traufe.
+    breiteM: rahmenBreiteVon(f),
     hoeheM: f.hoeheM,
     module: modul,
     ausrichtung: f.ausrichtung,
@@ -279,7 +324,9 @@ function belegungInput(f: Flaeche, modul: ModuleType): BelegungInput {
     umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
     baender: f.baender,
-    optimierung: f.optimierung,
+    // Schiefe Dächer wollen fast immer den freien Reihen-Versatz (der schmale
+    // Rahmen-Streifen je Reihe folgt der Schräge) — Default, wenn nicht überschrieben.
+    optimierung: f.optimierung ?? (f.dachform === 'schief' ? 'frei' : undefined),
     versatzXM: f.versatzXM,
     versatzYM: f.versatzYM,
   };
@@ -320,9 +367,10 @@ export function extraModulGueltig(
 ): boolean {
   const { w, h } = modulMasse(modul, quer);
   const rand = randVon(f);
+  const rahmenB = rahmenBreiteVon(f);
   const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
   if (xM < rand - 1e-6 || yM < rand - 1e-6) return false;
-  if (xM + w > f.breiteM - rand + 1e-6 || yM + h > f.hoeheM - rand + 1e-6) return false;
+  if (xM + w > rahmenB - rand + 1e-6 || yM + h > f.hoeheM - rand + 1e-6) return false;
   const umriss = umrissVon(f);
   if (umriss && !rechteckImUmriss(rect, umriss, rand)) return false;
   if ((f.hindernisse ?? []).some((hnd) => rechteckeUeberlappen(rect, hnd))) return false;

@@ -43,6 +43,48 @@ export function trapezUmriss(breiteM: number, hoeheM: number, firstBreiteM: numb
   ];
 }
 
+export interface SchraegGeometrie {
+  /** Rahmenbreite (horizontale Ausdehnung Traufe + Firstversatz), Meter — als breiteM für berechneRaster */
+  rahmenBreiteM: number;
+  /** Umriss-Polygon in Rahmen-Koordinaten (x in [0, rahmenBreiteM]) */
+  umriss: PunktM[];
+  /** 4 Perspektiv-Außenecken: Traufe links, Traufe rechts, First rechts, First links (Rahmen-Koordinaten) */
+  ecken: [PunktM, PunktM, PunktM, PunktM];
+}
+
+/**
+ * Schiefe Dachfläche (Parallelogramm / schiefes Trapez, Genrih 08.07.2026):
+ * Traufe unten (traufeM, y = hoeheM), First oben (firstBreiteM, y = 0), die
+ * First-Mitte um firstVersatzM gegen die Traufe-Mitte verschoben (+ = nach rechts).
+ * Weil der First seitlich über die Traufe hinausragen kann, ist die Fläche
+ * horizontal breiter als die Traufe — der RAHMEN (Bounding-Box) ist das, was
+ * berechneRaster als breiteM braucht, sonst passt „nichts drauf". firstVersatzM = 0
+ * und firstBreiteM < traufeM → symmetrisches Trapez; firstBreiteM = traufeM →
+ * echtes Parallelogramm.
+ */
+export function schraegGeometrie(
+  traufeM: number,
+  hoeheM: number,
+  firstBreiteM: number,
+  firstVersatzM: number,
+): SchraegGeometrie {
+  const fb = Math.max(0, Math.min(firstBreiteM, traufeM));
+  const firstMitte = traufeM / 2 + firstVersatzM;
+  const flRaw = firstMitte - fb / 2;
+  const frRaw = firstMitte + fb / 2;
+  const minX = Math.min(0, flRaw);
+  const maxX = Math.max(traufeM, frRaw);
+  const shift = -minX;
+  const rahmenBreiteM = maxX - minX;
+  const TL: PunktM = [0 + shift, hoeheM];
+  const TR: PunktM = [traufeM + shift, hoeheM];
+  const FR: PunktM = [frRaw + shift, 0];
+  const FL: PunktM = [flRaw + shift, 0];
+  const umriss: PunktM[] =
+    fb < 0.05 ? [[(flRaw + frRaw) / 2 + shift, 0], TR, TL] : [FL, FR, TR, TL];
+  return { rahmenBreiteM, umriss, ecken: [TL, TR, FR, FL] };
+}
+
 /** Punkt-in-Polygon (Ray-Casting); Punkte AUF der Kante zählen als innen (±EPS). */
 export function punktInPolygon(p: PunktM, poly: readonly PunktM[]): boolean {
   const [x, y] = p;

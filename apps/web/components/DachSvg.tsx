@@ -13,7 +13,8 @@ import { modulAssetInner, modulMatrix, modulMatrixDreiecke } from '../lib/modul-
 import {
   DACHFARBEN,
   fmtDe,
-  perspektiveFirstBreite,
+  perspektiveQuelle,
+  rahmenBreiteVon,
   umrissVon,
   type Dachfarbe,
   type Flaeche,
@@ -201,7 +202,9 @@ export function DachSvg({
   /** Modul (key "row-col") hervorheben (z. B. gewähltes Zusatzmodul beim Verschieben). */
   hervorhebenKey?: string;
 }) {
-  const B = flaeche.breiteM;
+  // B = RAHMENbreite (bei 'schief' > Traufe): viewBox, Klick-Mapping, Homographie-
+  // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
+  const B = rahmenBreiteVon(flaeche);
   const H = flaeche.hoeheM;
   const farbe = DACHFARBEN.find((d) => d.id === flaeche.dachfarbe) ?? DACHFARBEN[1];
   const assetId = `modul-${flaeche.id}`;
@@ -377,7 +380,7 @@ export function DachSvg({
     // Perspektivischer Modus: 4 markierte Ecken → Homographie Fläche→Foto.
     // Jedes Modul wird als projiziertes Viereck gezeichnet (LoD vereinfacht,
     // SPEC §11.2) — Maße weiterhin aus dem Engine-Raster, nie aus dem Foto.
-    const h = homographie(B, H, foto.eckenPx, perspektiveFirstBreite(flaeche));
+    const h = homographie(B, H, foto.eckenPx, perspektiveQuelle(flaeche));
     if (h) {
       const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
         [x, y],
@@ -387,7 +390,7 @@ export function DachSvg({
       ];
       const klickM = zeichnen?.aktiv
         ? (e: React.MouseEvent<SVGSVGElement>) => {
-            const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveFirstBreite(flaeche));
+            const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveQuelle(flaeche));
             if (!inv) return;
             const rect = e.currentTarget.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return;

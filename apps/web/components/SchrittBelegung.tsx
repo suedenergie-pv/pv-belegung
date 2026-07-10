@@ -8,6 +8,7 @@ import {
   fmtDe,
   modulById,
   modulMasse,
+  rahmenBreiteVon,
   randVon,
   rasterFuer,
   umrissVon,
@@ -127,7 +128,7 @@ export function SchrittBelegung({
     const step = Math.max(0.01, schrittCm / 100);
     const klemm = (v: number, grenze: number) => Math.max(-grenze, Math.min(grenze, v));
     patchFlaeche(f.id, {
-      versatzXM: round2(klemm((f.versatzXM ?? 0) + sx * step, f.breiteM)),
+      versatzXM: round2(klemm((f.versatzXM ?? 0) + sx * step, rahmenBreiteVon(f))),
       versatzYM: round2(klemm((f.versatzYM ?? 0) + sy * step, f.hoeheM)),
       inaktiv: [],
     });
@@ -152,7 +153,7 @@ export function SchrittBelegung({
       yM = reihenY.reduce((a, b) => (Math.abs(b - yM) < Math.abs(a - yM) ? b : a), reihenY[0]!);
     }
     return {
-      xM: Math.max(rand, Math.min(f.breiteM - rand - w, p[0] - w / 2)),
+      xM: Math.max(rand, Math.min(rahmenBreiteVon(f) - rand - w, p[0] - w / 2)),
       yM: Math.max(rand, Math.min(f.hoeheM - rand - h, yM)),
     };
   };
