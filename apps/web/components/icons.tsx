@@ -36,24 +36,32 @@ function Icon({
 
 /* ---------- Modul-Ausrichtung ---------- */
 
-/** Modul quer (Querformat): liegendes Rechteck mit Zellfugen. */
+/** EIN Modul quer (liegend) mit Zell-Raster. */
 export function IconModulQuer(p: IconProps) {
   return (
     <Icon {...p}>
-      <rect x="2.5" y="7" width="19" height="10" rx="1.3" />
-      <line x1="9" y1="7" x2="9" y2="17" />
-      <line x1="15" y1="7" x2="15" y2="17" />
+      <rect x="2" y="6" width="20" height="12" rx="1.6" />
+      <g strokeWidth={0.9} opacity={0.55}>
+        <line x1="7" y1="6" x2="7" y2="18" />
+        <line x1="12" y1="6" x2="12" y2="18" />
+        <line x1="17" y1="6" x2="17" y2="18" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+      </g>
     </Icon>
   );
 }
 
-/** Modul hochkant (Hochformat): stehendes Rechteck mit Zellfugen. */
+/** EIN Modul hochkant (stehend) mit Zell-Raster. */
 export function IconModulHoch(p: IconProps) {
   return (
     <Icon {...p}>
-      <rect x="7" y="2.5" width="10" height="19" rx="1.3" />
-      <line x1="7" y1="9" x2="17" y2="9" />
-      <line x1="7" y1="15" x2="17" y2="15" />
+      <rect x="6" y="2" width="12" height="20" rx="1.6" />
+      <g strokeWidth={0.9} opacity={0.55}>
+        <line x1="12" y1="2" x2="12" y2="22" />
+        <line x1="6" y1="7" x2="18" y2="7" />
+        <line x1="6" y1="12" x2="18" y2="12" />
+        <line x1="6" y1="17" x2="18" y2="17" />
+      </g>
     </Icon>
   );
 }
