@@ -55,7 +55,7 @@ export function ToggleButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`h-12 rounded-xl border px-4 text-sm font-medium transition ${
+      className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-medium transition ${
         disabled
           ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
           : aktiv

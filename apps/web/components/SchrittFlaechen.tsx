@@ -9,6 +9,7 @@ import {
   type Flaeche,
   type Projekt,
 } from '../lib/model';
+import { IconFormRechteck, IconFormSchief, IconFormTrapez } from './icons';
 import { Feld, inputKlasse, Karte, KartenTitel, ToggleButton, ZonenBadge } from './ui';
 
 function ZahlenFeld({
@@ -125,7 +126,8 @@ export function SchrittFlaechen({
                   })
                 }
               >
-                ▭ Rechteck
+                <IconFormRechteck />
+                Rechteck
               </ToggleButton>
               <ToggleButton
                 aktiv={f.dachform === 'trapez'}
@@ -138,7 +140,8 @@ export function SchrittFlaechen({
                   })
                 }
               >
-                ⬯ Trapez / Walm
+                <IconFormTrapez />
+                Trapez / Walm
               </ToggleButton>
               <ToggleButton
                 aktiv={f.dachform === 'schief'}
@@ -151,7 +154,8 @@ export function SchrittFlaechen({
                   })
                 }
               >
-                ⬮ Schief / Parallelogramm
+                <IconFormSchief />
+                Schief / Parallelogramm
               </ToggleButton>
               {(f.dachform === 'trapez' || f.dachform === 'schief') && (
                 <label className="flex items-center gap-1.5 text-sm text-slate-600">

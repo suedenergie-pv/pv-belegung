@@ -20,6 +20,20 @@ import {
 import { DACHFARBEN } from '../lib/model';
 import { DachSvg, type GeistModul } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
+import {
+  IconAlleZeigen,
+  IconAntippen,
+  IconHindernis,
+  IconLeeren,
+  IconMasse,
+  IconModulHoch,
+  IconModulQuer,
+  IconModulSetzen,
+  IconReiheDrehen,
+  IconReihenVersetzen,
+  IconUmriss,
+  IconVerschieben,
+} from './icons';
 import { Karte, KartenTitel, ToggleButton, ZonenBadge } from './ui';
 
 /** Laufende Zeichnung (Umriss oder Hindernis) — immer nur eine Fläche gleichzeitig */
@@ -53,7 +67,7 @@ function WerkzeugKnopf({
       disabled={disabled}
       title={title}
       onClick={onClick}
-      className={`h-10 rounded-lg px-3 text-sm font-medium transition ${
+      className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
         disabled
           ? 'cursor-not-allowed text-slate-300'
           : aktiv
@@ -231,7 +245,7 @@ export function SchrittBelegung({
   const pfeilKlasse =
     'h-9 w-9 rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-700 hover:border-akzent';
   const aktionKlasse =
-    'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
+    'inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
 
   const klickM = (f: Flaeche, p: PunktM) => {
     if (!zeichnung || zeichnung.flaecheId !== f.id) return;
@@ -282,7 +296,8 @@ export function SchrittBelegung({
           </div>
           <div className="ml-auto">
             <ToggleButton aktiv={masseZeigen} onClick={() => setMasseZeigen((v) => !v)}>
-              {masseZeigen ? '📏 Maße an' : '📏 Maße aus'}
+              <IconMasse />
+              {masseZeigen ? 'Maße an' : 'Maße aus'}
             </ToggleButton>
           </div>
         </div>
@@ -323,7 +338,8 @@ export function SchrittBelegung({
                       setGewaehltExtra(null);
                     }}
                   >
-                    🖱 Antippen
+                    <IconAntippen />
+                    Antippen
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
                     aktiv={verschiebeModusId === f.id}
@@ -343,7 +359,8 @@ export function SchrittBelegung({
                         patchFlaeche(f.id, { versatzXM: 0, versatzYM: 0 });
                     }}
                   >
-                    ↔ Verschieben
+                    <IconVerschieben />
+                    Verschieben
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
                     aktiv={modulModusId === f.id}
@@ -359,7 +376,8 @@ export function SchrittBelegung({
                       }
                     }}
                   >
-                    ➕ Modul setzen
+                    <IconModulSetzen />
+                    Modul setzen
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
                     aktiv={reihenModusId === f.id}
@@ -375,7 +393,8 @@ export function SchrittBelegung({
                       }
                     }}
                   >
-                    ⟳ Reihe drehen
+                    <IconReiheDrehen />
+                    Reihe drehen
                   </WerkzeugKnopf>
                 </div>
                 <div className="ml-auto flex flex-wrap gap-2">
@@ -387,7 +406,7 @@ export function SchrittBelegung({
                   {raster.positionen.length > 0 && aktiv > 0 && (
                     <button
                       type="button"
-                      className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
                       title="Alle Module dieser Fläche entfernen (Zusatzmodule werden gelöscht)"
                       onClick={() =>
                         patchFlaeche(f.id, {
@@ -396,12 +415,14 @@ export function SchrittBelegung({
                         })
                       }
                     >
-                      🗑 Leeren
+                      <IconLeeren />
+                      Leeren
                     </button>
                   )}
                   {f.inaktiv.length > 0 && (
                     <button type="button" className={aktionKlasse} onClick={() => patchFlaeche(f.id, { inaktiv: [] })}>
-                      ↺ Alle zeigen
+                      <IconAlleZeigen />
+                      Alle zeigen
                     </button>
                   )}
                 </div>
@@ -422,7 +443,8 @@ export function SchrittBelegung({
                     })
                   }
                 >
-                  ▭ Quer
+                  <IconModulQuer />
+                  Quer
                 </WerkzeugKnopf>
                 <WerkzeugKnopf
                   aktiv={f.ausrichtung === 'hoch'}
@@ -435,7 +457,8 @@ export function SchrittBelegung({
                     })
                   }
                 >
-                  ▯ Hochkant
+                  <IconModulHoch />
+                  Hochkant
                 </WerkzeugKnopf>
               </div>
 
@@ -448,13 +471,14 @@ export function SchrittBelegung({
                     inaktiv: [],
                   })
                 }
-                className={`h-9 rounded-lg border px-3 text-sm font-medium ${
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium ${
                   f.optimierung === 'frei'
                     ? 'border-akzent bg-akzent text-white'
                     : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
                 }`}
               >
-                🧩 Reihen frei versetzen
+                <IconReihenVersetzen />
+                Reihen frei versetzen
               </button>
 
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -520,19 +544,21 @@ export function SchrittBelegung({
                   <>
                     <button
                       type="button"
-                      className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
                       onClick={() => setZeichnung({ flaecheId: f.id, art: 'umriss', punkte: [] })}
                     >
-                      ⬠ Umriss zeichnen{f.umrissM ? ' (neu)' : ''}
+                      <IconUmriss />
+                      Umriss zeichnen{f.umrissM ? ' (neu)' : ''}
                     </button>
                     <button
                       type="button"
-                      className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
                       onClick={() =>
                         setZeichnung({ flaecheId: f.id, art: 'hindernis', punkte: [] })
                       }
                     >
-                      ▭ Hindernis markieren
+                      <IconHindernis />
+                      Hindernis markieren
                     </button>
                     {f.umrissM && (
                       <button

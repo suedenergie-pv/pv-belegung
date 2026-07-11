@@ -14,6 +14,7 @@ import {
   type Punkt,
 } from '../lib/foto-geometrie';
 import { DACHFARBEN, fmtDe, perspektiveQuelle, rahmenBreiteVon, type DachFoto, type Flaeche } from '../lib/model';
+import { IconFoto } from './icons';
 
 /**
  * Drohnenfoto-Hintergrund je Dachfläche (Foto bleibt lokal, SPEC §8.1).
@@ -43,7 +44,7 @@ function deckbreiteDefaultCm(f: Flaeche): number {
 type Modus = 'first' | 'perspektive' | 'umriss' | 'hindernis' | 'ziegel';
 
 const knopfKlasse =
-  'h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
+  'inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
 
 function modusKnopfKlasse(aktiv: boolean): string {
   return `h-9 rounded-lg border px-3 text-sm font-medium ${
@@ -251,7 +252,8 @@ export function FotoHintergrund({
       />
       <div className="flex flex-wrap gap-2">
         <button type="button" className={knopfKlasse} onClick={() => inputRef.current?.click()}>
-          📷 {foto ? 'Anderes Foto' : 'Drohnenfoto als Hintergrund'}
+          <IconFoto />
+          {foto ? 'Anderes Foto' : 'Drohnenfoto als Hintergrund'}
         </button>
         {foto && (
           <>
