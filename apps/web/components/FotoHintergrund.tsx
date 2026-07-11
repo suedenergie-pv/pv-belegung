@@ -43,6 +43,9 @@ function deckbreiteDefaultCm(f: Flaeche): number {
 
 type Modus = 'first' | 'perspektive' | 'umriss' | 'hindernis' | 'ziegel';
 
+/** Ziehbarer Griff: eine Foto-Ecke, ein Trauflinien-Punkt oder ein Draft-Punkt. */
+type Griff = { art: 'punkt' | 'ecke' | 'first'; i: number };
+
 const knopfKlasse =
   'inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
 
@@ -111,6 +114,12 @@ export function FotoHintergrund({
   const [mausPx, setMausPx] = useState<Punkt | null>(null);
   // Referenzlinie First/Traufe → legt die Traufe-Achse fest (transient, nur beim Markieren)
   const [firstLinie, setFirstLinie] = useState<[Punkt, Punkt] | null>(null);
+  // Gerade gezogener Punkt (Ecke/Trauflinie/Draft) — freies Nachjustieren per Drag.
+  // In einem Ref, damit das Ziehen sofort greift (nicht erst nach dem Re-Render).
+  const ziehtRef = useRef<{ art: 'punkt' | 'ecke' | 'first'; i: number } | null>(null);
+  const [greift, setGreift] = useState(false); // nur für den Cursor
+  // Startete der Maus-Druck auf einem Griff? Dann den folgenden Klick NICHT als „neuen Punkt" werten.
+  const aufHandle = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const B = flaeche.breiteM; // Traufe (Referenzstrecke für den Maß-Check)
@@ -181,7 +190,49 @@ export function FotoHintergrund({
     ];
   };
 
+  /**
+   * Ziehbare Griffe (Genrih 08.07.): die 4 Ecken lassen sich nach dem Setzen frei
+   * verschieben (grob klicken, dann exakt auf die Dachecke ziehen), ebenso die
+   * Trauflinie. Nur in den Modi „perspektive"/„first" — im Umriss/Hindernis bleibt
+   * der Klick fürs Zeichnen/Schließen. Draft-Punkte sind auch ziehbar.
+   */
+  const handles = (): { x: number; y: number; z: Griff }[] => {
+    if (!foto) return [];
+    const arr: { x: number; y: number; z: Griff }[] = [];
+    if (modus === 'perspektive') {
+      punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
+      if (foto.eckenPx) foto.eckenPx.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'ecke', i } }));
+    } else if (modus === 'first') {
+      punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
+      if (firstLinie) firstLinie.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'first', i } }));
+    }
+    return arr;
+  };
+
+  const naheHandle = (k: Punkt) => {
+    const schwelle = foto ? foto.breitePx * 0.022 : 0;
+    return handles().find((h) => Math.hypot(h.x - k[0], h.y - k[1]) <= schwelle);
+  };
+
+  /** Griff auf neue Position setzen (Ecke im Foto, Trauflinien-Punkt oder Draft-Punkt). */
+  const setzeHandle = (z: Griff, k: Punkt) => {
+    if (!foto) return;
+    if (z.art === 'punkt') {
+      setPunkte(punkte.map((p, i) => (i === z.i ? [k[0], k[1]] : p)));
+    } else if (z.art === 'ecke' && foto.eckenPx) {
+      const e = foto.eckenPx.map((p, i) => (i === z.i ? [k[0], k[1]] : p)) as typeof foto.eckenPx;
+      onFoto({ ...foto, eckenPx: e });
+    } else if (z.art === 'first' && firstLinie) {
+      setFirstLinie(firstLinie.map((p, i) => (i === z.i ? [k[0], k[1]] : p)) as [Punkt, Punkt]);
+    }
+  };
+
   const klick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Kam der Klick vom Loslassen eines Griffs? Dann keinen neuen Punkt setzen.
+    if (aufHandle.current) {
+      aufHandle.current = false;
+      return;
+    }
     const k = svgKoord(e);
     if (!k || !foto) return;
     const [x, y] = k;
@@ -213,6 +264,9 @@ export function FotoHintergrund({
     }
 
     if (modus === 'perspektive') {
+      // Sind die 4 Ecken schon gesetzt, fügt ein Klick KEINE neue an — man justiert
+      // dann nur noch per Ziehen. Neu setzen geht über „Ecken neu".
+      if (foto.eckenPx) return;
       const neu: Punkt[] = [...punkte, [x, y]];
       if (neu.length >= 4) return perspektiveAbschliessen(neu);
       return setPunkte(neu);
@@ -300,6 +354,19 @@ export function FotoHintergrund({
                 onClick={() => onFoto({ ...foto, eckenPx: traufeWechseln(foto.eckenPx!) })}
               >
                 ↻ Traufe wechseln
+              </button>
+            )}
+            {modus === 'perspektive' && foto.eckenPx && (
+              <button
+                type="button"
+                className={knopfKlasse}
+                title="Alle 4 Ecken verwerfen und neu anklicken"
+                onClick={() => {
+                  setPunkte([]);
+                  onFoto({ ...foto, eckenPx: undefined });
+                }}
+              >
+                Ecken neu
               </button>
             )}
             {foto.pxProM !== undefined && (
@@ -507,14 +574,16 @@ export function FotoHintergrund({
                 {flaeche.dachform === 'schief' && flaeche.firstVersatzM
                   ? `, Versatz ${fmtDe(flaeche.firstVersatzM, 1)} m`
                   : ''}
-                ) aus Schritt 2 und rechnet sie automatisch — kein Umriss nötig. Reihenfolge egal.
+                ) aus Schritt 2 und rechnet sie automatisch — kein Umriss nötig. Reihenfolge egal.{' '}
+                <strong>Ecke nicht genau getroffen? Einfach mit der Maus draufziehen.</strong>
               </p>
             ) : (
               <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
                 <strong>Perspektive – 4 Ecken:</strong> die 4 Ecken des Dach-<strong>Rechtecks</strong>{' '}
                 anklicken (Traufe + First), <strong>Reihenfolge egal</strong>. Liegt eine Ecke in der
                 Luft (z. B. über der Terrasse), am <strong>Fadenkreuz</strong> ausrichten — es zeigt
-                die X/Y-Linie durch den Mauszeiger. Sitzt die Belegung verdreht: <strong>↻ Traufe
+                die X/Y-Linie durch den Mauszeiger. <strong>Ecke nicht genau getroffen? Einfach
+                mit der Maus draufziehen.</strong> Sitzt die Belegung verdreht: <strong>↻ Traufe
                 wechseln</strong>. Tipp: Bei Walm/Trapez in Schritt „Dachflächen" die Form{' '}
                 <strong>Trapez</strong> wählen — dann einfach die echten Ecken klicken.
               </p>
@@ -551,11 +620,33 @@ export function FotoHintergrund({
           >
             <svg
               viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-              className="block h-full w-full cursor-crosshair"
+              className={`block h-full w-full ${greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
               preserveAspectRatio="xMidYMid meet"
               onClick={klick}
-              onMouseMove={(e) => setMausPx(svgKoord(e))}
-              onMouseLeave={() => setMausPx(null)}
+              onMouseDown={(e) => {
+                const k = svgKoord(e);
+                const h = k ? naheHandle(k) : undefined;
+                aufHandle.current = !!h;
+                if (h) {
+                  ziehtRef.current = h.z;
+                  setGreift(true);
+                  e.preventDefault();
+                }
+              }}
+              onMouseMove={(e) => {
+                const k = svgKoord(e);
+                setMausPx(k);
+                if (ziehtRef.current && k) setzeHandle(ziehtRef.current, k);
+              }}
+              onMouseUp={() => {
+                ziehtRef.current = null;
+                setGreift(false);
+              }}
+              onMouseLeave={() => {
+                setMausPx(null);
+                ziehtRef.current = null;
+                setGreift(false);
+              }}
             >
               <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
 
@@ -592,6 +683,22 @@ export function FotoHintergrund({
                   strokeDasharray={`${px(0.01)} ${px(0.006)}`}
                 />
               )}
+
+              {/* Ziehbare Ecken-Griffe: nur im Perspektive-Modus, zum exakten Nachjustieren */}
+              {modus === 'perspektive' &&
+                foto.eckenPx?.map((p, i) => (
+                  <g key={i} style={{ cursor: 'grab' }}>
+                    <circle cx={p[0]} cy={p[1]} r={px(0.018)} fill="rgba(249,115,22,0.18)" />
+                    <circle
+                      cx={p[0]}
+                      cy={p[1]}
+                      r={px(0.01)}
+                      fill="#f97316"
+                      stroke="#ffffff"
+                      strokeWidth={px(0.0028)}
+                    />
+                  </g>
+                ))}
 
               {/* Bereits markierte Hindernisse */}
               {hom &&
