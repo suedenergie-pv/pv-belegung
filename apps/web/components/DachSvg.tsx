@@ -41,6 +41,12 @@ export interface ZeichnenProps {
  * Wird in Draufsicht als Rechteck, im Foto als homographisch projiziertes Viereck
  * gezeichnet — also in der echten Perspektive der Anlage.
  */
+/** Auswahl-Umrandung: Modul-Keys ("row-col") + optionale Farbe (Default Akzent-Orange). */
+export interface Hervorheben {
+  keys: string[];
+  farbe?: string;
+}
+
 export interface GeistModul {
   xM: number;
   yM: number;
@@ -118,7 +124,7 @@ export function moduleAufHomographie({
   fotoBreitePx,
   druck,
   toggle,
-  hervorhebenKey,
+  hervorheben,
 }: {
   h: Homographie;
   raster: BelegungRaster;
@@ -127,8 +133,8 @@ export function moduleAufHomographie({
   fotoBreitePx: number;
   druck?: boolean;
   toggle?: (key: string) => void;
-  /** Dieses Modul (key "row-col") hervorheben (z. B. ausgewähltes Zusatzmodul). */
-  hervorhebenKey?: string;
+  /** Diese Module (keys "row-col") umranden — Auswahl (Zusatzmodul, Lösch-Auswahl). */
+  hervorheben?: Hervorheben;
 }) {
   const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
     [x, y],
@@ -181,11 +187,11 @@ export function moduleAufHomographie({
             strokeDasharray={`${fotoBreitePx * 0.006} ${fotoBreitePx * 0.004}`}
           />
         )}
-        {key === hervorhebenKey && (
+        {hervorheben?.keys.includes(key) && (
           <path
             d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
             fill="none"
-            stroke="#e8603a"
+            stroke={hervorheben.farbe ?? '#e8603a'}
             strokeWidth={fotoBreitePx * 0.004}
           />
         )}
@@ -202,7 +208,7 @@ export function DachSvg({
   zeichnen,
   druck,
   masse = true,
-  hervorhebenKey,
+  hervorheben,
   geist,
 }: {
   flaeche: Flaeche;
@@ -218,8 +224,8 @@ export function DachSvg({
   /** Maßketten (Traufe/Sparren/Umriss) einblenden — im Skizzierer umschaltbar,
    *  im Druck ohnehin immer aus. Default an. */
   masse?: boolean;
-  /** Modul (key "row-col") hervorheben (z. B. gewähltes Zusatzmodul beim Verschieben). */
-  hervorhebenKey?: string;
+  /** Module (keys "row-col") umranden (gewähltes Zusatzmodul, Lösch-Auswahl …). */
+  hervorheben?: Hervorheben;
 }) {
   // B = RAHMENbreite (bei 'schief' > Traufe): viewBox, Klick-Mapping, Homographie-
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
@@ -384,8 +390,8 @@ export function DachSvg({
                 strokeDasharray="0.08 0.06"
               />
             )}
-            {key === hervorhebenKey && (
-              <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="none" stroke="#e8603a" strokeWidth={0.06} />
+            {hervorheben?.keys.includes(key) && (
+              <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="none" stroke={hervorheben.farbe ?? '#e8603a'} strokeWidth={0.06} />
             )}
           </g>
         );
@@ -455,7 +461,7 @@ export function DachSvg({
               fotoBreitePx: foto.breitePx,
               druck,
               toggle,
-              hervorhebenKey,
+              hervorheben,
             })}
             {geist && (
               <path

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   aktiveModule,
   besterVersatzFuer,
@@ -16,6 +16,7 @@ import {
   type Flaeche,
   type Projekt,
   type PunktM,
+  type RechteckM,
 } from '../lib/model';
 import { DACHFARBEN } from '../lib/model';
 import { DachSvg, type GeistModul } from './DachSvg';
@@ -23,10 +24,12 @@ import { FotoHintergrund } from './FotoHintergrund';
 import {
   IconAlleZeigen,
   IconAntippen,
+  IconEinzelnVerschieben,
   IconHindernis,
   IconLeeren,
   IconMasse,
   IconModulHoch,
+  IconModulLoeschen,
   IconModulQuer,
   IconModulSetzen,
   IconReiheDrehen,
@@ -42,6 +45,13 @@ interface Zeichnung {
   art: 'umriss' | 'hindernis';
   punkte: PunktM[];
 }
+
+/**
+ * Exklusive Werkzeuge der Belegung (null = Antippen). 13.07.2026 dazu:
+ * 'loeschen' (Module endgültig raus, Felder bleiben leer) und 'einzeln'
+ * (EIN Rastermodul für sich verschieben, Rest bleibt stehen — Genrih).
+ */
+type WerkzeugArt = 'verschieben' | 'setzen' | 'reihe' | 'loeschen' | 'einzeln';
 
 /**
  * Segment-Knopf der Werkzeugleiste (U1, 08.07.): Werkzeuge liegen als Gruppe auf
@@ -91,13 +101,12 @@ export function SchrittBelegung({
   const [zeichnung, setZeichnung] = useState<Zeichnung | null>(null);
   // Maße einblenden — beim Kunden vor Ort abschaltbar (Genrih 07.07.)
   const [masseZeigen, setMasseZeigen] = useState(true);
-  // „Reihe umschalten"-Modus: Klick auf ein Modul dreht dessen ganze Reihe (Band)
-  const [reihenModusId, setReihenModusId] = useState<string | null>(null);
-  // „Verschieben"-Modus (Nudge) + frei einstellbare Schrittweite in cm
-  const [verschiebeModusId, setVerschiebeModusId] = useState<string | null>(null);
+  // Aktives Werkzeug (exklusiv, je eine Fläche) — null = Antippen überall
+  const [modus, setModus] = useState<{ art: WerkzeugArt; flaecheId: string } | null>(null);
+  // Schrittweite in cm (Verschieben/Einzeln/Modul setzen)
   const [schrittCm, setSchrittCm] = useState(1);
-  // „Modul setzen"-Modus: leeres Feld antippen → Zusatzmodul; Extra antippen → auswählen
-  const [modulModusId, setModulModusId] = useState<string | null>(null);
+  // Lösch-Modus: angetippte Module (Keys "row-col"); erst „Endgültig löschen" wirkt
+  const [loeschAuswahl, setLoeschAuswahl] = useState<string[]>([]);
   // Index des gerade ausgewählten Zusatzmoduls (zum Verschieben/Löschen), null = keins
   const [gewaehltExtra, setGewaehltExtra] = useState<number | null>(null);
   // Mausposition (Flächen-Meter) für die Geist-Vorschau beim „Modul setzen"
@@ -113,6 +122,17 @@ export function SchrittBelegung({
       ...projekt,
       flaechen: projekt.flaechen.map((x) => (x.id === id ? { ...x, ...patch } : x)),
     });
+
+  const modusArt = (f: Flaeche): WerkzeugArt | null =>
+    modus?.flaecheId === f.id ? modus.art : null;
+
+  /** Werkzeug wechseln — räumt Auswahl/Geist des vorherigen Modus auf. */
+  const setzeModus = (f: Flaeche, art: WerkzeugArt | null) => {
+    setModus(art ? { art, flaecheId: f.id } : null);
+    setGewaehltExtra(null);
+    setGeistM(null);
+    setLoeschAuswahl([]);
+  };
 
   /**
    * Ausrichtung eines ganzen Bandes (Reihe `row`) umschalten → gemischte Belegung
@@ -242,6 +262,81 @@ export function SchrittBelegung({
     setGewaehltExtra(null);
   };
 
+  /**
+   * „Einzeln verschieben" (13.07., Genrih): ein RASTERmodul antippen → es wird zum
+   * frei beweglichen Zusatzmodul, sein altes Feld wird als gelöscht vermerkt (bleibt
+   * leer, der Rest der Anlage bewegt sich nicht). Zusatzmodule werden nur ausgewählt.
+   */
+  const waehleEinzeln = (f: Flaeche, key: string) => {
+    if (key.startsWith('-1-')) {
+      const idx = Number(key.slice(3));
+      setGewaehltExtra(gewaehltExtra === idx ? null : idx);
+      return;
+    }
+    const p = rasterFuer(f, modul).positionen.find((q) => `${q.row}-${q.col}` === key);
+    if (!p) return;
+    const extras = f.extraModule ?? [];
+    patchFlaeche(f.id, {
+      geloescht: [...(f.geloescht ?? []), { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM }],
+      extraModule: [...extras, { xM: p.xM, yM: p.yM, quer: p.quer }],
+      inaktiv: f.inaktiv.filter((k) => k !== key),
+    });
+    setGewaehltExtra(extras.length);
+  };
+
+  /**
+   * Lösch-Auswahl endgültig anwenden: Raster-Felder als dauerhaft leer vermerken
+   * (geloescht-Fußabdrücke — sie kommen auch durch Verschieben nicht wieder),
+   * ausgewählte Zusatzmodule ganz entfernen.
+   */
+  const loeschBestaetigen = (f: Flaeche) => {
+    if (loeschAuswahl.length === 0) return;
+    const raster = rasterFuer(f, modul);
+    const felder: RechteckM[] = [];
+    const extraWeg = new Set<number>();
+    for (const key of loeschAuswahl) {
+      if (key.startsWith('-1-')) {
+        extraWeg.add(Number(key.slice(3)));
+        continue;
+      }
+      const p = raster.positionen.find((q) => `${q.row}-${q.col}` === key);
+      if (p) felder.push({ xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM });
+    }
+    patchFlaeche(f.id, {
+      geloescht: [...(f.geloescht ?? []), ...felder],
+      extraModule: extraWeg.size
+        ? (f.extraModule ?? []).filter((_, i) => !extraWeg.has(i))
+        : f.extraModule,
+      inaktiv: f.inaktiv.filter((k) => !loeschAuswahl.includes(k)),
+    });
+    setLoeschAuswahl([]);
+  };
+
+  // Pfeiltasten bewegen das gewählte Einzelmodul (Modi 'einzeln' und 'setzen').
+  // Ohne Dep-Array bewusst bei jedem Render neu registriert — Closures bleiben frisch.
+  useEffect(() => {
+    if (!modus || (modus.art !== 'einzeln' && modus.art !== 'setzen') || gewaehltExtra == null)
+      return;
+    const f = projekt.flaechen.find((x) => x.id === modus.flaecheId);
+    if (!f) return;
+    const handler = (e: KeyboardEvent) => {
+      const richtung: Record<string, [number, number]> = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+      };
+      const v = richtung[e.key];
+      if (!v) return;
+      const ziel = e.target as HTMLElement | null;
+      if (ziel && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ziel.tagName)) return;
+      e.preventDefault();
+      verschiebeExtra(f, v[0], v[1]);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
+
   const pfeilKlasse =
     'h-9 w-9 rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-700 hover:border-akzent';
   const aktionKlasse =
@@ -329,31 +424,21 @@ export function SchrittBelegung({
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1">
                   <WerkzeugKnopf
-                    aktiv={verschiebeModusId !== f.id && modulModusId !== f.id && reihenModusId !== f.id}
+                    aktiv={modusArt(f) === null}
                     title="Standard: Module antippen zum Deaktivieren/Aktivieren"
-                    onClick={() => {
-                      setVerschiebeModusId(null);
-                      setModulModusId(null);
-                      setReihenModusId(null);
-                      setGewaehltExtra(null);
-                    }}
+                    onClick={() => setzeModus(f, null)}
                   >
                     <IconAntippen />
                     Antippen
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
-                    aktiv={verschiebeModusId === f.id}
+                    aktiv={modusArt(f) === 'verschieben'}
                     disabled={!!f.baender}
                     title={f.baender ? 'Erst „Alle Reihen gleich“ — Verschieben geht nur bei einheitlichen Reihen' : 'Ganze Belegung cm-weise schieben'}
                     onClick={() => {
                       if (f.baender) return;
-                      const an = verschiebeModusId !== f.id;
-                      setVerschiebeModusId(an ? f.id : null);
-                      if (an) {
-                        setReihenModusId(null);
-                        setModulModusId(null);
-                        setGewaehltExtra(null);
-                      }
+                      const an = modusArt(f) !== 'verschieben';
+                      setzeModus(f, an ? 'verschieben' : null);
                       // Beim Aktivieren Versatz aktivieren (Lattice ab aktueller Lage)
                       if (an && f.versatzXM === undefined)
                         patchFlaeche(f.id, { versatzXM: 0, versatzYM: 0 });
@@ -363,34 +448,36 @@ export function SchrittBelegung({
                     Verschieben
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
-                    aktiv={modulModusId === f.id}
+                    aktiv={modusArt(f) === 'einzeln'}
+                    title="Ein einzelnes Modul auswählen und mit den Pfeiltasten verschieben — der Rest der Anlage bleibt stehen"
+                    onClick={() => setzeModus(f, modusArt(f) === 'einzeln' ? null : 'einzeln')}
+                  >
+                    <IconEinzelnVerschieben />
+                    Einzeln verschieben
+                  </WerkzeugKnopf>
+                  <WerkzeugKnopf
+                    aktiv={modusArt(f) === 'setzen'}
                     title="Einzelnes Zusatzmodul setzen, verschieben oder entfernen"
-                    onClick={() => {
-                      const an = modulModusId !== f.id;
-                      setModulModusId(an ? f.id : null);
-                      setGewaehltExtra(null);
-                      setGeistM(null);
-                      if (an) {
-                        setReihenModusId(null);
-                        setVerschiebeModusId(null);
-                      }
-                    }}
+                    onClick={() => setzeModus(f, modusArt(f) === 'setzen' ? null : 'setzen')}
                   >
                     <IconModulSetzen />
                     Modul setzen
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
-                    aktiv={reihenModusId === f.id}
+                    aktiv={modusArt(f) === 'loeschen'}
+                    title="Module auswählen und endgültig löschen — die Felder bleiben dauerhaft leer"
+                    onClick={() => setzeModus(f, modusArt(f) === 'loeschen' ? null : 'loeschen')}
+                  >
+                    <IconModulLoeschen />
+                    Modul löschen
+                  </WerkzeugKnopf>
+                  <WerkzeugKnopf
+                    aktiv={modusArt(f) === 'reihe'}
                     disabled={f.versatzXM !== undefined}
                     title={f.versatzXM !== undefined ? 'Erst Versatz zurücksetzen (↔ Verschieben → „↺ Zurücksetzen“)' : 'Ganze Reihe zwischen quer und hochkant umschalten'}
                     onClick={() => {
                       if (f.versatzXM !== undefined) return;
-                      const an = reihenModusId !== f.id;
-                      setReihenModusId(an ? f.id : null);
-                      if (an) {
-                        setModulModusId(null);
-                        setGewaehltExtra(null);
-                      }
+                      setzeModus(f, modusArt(f) === 'reihe' ? null : 'reihe');
                     }}
                   >
                     <IconReiheDrehen />
@@ -423,6 +510,17 @@ export function SchrittBelegung({
                     <button type="button" className={aktionKlasse} onClick={() => patchFlaeche(f.id, { inaktiv: [] })}>
                       <IconAlleZeigen />
                       Alle zeigen
+                    </button>
+                  )}
+                  {(f.geloescht?.length ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      className={aktionKlasse}
+                      title="Alle endgültig gelöschten Modul-Felder wieder freigeben"
+                      onClick={() => patchFlaeche(f.id, { geloescht: undefined })}
+                    >
+                      <IconAlleZeigen />
+                      Gelöschte zurückholen ({f.geloescht!.length})
                     </button>
                   )}
                 </div>
@@ -462,24 +560,41 @@ export function SchrittBelegung({
                 </WerkzeugKnopf>
               </div>
 
-              <button
-                type="button"
-                title="Für schiefe Dächer (Parallelogramm, Schrägschnitt): jede Reihe wird einzeln maximal gefüllt, ohne dass die Spalten fluchten müssen. Standard: gerade Montage, Versatz nur bei klarem Gewinn."
-                onClick={() =>
-                  patchFlaeche(f.id, {
-                    optimierung: f.optimierung === 'frei' ? undefined : 'frei',
-                    inaktiv: [],
-                  })
-                }
-                className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium ${
-                  f.optimierung === 'frei'
-                    ? 'border-akzent bg-akzent text-white'
-                    : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-                }`}
-              >
-                <IconReihenVersetzen />
-                Reihen frei versetzen
-              </button>
+              {(() => {
+                // Der Reihen-Optimierer kann nur wirken, wenn etwas das Raster
+                // beschneidet (Umriss/Dachform oder Hindernis) und kein manueller
+                // Versatz aktiv ist — sonst Knopf ehrlich ausgrauen (Genrih 13.07.:
+                // „hat keine Funktion").
+                const beschnitten = !!umrissVon(f) || (f.hindernisse?.length ?? 0) > 0;
+                const gesperrt = !beschnitten || f.versatzXM !== undefined;
+                return (
+                  <button
+                    type="button"
+                    disabled={gesperrt}
+                    title={
+                      !beschnitten
+                        ? 'Wirkt nur bei beschnittenen Flächen (Trapez/Schief/Umriss oder Hindernis) — auf dem vollen Rechteck sind alle Reihen ohnehin voll.'
+                        : f.versatzXM !== undefined
+                          ? 'Erst Versatz zurücksetzen (Verschieben → „↺ Zurücksetzen") — mit manuellem Versatz ist der Optimierer aus.'
+                          : 'Für schiefe Dächer (Parallelogramm, Schrägschnitt): jede Reihe wird einzeln maximal gefüllt, ohne dass die Spalten fluchten müssen. Standard: gerade Montage, Versatz nur bei klarem Gewinn.'
+                    }
+                    onClick={() =>
+                      patchFlaeche(f.id, {
+                        optimierung: f.optimierung === 'frei' ? undefined : 'frei',
+                        inaktiv: [],
+                      })
+                    }
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium ${
+                      f.optimierung === 'frei'
+                        ? 'border-akzent bg-akzent text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    <IconReihenVersetzen />
+                    Reihen frei versetzen
+                  </button>
+                );
+              })()}
 
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
                 Rand
@@ -643,7 +758,84 @@ export function SchrittBelegung({
             )}
 
             {/* Aktives Werkzeug: Bedienpanel + Anleitung direkt am Dach */}
-            {verschiebeModusId === f.id && (
+            {belegungZeigen && modusArt(f) === 'loeschen' && (
+              <div className="mb-3 rounded-lg bg-red-50 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-red-800">
+                    {loeschAuswahl.length} {loeschAuswahl.length === 1 ? 'Modul' : 'Module'} ausgewählt
+                  </span>
+                  <button
+                    type="button"
+                    disabled={loeschAuswahl.length === 0}
+                    className="h-9 rounded-lg bg-red-600 px-3 text-sm font-semibold text-white enabled:hover:bg-red-700 disabled:opacity-40"
+                    onClick={() => loeschBestaetigen(f)}
+                  >
+                    Endgültig löschen
+                  </button>
+                  <button
+                    type="button"
+                    className={aktionKlasse}
+                    onClick={() => setzeModus(f, null)}
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-red-800">
+                  <strong>Modul löschen:</strong> zu löschende Module antippen (rot umrandet), dann
+                  „Endgültig löschen". Diese Felder bleiben dauerhaft leer — auch beim Verschieben
+                  oder Neu-Rechnen kommt dort kein Modul mehr hin. Nur „Modul setzen" darf dort
+                  wieder eines platzieren. Rückgängig: „Gelöschte zurückholen".
+                </p>
+              </div>
+            )}
+
+            {belegungZeigen && modusArt(f) === 'einzeln' && (
+              <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
+                {gewaehltExtra != null && f.extraModule?.[gewaehltExtra] && (
+                  <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="text-sm font-medium text-slate-700">Gewähltes Modul:</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      <span />
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 0, -1)} title="nach oben">↑</button>
+                      <span />
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, -1, 0)} title="nach links">←</button>
+                      <span className="flex h-9 w-9 items-center justify-center text-slate-400">✥</span>
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 1, 0)} title="nach rechts">→</button>
+                      <span />
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 0, 1)} title="nach unten">↓</button>
+                      <span />
+                    </div>
+                    <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                      Schritt
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={50}
+                        value={schrittCm}
+                        onChange={(e) => {
+                          const n = Number.parseInt(e.target.value, 10);
+                          if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
+                        }}
+                        className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
+                      />
+                      cm
+                    </label>
+                    <button type="button" className={aktionKlasse} onClick={() => setGewaehltExtra(null)}>
+                      ✕ Auswahl aufheben
+                    </button>
+                  </div>
+                )}
+                <p className="text-xs text-sky-800">
+                  <strong>Einzeln verschieben:</strong> ein Modul antippen (orange umrandet), dann mit
+                  den <strong>Pfeiltasten</strong> der Tastatur oder den Pfeilknöpfen schieben — der
+                  Rest der Anlage bleibt stehen. Die alte Position bleibt frei. Passt die neue Lage
+                  nicht (Rand/Umriss/Hindernis/Überlappung), passiert nichts.
+                </p>
+              </div>
+            )}
+
+            {modusArt(f) === 'verschieben' && (
               <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <div className="grid grid-cols-3 gap-1">
@@ -692,14 +884,14 @@ export function SchrittBelegung({
               </div>
             )}
 
-            {belegungZeigen && reihenModusId === f.id && (
+            {belegungZeigen && modusArt(f) === 'reihe' && (
               <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
                 <strong>Reihe drehen:</strong> ein Modul in der gewünschten Reihe antippen — die
                 ganze Reihe wechselt zwischen quer und hochkant. Dabei ändern sich Platz und
                 Modulzahl (wird neu gerechnet). „Alle Reihen gleich" setzt zurück.
               </p>
             )}
-            {belegungZeigen && modulModusId === f.id && (
+            {belegungZeigen && modusArt(f) === 'setzen' && (
               <div className="mt-2 space-y-2">
                 {gewaehltExtra != null && f.extraModule?.[gewaehltExtra] && (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-akzent/10 px-3 py-2">
@@ -760,12 +952,17 @@ export function SchrittBelegung({
                 raster={raster}
                 modul={modul}
                 masse={masseZeigen}
-                hervorhebenKey={
-                  modulModusId === f.id && gewaehltExtra != null ? `-1-${gewaehltExtra}` : undefined
+                hervorheben={
+                  modusArt(f) === 'loeschen'
+                    ? { keys: loeschAuswahl, farbe: '#dc2626' }
+                    : (modusArt(f) === 'setzen' || modusArt(f) === 'einzeln') &&
+                        gewaehltExtra != null
+                      ? { keys: [`-1-${gewaehltExtra}`] }
+                      : undefined
                 }
-                geist={modulModusId === f.id ? geistFuer(f) : undefined}
+                geist={modusArt(f) === 'setzen' ? geistFuer(f) : undefined}
                 zeichnen={
-                  modulModusId === f.id
+                  modusArt(f) === 'setzen'
                     ? {
                         aktiv: true,
                         punkteM: [],
@@ -782,7 +979,18 @@ export function SchrittBelegung({
                 }
                 onToggle={(key) => {
                   const istExtra = key.startsWith('-1-'); // Zusatzmodul (row = -1)
-                  if (reihenModusId === f.id) {
+                  if (modusArt(f) === 'loeschen') {
+                    // Auswahl an-/abwählen — gelöscht wird erst bei „Endgültig löschen"
+                    setLoeschAuswahl((a) =>
+                      a.includes(key) ? a.filter((k) => k !== key) : [...a, key],
+                    );
+                    return;
+                  }
+                  if (modusArt(f) === 'einzeln') {
+                    waehleEinzeln(f, key);
+                    return;
+                  }
+                  if (modusArt(f) === 'reihe') {
                     if (istExtra) return; // Zusatzmodul hat keine Reihe zum Drehen
                     flipBand(f, Number(key.split('-')[0]));
                     return;
@@ -811,7 +1019,7 @@ export function SchrittBelegung({
                 }}
               />
             )}
-            {belegungZeigen && reihenModusId !== f.id && modulModusId !== f.id && (
+            {belegungZeigen && (modusArt(f) === null || modusArt(f) === 'verschieben') && (
               <p className="mt-2 text-xs text-slate-400">
                 Module antippen zum Deaktivieren.{' '}
                 {f.foto

@@ -147,6 +147,27 @@ export function IconReihenVersetzen(p: IconProps) {
   );
 }
 
+/** Modul löschen (Rechteck mit X) — Feld bleibt dauerhaft leer. */
+export function IconModulLoeschen(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="3.5" width="18" height="17" rx="2.4" />
+      <path d="M9 9 L15 15 M15 9 L9 15" />
+    </Icon>
+  );
+}
+
+/** Einzelmodul verschieben (Rechteck mit Pfeilen rechts/unten). */
+export function IconEinzelnVerschieben(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="3.5" width="11" height="10.5" rx="1.6" />
+      <path d="M17 9 H21.5 M19.5 6.8 L21.7 9 L19.5 11.2" />
+      <path d="M8.5 17 V21 M6.3 19 L8.5 21.2 L10.7 19" />
+    </Icon>
+  );
+}
+
 /** Maße (Lineal). */
 export function IconMasse(p: IconProps) {
   return (

@@ -129,6 +129,15 @@ export interface Flaeche {
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
   hindernisse?: RechteckM[];
   /**
+   * Endgültig gelöschte Modul-Felder (Fußabdrücke in Flächen-Metern, 13.07.2026,
+   * Genrih): diese Stellen bleiben DAUERHAFT leer — jedes Rastermodul, das so ein
+   * Feld überlappt, entfällt, auch nach Verschieben/Neu-Rechnen. Nur manuell
+   * gesetzte Zusatzmodule (extraModule) dürfen dort wieder hin. Bewusst NICHT als
+   * Engine-Hindernis geführt, damit der Optimierer die übrige Belegung beim
+   * Löschen nicht umsortiert (Filter erst nach berechneRaster).
+   */
+  geloescht?: RechteckM[];
+  /**
    * Ausrichtung je Band (Reihe) von oben nach unten. Fehlt/leer = alle Reihen
    * gleich `ausrichtung`. Sobald ein Band abweicht, rechnet die Engine die Fläche
    * als Bänder-Stapel (gemischt hoch/quer, SPEC §9).
@@ -342,14 +351,28 @@ export function modulMasse(modul: ModuleType, quer: boolean): { w: number; h: nu
 
 export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
   const raster = berechneRaster(belegungInput(f, modul));
+  // Endgültig gelöschte Felder: überlappende Rastermodule entfallen — NACH der
+  // Engine (Keys row/col bleiben stabil, Optimierer sortiert nichts um).
+  const geloescht = f.geloescht ?? [];
+  let positionen = geloescht.length
+    ? raster.positionen.filter(
+        (p) =>
+          !geloescht.some((g) =>
+            rechteckeUeberlappen({ xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM }, g),
+          ),
+      )
+    : raster.positionen;
   const extra = f.extraModule;
-  if (!extra?.length) return raster;
-  // Manuelle Zusatzmodule als Positionen anhängen (row = -1 → eindeutige Keys "-1-i")
-  const zusatz = extra.map((e, i) => {
-    const { w, h } = modulMasse(modul, e.quer);
-    return { row: -1, col: i, xM: e.xM, yM: e.yM, quer: e.quer, wM: w, hM: h };
-  });
-  return { ...raster, positionen: [...raster.positionen, ...zusatz] };
+  if (extra?.length) {
+    // Manuelle Zusatzmodule als Positionen anhängen (row = -1 → eindeutige Keys "-1-i");
+    // sie dürfen auch auf gelöschten Feldern liegen (bewusste Einzelsetzung).
+    const zusatz = extra.map((e, i) => {
+      const { w, h } = modulMasse(modul, e.quer);
+      return { row: -1, col: i, xM: e.xM, yM: e.yM, quer: e.quer, wM: w, hM: h };
+    });
+    positionen = [...positionen, ...zusatz];
+  }
+  return positionen === raster.positionen ? raster : { ...raster, positionen };
 }
 
 /**
