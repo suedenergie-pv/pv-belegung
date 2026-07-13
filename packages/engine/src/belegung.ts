@@ -178,7 +178,16 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   const schritt = pitchX / 24;
   const yPos: number[] = [];
   for (let row = 0; row < rows; row++) yPos.push(y0 + row * pitchY);
-  const optimieren = !!umriss && cols > 0 && rows > 0 && (input.optimierePosition ?? true);
+  // Optimieren lohnt, sobald etwas das Raster beschneidet. Ohne Umriss (reines
+  // Rechteck mit Hindernissen) NUR bei ausdrücklichem 'frei' — sonst bliebe die
+  // Standardbelegung nicht mehr zentriert/vorhersehbar. (Bis 13.07.2026 lief der
+  // Optimierer ausschließlich bei Umriss — dadurch war „Reihen frei versetzen"
+  // bei Rechteck-Dächern mit Kamin/Fenster wirkungslos, Genrih.)
+  const optimieren =
+    (!!umriss || (hindernisse.length > 0 && input.optimierung === 'frei')) &&
+    cols > 0 &&
+    rows > 0 &&
+    (input.optimierePosition ?? true);
 
   // Roh = Position ohne Ausrichtungs-/Maß-Annotation (im Einheitspfad überall gleich).
   type Roh = { row: number; col: number; xM: number; yM: number };

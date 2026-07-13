@@ -186,6 +186,23 @@ describe("Optimierung 'frei' — Parallelogramm/Schrägdach (08.07.2026)", () =>
     const frei = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer', optimierung: 'frei' });
     expect(frei.positionen.length).toBe(ohne.positionen.length);
   });
+
+  // Fix 13.07.2026 (Genrih: „Reihen frei versetzen hat keine Funktion"): der
+  // Optimierer lief nur bei Umriss — Rechteck + Hindernisse ging leer aus.
+  it("'frei' wirkt auch am Rechteck-Dach mit Hindernissen (kein Umriss)", () => {
+    // 10×6 quer = 5×5. Zwei Hindernisse, die kein Block-Versatz gleichzeitig
+    // umgehen kann (eins links in Reihe 0, eins rechts in Reihe 2) — nur der
+    // reihenweise Versatz holt beide Module zurück.
+    const basis = { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const };
+    const hindernisse = [
+      { xM: 0.6, yM: 0.2, breiteM: 0.2, hoeheM: 0.3 },
+      { xM: 9.3, yM: 2.5, breiteM: 0.2, hoeheM: 0.3 },
+    ];
+    const auto = berechneRaster({ ...basis, hindernisseM: hindernisse });
+    const frei = berechneRaster({ ...basis, hindernisseM: hindernisse, optimierung: 'frei' });
+    expect(frei.positionen.length).toBe(25); // beide Reihen weichen aus → voll
+    expect(frei.positionen.length).toBeGreaterThan(auto.positionen.length);
+  });
 });
 
 describe('Schiefe Dachfläche / Parallelogramm (schraegGeometrie, 08.07.2026)', () => {
