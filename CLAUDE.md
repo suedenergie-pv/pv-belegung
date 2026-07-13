@@ -65,7 +65,8 @@ Stringcheck-Umbenennung, Belegungs-Optimierer, SüdEnergie-Logo im PDF-Kopf
 (Icon auf Versalhöhe, `lib/logo.ts`) — alle erledigt (5. Session, s.u.).
 
 **Noch offen:**
-1. **PV*SOL-Gegenrechnung (das Gate, Genrih)** — weiterhin der wichtigste Punkt.
+1. ~~PV*SOL-Gegenrechnung (das Gate)~~ — Genrih 13.07.: „auf das Gate scheißen wir."
+   Nicht mehr nachhalten.
 2. Ideen: Foto-Feinpositionierung, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
 
 **Regeln dabei:** Engine rechnet, UI rechnet nie (SPEC §3.4/§3.5). Elektrik nur
@@ -73,6 +74,38 @@ aus Datenblatt-PDFs. Jede Engine-Änderung mit Tests (`npx vitest run --root
 packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsch,
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
+
+## Session-Übergabe 13.07.2026 (7. Session — Fable): 4 Genrih-Fixes
+
+Alle je Schritt committet & gepusht (Deploy automatisch):
+
+1. **Stringcheck-Tab ausgeblendet** (page.tsx): nur visuell — Engine R1–R12,
+   `SchrittStrings`, `pruefeStringplan`, JSON-Payload bleiben komplett im Projekt.
+   Gespeicherte Stände auf Alt-Schrittindex 4/5 werden auf Export geklemmt.
+2. **„Reihen frei versetzen" repariert** (belegung.ts): der Optimierer lief nur bei
+   Umriss — am Rechteck mit Hindernissen tat der Knopf nichts. Ohne Umriss läuft er
+   jetzt bei explizitem 'frei'; das Default-Verhalten (zentriert) bleibt unverändert
+   (Test: 2 Hindernisse, frei 23→25). UI graut den Knopf ehrlich aus, wenn er
+   wirkungslos wäre (kein Umriss/Hindernis, oder manueller Versatz aktiv).
+3. **„Modul löschen" endgültig** (SchrittBelegung + model.ts): Modus wählen →
+   Module antippen (rot umrandet) → „Endgültig löschen". Fußabdrücke landen in
+   `Flaeche.geloescht` (RechteckM[]); `rasterFuer` filtert überlappende Rastermodule
+   NACH der Engine — bewusst KEIN Engine-Hindernis, damit Keys stabil bleiben und
+   der Optimierer beim Löschen nichts umsortiert. Felder bleiben auch nach
+   Verschieben/„Beste Position" leer; nur `extraModule` („Modul setzen") darf dort
+   wieder hin. „Gelöschte zurückholen" (Aktionen-Zeile) hebt alles auf.
+4. **„Einzeln verschieben"** (neu): Rastermodul antippen → wird `extraModule`, sein
+   altes Feld wandert nach `geloescht` (bleibt leer) → per Pfeiltasten (window-
+   keydown, Inputs ausgenommen) oder Pfeilknöpfen schieben; Rest der Anlage steht.
+
+Nebenbei: die 5 Werkzeug-Modi in SchrittBelegung zu EINEM State
+(`modus {art, flaecheId}`, `setzeModus` räumt Auswahl auf) vereinheitlicht;
+DachSvg `hervorhebenKey` → `hervorheben {keys[], farbe}` (Lösch-Auswahl rot);
+launch.json `autoPort: true` (Port 3000 war von anderem Projekt belegt).
+Im Browser verifiziert (per preview_eval, ohne Screenshots): Löschen 25→23,
+Nudge/„Beste Position" holt Gelöschte NICHT zurück, Pfeiltasten bewegen nur das
+Einzelmodul, frei-Knopf 23→25 bzw. disabled am nackten Rechteck. 92 Engine-Tests
+grün, typecheck sauber.
 
 ## Session-Übergabe 07.07.2026 (6. Session — Opus)
 
