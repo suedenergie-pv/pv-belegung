@@ -98,6 +98,13 @@ Alle je Schritt committet & gepusht (Deploy automatisch):
    altes Feld wandert nach `geloescht` (bleibt leer) → per Pfeiltasten (window-
    keydown, Inputs ausgenommen) oder Pfeilknöpfen schieben; Rest der Anlage steht.
 
+Nachtrag (gleicher Tag, Genrih-Feedback): (a) Die geloescht-Leerstellen gehören zur
+ANLAGE, nicht zum Dach — bei Nudge/„Beste Position"/„Zurücksetzen" wandern sie um
+exakt denselben Delta mit (vorher fraßen die stehenbleibenden Löcher beim
+Verschieben Module). (b) „Einzeln verschieben" mit MEHRFACHauswahl: antippen = dazu,
+nochmal = abwählen; Gruppe bewegt sich gemeinsam, alles-oder-nichts-validiert
+(`extraModulGueltig` nimmt jetzt auch eine Index-Liste als `ausser`).
+
 Nebenbei: die 5 Werkzeug-Modi in SchrittBelegung zu EINEM State
 (`modus {art, flaecheId}`, `setzeModus` räumt Auswahl auf) vereinheitlicht;
 DachSvg `hervorhebenKey` → `hervorheben {keys[], farbe}` (Lösch-Auswahl rot);
