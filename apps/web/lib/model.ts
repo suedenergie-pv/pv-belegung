@@ -378,7 +378,8 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
 /**
  * Darf an (xM,yM) ein Zusatzmodul liegen? Innerhalb Rand/Umriss, kein Hindernis,
  * keine Überlappung mit bestehenden aktiven Modulen. `ausserIndex` ignoriert ein
- * bestimmtes Extra (beim Verschieben/Prüfen seiner selbst).
+ * oder mehrere Extras (beim Verschieben/Prüfen ihrer selbst — bei Gruppen-Verschieben
+ * bewegt sich die ganze Auswahl gemeinsam, ihre inneren Abstände bleiben gleich).
  */
 export function extraModulGueltig(
   f: Flaeche,
@@ -386,8 +387,11 @@ export function extraModulGueltig(
   xM: number,
   yM: number,
   quer: boolean,
-  ausserIndex?: number,
+  ausserIndex?: number | readonly number[],
 ): boolean {
+  const ignoriert = new Set(
+    Array.isArray(ausserIndex) ? ausserIndex : ausserIndex != null ? [ausserIndex] : [],
+  );
   const { w, h } = modulMasse(modul, quer);
   const rand = randVon(f);
   const rahmenB = rahmenBreiteVon(f);
@@ -398,7 +402,7 @@ export function extraModulGueltig(
   if (umriss && !rechteckImUmriss(rect, umriss, rand)) return false;
   if ((f.hindernisse ?? []).some((hnd) => rechteckeUeberlappen(rect, hnd))) return false;
   for (const p of rasterFuer(f, modul).positionen) {
-    if (p.row === -1 && p.col === ausserIndex) continue; // sich selbst nicht prüfen
+    if (p.row === -1 && ignoriert.has(p.col)) continue; // sich selbst/Auswahl nicht prüfen
     if (f.inaktiv.includes(`${p.row}-${p.col}`)) continue;
     if (rechteckeUeberlappen(rect, { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM })) return false;
   }

@@ -107,6 +107,9 @@ export function SchrittBelegung({
   const [schrittCm, setSchrittCm] = useState(1);
   // Lösch-Modus: angetippte Module (Keys "row-col"); erst „Endgültig löschen" wirkt
   const [loeschAuswahl, setLoeschAuswahl] = useState<string[]>([]);
+  // „Einzeln verschieben": Indizes der gewählten Zusatzmodule — MEHRERE möglich
+  // (Genrih 13.07.), die Gruppe bewegt sich gemeinsam
+  const [einzelAuswahl, setEinzelAuswahl] = useState<number[]>([]);
   // Index des gerade ausgewählten Zusatzmoduls (zum Verschieben/Löschen), null = keins
   const [gewaehltExtra, setGewaehltExtra] = useState<number | null>(null);
   // Mausposition (Flächen-Meter) für die Geist-Vorschau beim „Modul setzen"
@@ -132,6 +135,7 @@ export function SchrittBelegung({
     setGewaehltExtra(null);
     setGeistM(null);
     setLoeschAuswahl([]);
+    setEinzelAuswahl([]);
   };
 
   /**
@@ -159,23 +163,52 @@ export function SchrittBelegung({
 
   const round2 = (v: number) => Math.round(v * 100) / 100;
 
+  /**
+   * Gelöschte Felder um (dx,dy) mitschieben: die Leerstellen gehören zur ANLAGE,
+   * nicht zum Dach — beim Verschieben wandern sie mit, sonst fräsen sie Löcher in
+   * die verschobene Belegung (Genrih 13.07.). Exakt derselbe Delta wie das Gitter,
+   * ohne Rundung, damit Loch und Modulplatz deckungsgleich bleiben.
+   */
+  const geloeschtVerschoben = (f: Flaeche, dx: number, dy: number) =>
+    f.geloescht?.length && (dx !== 0 || dy !== 0)
+      ? f.geloescht.map((g) => ({ ...g, xM: g.xM + dx, yM: g.yM + dy }))
+      : f.geloescht;
+
   /** Ganze Belegung um `schrittCm` in eine Richtung schieben (sx/sy ∈ {-1,0,1}). */
   const nudge = (f: Flaeche, sx: number, sy: number) => {
     const step = Math.max(0.01, schrittCm / 100);
     const klemm = (v: number, grenze: number) => Math.max(-grenze, Math.min(grenze, v));
+    const nx = round2(klemm((f.versatzXM ?? 0) + sx * step, rahmenBreiteVon(f)));
+    const ny = round2(klemm((f.versatzYM ?? 0) + sy * step, f.hoeheM));
     patchFlaeche(f.id, {
-      versatzXM: round2(klemm((f.versatzXM ?? 0) + sx * step, rahmenBreiteVon(f))),
-      versatzYM: round2(klemm((f.versatzYM ?? 0) + sy * step, f.hoeheM)),
+      versatzXM: nx,
+      versatzYM: ny,
       inaktiv: [],
+      geloescht: geloeschtVerschoben(f, nx - (f.versatzXM ?? 0), ny - (f.versatzYM ?? 0)),
     });
   };
 
-  const bestePosition = (f: Flaeche) =>
-    patchFlaeche(f.id, { ...besterVersatzFuer(f, modul), inaktiv: [] });
+  const bestePosition = (f: Flaeche) => {
+    const best = besterVersatzFuer(f, modul);
+    patchFlaeche(f.id, {
+      ...best,
+      inaktiv: [],
+      geloescht: geloeschtVerschoben(
+        f,
+        best.versatzXM - (f.versatzXM ?? 0),
+        best.versatzYM - (f.versatzYM ?? 0),
+      ),
+    });
+  };
 
   /** Zurück auf automatische Lage (Versatz entfernen). */
   const versatzZuruecksetzen = (f: Flaeche) =>
-    patchFlaeche(f.id, { versatzXM: undefined, versatzYM: undefined, inaktiv: [] });
+    patchFlaeche(f.id, {
+      versatzXM: undefined,
+      versatzYM: undefined,
+      inaktiv: [],
+      geloescht: geloeschtVerschoben(f, -(f.versatzXM ?? 0), -(f.versatzYM ?? 0)),
+    });
 
   /** Zusatzmodul mittig auf den Klick, y auf die nächste Rasterreihe fangen, in die Zone klemmen. */
   const snapExtra = (f: Flaeche, p: PunktM, quer: boolean) => {
@@ -263,14 +296,16 @@ export function SchrittBelegung({
   };
 
   /**
-   * „Einzeln verschieben" (13.07., Genrih): ein RASTERmodul antippen → es wird zum
-   * frei beweglichen Zusatzmodul, sein altes Feld wird als gelöscht vermerkt (bleibt
-   * leer, der Rest der Anlage bewegt sich nicht). Zusatzmodule werden nur ausgewählt.
+   * „Einzeln verschieben" (13.07., Genrih): RASTERmodule antippen → sie werden zu
+   * frei beweglichen Zusatzmodulen, ihr altes Feld wird als gelöscht vermerkt (bleibt
+   * leer, der Rest der Anlage bewegt sich nicht). Mehrfachauswahl: jedes weitere
+   * Antippen nimmt dazu, Zusatzmodule antippen wählt an/ab — die Gruppe bewegt sich
+   * dann gemeinsam.
    */
   const waehleEinzeln = (f: Flaeche, key: string) => {
     if (key.startsWith('-1-')) {
       const idx = Number(key.slice(3));
-      setGewaehltExtra(gewaehltExtra === idx ? null : idx);
+      setEinzelAuswahl((a) => (a.includes(idx) ? a.filter((i) => i !== idx) : [...a, idx]));
       return;
     }
     const p = rasterFuer(f, modul).positionen.find((q) => `${q.row}-${q.col}` === key);
@@ -281,7 +316,30 @@ export function SchrittBelegung({
       extraModule: [...extras, { xM: p.xM, yM: p.yM, quer: p.quer }],
       inaktiv: f.inaktiv.filter((k) => k !== key),
     });
-    setGewaehltExtra(extras.length);
+    setEinzelAuswahl((a) => [...a, extras.length]);
+  };
+
+  /**
+   * Die ganze Einzeln-Auswahl um schrittCm bewegen — alles oder nichts: passt EIN
+   * Ziel nicht (Rand/Umriss/Hindernis/fremdes Modul), bleibt die Gruppe stehen.
+   * Die Auswahl selbst wird bei der Kollisionsprüfung ignoriert (bewegt sich
+   * gemeinsam, innere Abstände bleiben gleich).
+   */
+  const verschiebeAuswahl = (f: Flaeche, sx: number, sy: number) => {
+    const extras = f.extraModule ?? [];
+    const auswahl = einzelAuswahl.filter((i) => i < extras.length);
+    if (auswahl.length === 0) return;
+    const step = Math.max(0.01, schrittCm / 100);
+    const neu = extras.map((e, i) =>
+      auswahl.includes(i)
+        ? { ...e, xM: round2(e.xM + sx * step), yM: round2(e.yM + sy * step) }
+        : e,
+    );
+    const ok = auswahl.every((i) => {
+      const e = neu[i]!;
+      return extraModulGueltig(f, modul, e.xM, e.yM, e.quer, auswahl);
+    });
+    if (ok) patchFlaeche(f.id, { extraModule: neu });
   };
 
   /**
@@ -312,11 +370,12 @@ export function SchrittBelegung({
     setLoeschAuswahl([]);
   };
 
-  // Pfeiltasten bewegen das gewählte Einzelmodul (Modi 'einzeln' und 'setzen').
+  // Pfeiltasten bewegen die Einzeln-Auswahl bzw. das gewählte Setz-Modul.
   // Ohne Dep-Array bewusst bei jedem Render neu registriert — Closures bleiben frisch.
   useEffect(() => {
-    if (!modus || (modus.art !== 'einzeln' && modus.art !== 'setzen') || gewaehltExtra == null)
-      return;
+    const aktivEinzeln = modus?.art === 'einzeln' && einzelAuswahl.length > 0;
+    const aktivSetzen = modus?.art === 'setzen' && gewaehltExtra != null;
+    if (!modus || (!aktivEinzeln && !aktivSetzen)) return;
     const f = projekt.flaechen.find((x) => x.id === modus.flaecheId);
     if (!f) return;
     const handler = (e: KeyboardEvent) => {
@@ -331,7 +390,8 @@ export function SchrittBelegung({
       const ziel = e.target as HTMLElement | null;
       if (ziel && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ziel.tagName)) return;
       e.preventDefault();
-      verschiebeExtra(f, v[0], v[1]);
+      if (aktivEinzeln) verschiebeAuswahl(f, v[0], v[1]);
+      else verschiebeExtra(f, v[0], v[1]);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -791,18 +851,22 @@ export function SchrittBelegung({
 
             {belegungZeigen && modusArt(f) === 'einzeln' && (
               <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
-                {gewaehltExtra != null && f.extraModule?.[gewaehltExtra] && (
+                {einzelAuswahl.length > 0 && (
                   <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span className="text-sm font-medium text-slate-700">Gewähltes Modul:</span>
+                    <span className="text-sm font-medium text-slate-700">
+                      {einzelAuswahl.length === 1
+                        ? 'Gewähltes Modul:'
+                        : `${einzelAuswahl.length} Module gewählt:`}
+                    </span>
                     <div className="grid grid-cols-3 gap-1">
                       <span />
-                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 0, -1)} title="nach oben">↑</button>
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeAuswahl(f, 0, -1)} title="nach oben">↑</button>
                       <span />
-                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, -1, 0)} title="nach links">←</button>
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeAuswahl(f, -1, 0)} title="nach links">←</button>
                       <span className="flex h-9 w-9 items-center justify-center text-slate-400">✥</span>
-                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 1, 0)} title="nach rechts">→</button>
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeAuswahl(f, 1, 0)} title="nach rechts">→</button>
                       <span />
-                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeExtra(f, 0, 1)} title="nach unten">↓</button>
+                      <button type="button" className={pfeilKlasse} onClick={() => verschiebeAuswahl(f, 0, 1)} title="nach unten">↓</button>
                       <span />
                     </div>
                     <label className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -821,15 +885,16 @@ export function SchrittBelegung({
                       />
                       cm
                     </label>
-                    <button type="button" className={aktionKlasse} onClick={() => setGewaehltExtra(null)}>
+                    <button type="button" className={aktionKlasse} onClick={() => setEinzelAuswahl([])}>
                       ✕ Auswahl aufheben
                     </button>
                   </div>
                 )}
                 <p className="text-xs text-sky-800">
-                  <strong>Einzeln verschieben:</strong> ein Modul antippen (orange umrandet), dann mit
-                  den <strong>Pfeiltasten</strong> der Tastatur oder den Pfeilknöpfen schieben — der
-                  Rest der Anlage bleibt stehen. Die alte Position bleibt frei. Passt die neue Lage
+                  <strong>Einzeln verschieben:</strong> Module antippen (orange umrandet, mehrere
+                  möglich — nochmal antippen wählt ab), dann mit den <strong>Pfeiltasten</strong> der
+                  Tastatur oder den Pfeilknöpfen schieben. Die Auswahl bewegt sich gemeinsam, der Rest
+                  der Anlage bleibt stehen; die alten Positionen bleiben frei. Passt die neue Lage
                   nicht (Rand/Umriss/Hindernis/Überlappung), passiert nichts.
                 </p>
               </div>
@@ -955,10 +1020,11 @@ export function SchrittBelegung({
                 hervorheben={
                   modusArt(f) === 'loeschen'
                     ? { keys: loeschAuswahl, farbe: '#dc2626' }
-                    : (modusArt(f) === 'setzen' || modusArt(f) === 'einzeln') &&
-                        gewaehltExtra != null
-                      ? { keys: [`-1-${gewaehltExtra}`] }
-                      : undefined
+                    : modusArt(f) === 'einzeln'
+                      ? { keys: einzelAuswahl.map((i) => `-1-${i}`) }
+                      : modusArt(f) === 'setzen' && gewaehltExtra != null
+                        ? { keys: [`-1-${gewaehltExtra}`] }
+                        : undefined
                 }
                 geist={modusArt(f) === 'setzen' ? geistFuer(f) : undefined}
                 zeichnen={
