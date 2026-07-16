@@ -200,11 +200,25 @@ export function SchrittBelegung({
   const modusArt = (f: Flaeche): WerkzeugArt | null =>
     modus?.flaecheId === f.id ? modus.art : null;
 
-  /** Werkzeug wechseln — räumt Auswahl/Geste des vorherigen Modus auf. */
+  /**
+   * Werkzeug wechseln. Räumt JEDEN losen Zustand des vorherigen Werkzeugs auf —
+   * beim Wechsel darf nichts Halbfertiges liegenbleiben (Genrih 16.07.). Eine
+   * laufende Umriss-/Hindernis-Zeichnung ist ein Entwurf und wird verworfen; alles
+   * andere (abgeschaltete Module, Felder) ist ohnehin sofort im Projekt.
+   */
   const setzeModus = (f: Flaeche, art: WerkzeugArt | null) => {
     setModus(art ? { art, flaecheId: f.id } : null);
     setAuswahl(null);
     setDrag(null);
+    setZeichnung(null);
+  };
+
+  /** Umriss-/Hindernis-Zeichnen starten — beendet das aktive Werkzeug sauber. */
+  const starteZeichnung = (f: Flaeche, art: 'umriss' | 'hindernis') => {
+    setModus(null);
+    setAuswahl(null);
+    setDrag(null);
+    setZeichnung({ flaecheId: f.id, art, punkte: [] });
   };
 
   const felderVon = (f: Flaeche): BelegungsFeldM[] => f.felder ?? [];
@@ -736,10 +750,7 @@ export function SchrittBelegung({
                     <button
                       type="button"
                       className={aktionKlasse}
-                      onClick={() => {
-                        setAuswahl(null);
-                        setZeichnung({ flaecheId: f.id, art: 'umriss', punkte: [] });
-                      }}
+                      onClick={() => starteZeichnung(f, 'umriss')}
                     >
                       <IconUmriss />
                       Umriss zeichnen{f.umrissM ? ' (neu)' : ''}
@@ -747,10 +758,7 @@ export function SchrittBelegung({
                     <button
                       type="button"
                       className={aktionKlasse}
-                      onClick={() => {
-                        setAuswahl(null);
-                        setZeichnung({ flaecheId: f.id, art: 'hindernis', punkte: [] });
-                      }}
+                      onClick={() => starteZeichnung(f, 'hindernis')}
                     >
                       <IconHindernis />
                       Hindernis markieren

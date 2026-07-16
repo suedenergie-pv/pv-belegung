@@ -78,6 +78,18 @@ export interface GeistPosition {
  */
 export type GriffId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
+/** CSS-Cursor je Griff — zeigt schon vor dem Anfassen, in welche Richtung es geht. */
+const GRIFF_CURSOR: Record<GriffId, string> = {
+  nw: 'nwse-resize',
+  se: 'nwse-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+};
+
 /** Die 8 Griff-Punkte eines Felds in Flächen-Metern (Reihenfolge = Render-Reihenfolge). */
 export function griffPunkte(r: RechteckM): { id: GriffId; p: PunktM }[] {
   const { xM: x, yM: y, breiteM: b, hoeheM: h } = r;
@@ -440,10 +452,14 @@ export function DachSvg({
   );
 
   /**
-   * Belegungsfeld-Overlay in Flächen-Metern (Draufsicht/Alt-Foto). `pointerEvents:
-   * none` auf allem, damit Zieh-Gesten immer beim SVG landen und nicht an einem
-   * Overlay hängenbleiben.
+   * Feld/Griff dürfen den Cursor setzen — die Zeiger-Events bubbeln danach ohnehin
+   * zum SVG hoch, wo die Gesten hängen. NUR im Felder-Werkzeug: sonst (z. B.
+   * „Module an/aus") würden die Overlays die Modul-Klicks abfangen.
    */
+  const overlayZeiger = (cursor: string) =>
+    pointer ? { style: { cursor } } : { style: { pointerEvents: 'none' as const } };
+
+  /** Belegungsfeld-Overlay in Flächen-Metern (Draufsicht/Alt-Foto). */
   const felderM = druck ? null : (
     <g>
       {/* Abgeschaltete Module: klickbar, damit man sie EINZELN zurückholen kann */}
@@ -466,7 +482,6 @@ export function DachSvg({
           />
         </g>
       ))}
-      <g style={{ pointerEvents: 'none' }}>
       {(felderAnzeige ?? []).map((fa, i) => (
         <g key={i}>
           <rect
@@ -478,6 +493,7 @@ export function DachSvg({
             stroke="#0284c7"
             strokeWidth={fa.ausgewaehlt ? 0.08 : 0.04}
             strokeDasharray={fa.ausgewaehlt ? undefined : '0.15 0.1'}
+            {...overlayZeiger('move')}
           />
           {/* Griffe: nur am ausgewählten Feld — daran zieht man die Größe */}
           {fa.ausgewaehlt &&
@@ -492,12 +508,13 @@ export function DachSvg({
                 fill="#ffffff"
                 stroke="#0284c7"
                 strokeWidth={0.05}
+                {...overlayZeiger(GRIFF_CURSOR[id])}
               />
             ))}
         </g>
       ))}
       {feldVorschau && (
-        <>
+        <g style={{ pointerEvents: 'none' }}>
           <rect
             x={feldVorschau.rect.xM}
             y={feldVorschau.rect.yM}
@@ -522,9 +539,8 @@ export function DachSvg({
           >
             {feldVorschau.anzahl}
           </text>
-        </>
+        </g>
       )}
-      </g>
     </g>
   );
 
@@ -632,7 +648,7 @@ export function DachSvg({
         >
           <svg
             viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-            className={`block h-full w-full ${zeichnen?.aktiv || pointer ? 'cursor-crosshair' : ''}`}
+            className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
             preserveAspectRatio="xMidYMid meet"
             style={pointer ? { touchAction: 'none' } : undefined}
             onClick={klickM}
@@ -670,7 +686,7 @@ export function DachSvg({
               ))}
             {/* Belegungsfelder perspektivisch (gleiche Homographie wie die Module) */}
             {!druck && (
-              <g style={{ pointerEvents: 'none' }}>
+              <g>
                 {(felderAnzeige ?? []).map((fa, i) => (
                   <g key={i}>
                     <path
@@ -686,6 +702,7 @@ export function DachSvg({
                           ? undefined
                           : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
                       }
+                      {...overlayZeiger('move')}
                     />
                     {/* Griffe am ausgewählten Feld — an die projizierten Ecken gesetzt */}
                     {fa.ausgewaehlt &&
@@ -703,13 +720,14 @@ export function DachSvg({
                             fill="#ffffff"
                             stroke="#0284c7"
                             strokeWidth={foto.breitePx * 0.002}
+                            {...overlayZeiger(GRIFF_CURSOR[id])}
                           />
                         );
                       })}
                   </g>
                 ))}
                 {feldVorschau && (
-                  <>
+                  <g style={{ pointerEvents: 'none' }}>
                     <path
                       d={projPfad(
                         h,
@@ -747,7 +765,7 @@ export function DachSvg({
                         </text>
                       );
                     })()}
-                  </>
+                  </g>
                 )}
               </g>
             )}
@@ -863,7 +881,7 @@ export function DachSvg({
     >
       <svg
         viewBox={`0 0 ${B} ${H}`}
-        className={`block h-full w-full ${zeichnen?.aktiv || pointer ? 'cursor-crosshair' : ''}`}
+        className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
         preserveAspectRatio="xMidYMid meet"
         style={pointer ? { touchAction: 'none' } : undefined}
         onClick={
