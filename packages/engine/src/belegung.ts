@@ -76,6 +76,12 @@ export interface ModulPosition {
   /** Modulmaße dieses Moduls in Metern — je Band verschieden bei gemischter Ausrichtung. */
   wM: number;
   hM: number;
+  /**
+   * Index des Belegungsfelds (berechneFelderRaster, 16.07.2026), zu dem dieses
+   * Modul gehört. row/col sind dann FELD-lokale Zellkoordinaten. Fehlt im
+   * klassischen Auto-Raster (berechneRaster).
+   */
+  feld?: number;
 }
 
 export interface BelegungRaster {
@@ -156,13 +162,40 @@ function sucheBlockDx(a: {
   return dx;
 }
 
+/**
+ * Modulmaße (Meter) in einer Ausrichtung — einzige Quelle für „Modul in Metern"
+ * (SPEC §3.5: mm aus dem Katalog ÷ 1000, nie CSS/Layout).
+ */
+function dimsVon(module: ModuleType, a: 'hoch' | 'quer'): { w: number; h: number } {
+  return {
+    w: (a === 'hoch' ? module.widthMm : module.lengthMm) / 1000,
+    h: (a === 'hoch' ? module.lengthMm : module.widthMm) / 1000,
+  };
+}
+
+/**
+ * Zonen-Prüfung „darf hier ein Modul liegen?" — Umriss (mit randM Abstand zu jeder
+ * Kante) und Hindernisse. Geteilt zwischen berechneRaster und berechneFelderRaster
+ * (16.07.2026), damit beide Pfade dieselbe Wahrheit über die Zone haben.
+ */
+function zonenPruefer(input: {
+  umrissM?: readonly PunktM[];
+  hindernisseM?: readonly RechteckM[];
+  randM: number;
+}): (xM: number, yM: number, w: number, h: number) => boolean {
+  const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
+  const hindernisse = input.hindernisseM ?? [];
+  return (xM, yM, w, h) => {
+    const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
+    if (umriss && !rechteckImUmriss(rect, umriss, input.randM)) return false;
+    return !hindernisse.some((hi) => rechteckeUeberlappen(rect, hi));
+  };
+}
+
 export function berechneRaster(input: BelegungInput): BelegungRaster {
   const randM = input.randM ?? DEFAULT_RAND_M;
   const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
-  const dimsFuer = (a: 'hoch' | 'quer') => ({
-    w: (a === 'hoch' ? input.module.widthMm : input.module.lengthMm) / 1000,
-    h: (a === 'hoch' ? input.module.lengthMm : input.module.widthMm) / 1000,
-  });
+  const dimsFuer = (a: 'hoch' | 'quer') => dimsVon(input.module, a);
   const basisA = input.ausrichtung;
   const { w: modulBreiteM, h: modulHoeheM } = dimsFuer(basisA);
 
@@ -173,11 +206,7 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   const hindernisse = input.hindernisseM ?? [];
   const EPS = 1e-4;
 
-  const gueltigDim = (xM: number, yM: number, w: number, hh: number): boolean => {
-    const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: hh };
-    if (umriss && !rechteckImUmriss(rect, umriss, randM)) return false;
-    return !hindernisse.some((h) => rechteckeUeberlappen(rect, h));
-  };
+  const gueltigDim = zonenPruefer({ ...input, randM });
 
   // ---- Gemischte Ausrichtung: Bänder-Stapel (SPEC §9, 07.07.2026) ----
   // Sobald mindestens ein Band von der Basis-Ausrichtung abweicht, wird die Fläche
@@ -486,4 +515,139 @@ export function besterVersatz(input: BelegungInput): { versatzXM: number; versat
   const grob = suche(-spanX, spanX, -spanY, spanY, 0.05, { n: -1, vx: 0, vy: 0 });
   const fein = suche(grob.vx - 0.05, grob.vx + 0.05, grob.vy - 0.05, grob.vy + 0.05, 0.01, grob);
   return { versatzXM: Math.round(fein.vx * 100) / 100, versatzYM: Math.round(fein.vy * 100) / 100 };
+}
+
+/* ==========================================================================
+ * BELEGUNGSFELDER (16.07.2026, Genrih: „Belegungsautomatismus mildern")
+ *
+ * Statt einer automatisch optimierten Vollbelegung zieht der Nutzer beliebig
+ * viele Rechtecke („Felder") ins Dach; jedes Feld füllt sich mit so vielen
+ * Modulen, wie hineinpassen. Kein Optimierer, kein Versatz, keine Magie — die
+ * Lage kommt ausschließlich aus dem, was der Nutzer gezogen hat (SolarEdge-
+ * Designer-Prinzip). Ragt ein Feld über Rand/Umriss/Hindernis, entfallen die
+ * betroffenen Module einfach.
+ * ========================================================================== */
+
+/** Ein Belegungsfeld: vom Nutzer gezogenes Rechteck in Flächen-Metern. */
+export interface BelegungsFeldM {
+  xM: number;
+  yM: number;
+  breiteM: number;
+  hoeheM: number;
+  /** true = Module quer. Wird beim Anlegen aus der Flächen-Ausrichtung gesetzt. */
+  quer: boolean;
+  /**
+   * Dauerhaft leere Zellen als "row-col" (FELD-lokale Zellkoordinaten). Weil die
+   * Identität an der ZELLE hängt und nicht an einer Dach-Koordinate, wandern die
+   * Löcher beim Verschieben des Felds von selbst mit — die 13./16.07.-Bugs
+   * (absolute Lösch-Fußabdrücke, doppelte Modulschichten) können nicht wiederkehren.
+   */
+  leer?: readonly string[];
+}
+
+/** Rahmenbedingungen der Fläche für die Feld-Belegung (ohne Ausrichtung/Optimierer). */
+export type FelderInput = Pick<
+  BelegungInput,
+  'breiteM' | 'hoeheM' | 'module' | 'randM' | 'fugeM' | 'umrissM' | 'hindernisseM'
+>;
+
+/**
+ * Eindeutiger UI-Key einer Modulposition. Feld-Module: "f{feld}:{row}-{col}"
+ * (row/col sind feld-lokal, erst mit dem Feld-Index eindeutig); klassisches
+ * Auto-Raster: "{row}-{col}" wie bisher.
+ */
+export function posKey(p: Pick<ModulPosition, 'feld' | 'row' | 'col'>): string {
+  return p.feld === undefined ? `${p.row}-${p.col}` : `f${p.feld}:${p.row}-${p.col}`;
+}
+
+/**
+ * Belegung aus Feldern (SPEC §9, Feld-Modus). Reihenfolge = Priorität: ein
+ * Modul entfällt, wenn es ein bereits platziertes Modul eines FRÜHEREN Felds
+ * überlappt — so kann sich der Nutzer Felder überlappen lassen, ohne dass je
+ * zwei Module übereinander liegen.
+ */
+export function berechneFelderRaster(
+  input: FelderInput,
+  felder: readonly BelegungsFeldM[],
+): BelegungRaster {
+  const randM = input.randM ?? DEFAULT_RAND_M;
+  const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
+  const EPS = 1e-9;
+  const inZone = zonenPruefer({ ...input, randM });
+  const positionen: ModulPosition[] = [];
+
+  felder.forEach((feld, fi) => {
+    const { w, h } = dimsVon(input.module, feld.quer ? 'quer' : 'hoch');
+    const pitchX = w + fugeM;
+    const pitchY = h + fugeM;
+    if (w <= 0 || h <= 0) return;
+    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / pitchX));
+    const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / pitchY));
+    const leer = new Set(feld.leer ?? []);
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (leer.has(`${row}-${col}`)) continue;
+        const xM = feld.xM + col * pitchX;
+        const yM = feld.yM + row * pitchY;
+        // Randabstand zur Dachkante (das Feld selbst darf überstehen)
+        if (xM < randM - EPS || yM < randM - EPS) continue;
+        if (xM + w > input.breiteM - randM + EPS) continue;
+        if (yM + h > input.hoeheM - randM + EPS) continue;
+        if (!inZone(xM, yM, w, h)) continue;
+        // Kein Modul auf ein schon platziertes (früheres Feld gewinnt)
+        const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
+        if (
+          positionen.some((q) =>
+            rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM }),
+          )
+        ) {
+          continue;
+        }
+        positionen.push({ row, col, xM, yM, quer: feld.quer, wM: w, hM: h, feld: fi });
+      }
+    }
+  });
+
+  const hoch = dimsVon(input.module, 'hoch');
+  return {
+    cols: positionen.reduce((m, p) => Math.max(m, p.col + 1), 0),
+    rows: positionen.reduce((m, p) => Math.max(m, p.row + 1), 0),
+    // Informativ (Hochkant-Maß); die echten Maße hängen je Position am Feld.
+    modulBreiteM: hoch.w,
+    modulHoeheM: hoch.h,
+    positionen,
+    randM,
+    fugeM,
+    ankerXM: randM,
+    ankerYM: randM,
+    reihenVersetzt: false,
+  };
+}
+
+/**
+ * Zentriertes Voll-Feld über der Nutzfläche („Automatisch füllen"): exakt so
+ * groß, dass cols×rows Module hineinpassen — entspricht der früheren zentrierten
+ * Standardbelegung, aber als ganz normales, verschiebbares Feld. Passt kein Modul,
+ * ist breiteM/hoeheM 0 (die UI legt dann kein Feld an).
+ */
+export function vollFeld(input: FelderInput & { ausrichtung: 'hoch' | 'quer' }): BelegungsFeldM {
+  const randM = input.randM ?? DEFAULT_RAND_M;
+  const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
+  const { w, h } = dimsVon(input.module, input.ausrichtung);
+  const nutzB = input.breiteM - 2 * randM;
+  const nutzH = input.hoeheM - 2 * randM;
+  const cols = nutzB >= w ? Math.floor((nutzB + fugeM) / (w + fugeM)) : 0;
+  const rows = nutzH >= h ? Math.floor((nutzH + fugeM) / (h + fugeM)) : 0;
+  if (cols === 0 || rows === 0) {
+    return { xM: randM, yM: randM, breiteM: 0, hoeheM: 0, quer: input.ausrichtung === 'quer' };
+  }
+  const belegtB = cols * w + (cols - 1) * fugeM;
+  const belegtH = rows * h + (rows - 1) * fugeM;
+  return {
+    xM: randM + (nutzB - belegtB) / 2,
+    yM: randM + (nutzH - belegtH) / 2,
+    breiteM: belegtB,
+    hoeheM: belegtH,
+    quer: input.ausrichtung === 'quer',
+  };
 }

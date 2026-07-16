@@ -17,8 +17,22 @@ export {
 export { INVERTERS } from './catalog/inverters';
 export { resolveParams, vocColdV, vmpHotV } from './temperature';
 export { maxModulesPerString, minModulesPerString } from './stringlimits';
-export { berechneRaster, besterVersatz, DEFAULT_FUGE_M, DEFAULT_RAND_M } from './belegung';
-export type { BelegungInput, BelegungRaster, ModulPosition } from './belegung';
+export {
+  berechneFelderRaster,
+  berechneRaster,
+  besterVersatz,
+  posKey,
+  vollFeld,
+  DEFAULT_FUGE_M,
+  DEFAULT_RAND_M,
+} from './belegung';
+export type {
+  BelegungInput,
+  BelegungRaster,
+  BelegungsFeldM,
+  FelderInput,
+  ModulPosition,
+} from './belegung';
 export {
   punktInPolygon,
   rechteckImUmriss,
