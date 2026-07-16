@@ -75,6 +75,29 @@ packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsc
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
 
+## Session-Übergabe 16.07.2026 (8. Session — Fable): Anker-Umbau nach „komplett verbuggt"
+
+Genrih meldete: doppelte Modulschicht beim Zurücksetzen nach Verschieben, „Modul
+setzen" hängt daneben, Gesamtansicht zerschossen beim Flächen-Einzeichnen. Kernursache:
+**Versatz-Pfad und Standardlage der Engine hatten verschiedene Gitter-Anker** (Block-
+Optimierer-dx nur im Default-Pfad) → bei Umriss-Dächern sprang die Belegung beim
+„Verschieben"-Einschalten, und die absolut gespeicherten geloescht-Felder rissen vom
+Raster ab (gelöschte Module kamen zurück, Einzeln-Extras blieben → Doppelschicht).
+
+Umbau (ein Commit, im Browser end-to-end verifiziert, 96 Engine-Tests):
+1. Engine: `sucheBlockDx` geteilt; Versatz-Pfad + `besterVersatz` ankern auf der
+   Standardlage; `BelegungRaster.ankerXM/YM` (Gitterphase) + `reihenVersetzt`-Flag.
+   MERKE: alles, was am Raster kleben soll, RELATIV zum Anker speichern.
+2. `Flaeche.geloeschtRel` ersetzt `geloescht` (absolut → relativ zum Anker, Migration
+   in migriereProjekt). Keine Delta-Buchhaltung mehr in nudge/bestePosition/reset.
+3. `rasterFuer`: Rastermodule, die ein extraModule überlappen, entfallen (Extras
+   gewinnen) → Doppelschicht konstruktiv unmöglich.
+4. „Modul setzen": Reihen-Fang aus dem Anker (auch komplett geleerte Reihen fangbar),
+   Fallback auf freie Klickposition, Geist nutzt dieselbe zielExtra-Logik.
+5. SchrittGesamt: Fläche platzieren löscht NICHT mehr umrissM/hindernisse/inaktiv.
+6. „Verschieben" gesperrt bei `raster.reihenVersetzt` (ein Gitter kann die Lage
+   nicht darstellen); Doppelklick-Schutz in waehleEinzeln.
+
 ## Session-Übergabe 13.07.2026 (7. Session — Fable): 4 Genrih-Fixes
 
 Alle je Schritt committet & gepusht (Deploy automatisch):
