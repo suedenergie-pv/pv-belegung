@@ -3,15 +3,14 @@ import {
   MODULES,
   INVERTERS,
   DEFAULT_RAND_M,
-  berechneRaster,
-  besterVersatz,
+  berechneFelderRaster,
   checkStringPlan,
-  rechteckeUeberlappen,
-  rechteckImUmriss,
   schraegGeometrie,
   trapezUmriss,
-  type BelegungInput,
+  vollFeld,
   type BelegungRaster,
+  type BelegungsFeldM,
+  type FelderInput,
   type InverterType,
   type ModuleType,
   type PunktM,
@@ -129,46 +128,18 @@ export interface Flaeche {
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
   hindernisse?: RechteckM[];
   /**
-   * VERALTET (nur noch für die Migration gelesen): gelöschte Modul-Felder als
-   * ABSOLUTE Dach-Koordinaten (13.07.2026). Absolut gespeichert rissen die Löcher
-   * vom Raster ab, sobald der Optimierer/Versatz die Belegung anders verankerte
-   * (doppelte Modulschichten, Genrih 16.07.). → geloeschtRel.
+   * Belegungsfelder (16.07.2026): die vom Nutzer gezogenen Rechtecke, die sich mit
+   * Modulen füllen — die EINZIGE Quelle der Belegung. Fehlt/leer = unbelegte Fläche.
+   * Ersetzt den kompletten Automatismus (Auto-Vollbelegung, Optimierer, Versatz,
+   * Bänder, Zusatzmodule, gelöschte Fußabdrücke), der mehrere Bug-Wellen
+   * verursachte (Genrih: „komplett verbuggt" / „Automatismus mildern").
    */
-  geloescht?: RechteckM[];
+  felder?: BelegungsFeldM[];
   /**
-   * Endgültig gelöschte Modul-Felder (16.07.2026), RELATIV zum Gitter-Anker
-   * (BelegungRaster.ankerXM/ankerYM): die Löcher kleben damit am RASTER und
-   * wandern bei Verschieben/„Beste Position"/Optimierer automatisch mit — jedes
-   * Rastermodul, das so ein Feld überlappt, entfällt (Filter NACH der Engine,
-   * Keys bleiben stabil). Nur manuell gesetzte Zusatzmodule (extraModule) dürfen
-   * dort wieder hin.
+   * VERALTET (13.07.2026): einzeln deaktivierte Module. Kein Werkzeug setzt das
+   * noch — gelöscht wird jetzt zellweise im Feld (BelegungsFeldM.leer). Bleibt
+   * im Modell, weil `aktiveModule` weiterhin dagegen filtert; ist immer leer.
    */
-  geloeschtRel?: RechteckM[];
-  /**
-   * Ausrichtung je Band (Reihe) von oben nach unten. Fehlt/leer = alle Reihen
-   * gleich `ausrichtung`. Sobald ein Band abweicht, rechnet die Engine die Fläche
-   * als Bänder-Stapel (gemischt hoch/quer, SPEC §9).
-   */
-  baender?: ('hoch' | 'quer')[];
-  /**
-   * Manueller Versatz der Belegung, Meter (Nudge). Gesetzt → phasenverschobenes
-   * Gitter (Engine), wirkt auch in Gesamtansicht/PDF.
-   */
-  versatzXM?: number;
-  versatzYM?: number;
-  /**
-   * Manuell gesetzte Zusatzmodule (linke obere Ecke in Flächen-Metern + Ausrichtung).
-   * Ergänzen das Raster — z. B. ein einzelnes Modul mittig, wo sich zwei Reihen
-   * treffen (Walmdach, Genrih 07.07.). Werden überall wie Rastermodule gerendert
-   * und gezählt.
-   */
-  extraModule?: { xM: number; yM: number; quer: boolean }[];
-  /**
-   * 'frei' = jede Reihe einzeln maximal fuellen (Parallelogramm-/Schraegdach,
-   * Genrih 08.07.). Default: Hybrid-Optimierer (gerade, Versatz nur bei klarem Gewinn).
-   */
-  optimierung?: 'frei';
-  /** deaktivierte Module als "row-col" */
   inaktiv: string[];
   /**
    * Fester Zonen-Buchstabe (A/B/C …), einmal beim Anlegen vergeben. Bleibt stabil,
@@ -302,6 +273,9 @@ export function neueFlaeche(nr: number, zone?: string): Flaeche {
     azimutDeg: 180,
     dachfarbe: 'anthrazit',
     ausrichtung: 'quer',
+    // Neue Flächen starten UNBELEGT — der Nutzer zieht seine Felder selbst
+    // (oder klickt „Automatisch füllen"). Genrih 16.07.: Automatismus mildern.
+    felder: [],
     inaktiv: [],
   };
 }
@@ -329,22 +303,16 @@ export function wrById(id: string): InverterType {
   return wr;
 }
 
-function belegungInput(f: Flaeche, modul: ModuleType): BelegungInput {
+/** Rahmenbedingungen der Fläche für die Feld-Belegung (Engine-Input). */
+export function felderInput(f: Flaeche, modul: ModuleType): FelderInput {
   return {
     // Rahmenbreite (Traufe + Firstversatz bei 'schief'), NICHT die reine Traufe.
     breiteM: rahmenBreiteVon(f),
     hoeheM: f.hoeheM,
     module: modul,
-    ausrichtung: f.ausrichtung,
     randM: randVon(f),
     umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
-    baender: f.baender,
-    // Schiefe Dächer wollen fast immer den freien Reihen-Versatz (der schmale
-    // Rahmen-Streifen je Reihe folgt der Schräge) — Default, wenn nicht überschrieben.
-    optimierung: f.optimierung ?? (f.dachform === 'schief' ? 'frei' : undefined),
-    versatzXM: f.versatzXM,
-    versatzYM: f.versatzYM,
   };
 }
 
@@ -356,90 +324,18 @@ export function modulMasse(modul: ModuleType, quer: boolean): { w: number; h: nu
   };
 }
 
-export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
-  const raster = berechneRaster(belegungInput(f, modul));
-  let positionen = raster.positionen;
-  // Endgültig gelöschte Felder (relativ zum Gitter-Anker → kleben am Raster):
-  // überlappende Rastermodule entfallen — NACH der Engine (Keys row/col bleiben
-  // stabil, Optimierer sortiert nichts um).
-  const geloescht = (f.geloeschtRel ?? []).map((g) => ({
-    ...g,
-    xM: raster.ankerXM + g.xM,
-    yM: raster.ankerYM + g.yM,
-  }));
-  if (geloescht.length) {
-    positionen = positionen.filter(
-      (p) =>
-        !geloescht.some((g) =>
-          rechteckeUeberlappen({ xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM }, g),
-        ),
-    );
-  }
-  const extra = f.extraModule;
-  if (extra?.length) {
-    // Manuelle Zusatzmodule als Positionen anhängen (row = -1 → eindeutige Keys "-1-i");
-    // sie dürfen auch auf gelöschten Feldern liegen (bewusste Einzelsetzung).
-    const zusatz = extra.map((e, i) => {
-      const { w, h } = modulMasse(modul, e.quer);
-      return { row: -1, col: i, xM: e.xM, yM: e.yM, quer: e.quer, wM: w, hM: h };
-    });
-    // Zusatzmodule GEWINNEN: Rastermodule, die ein Extra überlappen, entfallen.
-    // Damit kann konstruktiv nie eine doppelte Modulschicht entstehen, egal wie
-    // sich das Layout ändert (Genrih 16.07.: „haut eine Schicht Module drauf").
-    positionen = positionen.filter(
-      (p) =>
-        !zusatz.some((z) =>
-          rechteckeUeberlappen(
-            { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM },
-            { xM: z.xM, yM: z.yM, breiteM: z.wM, hoeheM: z.hM },
-          ),
-        ),
-    );
-    positionen = [...positionen, ...zusatz];
-  }
-  return positionen === raster.positionen ? raster : { ...raster, positionen };
-}
-
 /**
- * Darf an (xM,yM) ein Zusatzmodul liegen? Innerhalb Rand/Umriss, kein Hindernis,
- * keine Überlappung mit bestehenden aktiven Modulen. `ausserIndex` ignoriert ein
- * oder mehrere Extras (beim Verschieben/Prüfen ihrer selbst — bei Gruppen-Verschieben
- * bewegt sich die ganze Auswahl gemeinsam, ihre inneren Abstände bleiben gleich).
+ * Belegung einer Fläche = ihre Felder, gefüllt durch die Engine. Keine
+ * Nachbearbeitung in der UI (SPEC §3.4): was der Nutzer gezogen hat, ist die
+ * Wahrheit — kein Optimierer, kein Versatz, keine Zusatzmodule.
  */
-export function extraModulGueltig(
-  f: Flaeche,
-  modul: ModuleType,
-  xM: number,
-  yM: number,
-  quer: boolean,
-  ausserIndex?: number | readonly number[],
-): boolean {
-  const ignoriert = new Set(
-    Array.isArray(ausserIndex) ? ausserIndex : ausserIndex != null ? [ausserIndex] : [],
-  );
-  const { w, h } = modulMasse(modul, quer);
-  const rand = randVon(f);
-  const rahmenB = rahmenBreiteVon(f);
-  const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
-  if (xM < rand - 1e-6 || yM < rand - 1e-6) return false;
-  if (xM + w > rahmenB - rand + 1e-6 || yM + h > f.hoeheM - rand + 1e-6) return false;
-  const umriss = umrissVon(f);
-  if (umriss && !rechteckImUmriss(rect, umriss, rand)) return false;
-  if ((f.hindernisse ?? []).some((hnd) => rechteckeUeberlappen(rect, hnd))) return false;
-  for (const p of rasterFuer(f, modul).positionen) {
-    if (p.row === -1 && ignoriert.has(p.col)) continue; // sich selbst/Auswahl nicht prüfen
-    if (f.inaktiv.includes(`${p.row}-${p.col}`)) continue;
-    if (rechteckeUeberlappen(rect, { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM })) return false;
-  }
-  return true;
+export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
+  return berechneFelderRaster(felderInput(f, modul), f.felder ?? []);
 }
 
-/** Beste Verschiebung dieser Fläche (max. Module), ohne bestehenden Versatz. */
-export function besterVersatzFuer(f: Flaeche, modul: ModuleType): {
-  versatzXM: number;
-  versatzYM: number;
-} {
-  return besterVersatz({ ...belegungInput(f, modul), versatzXM: undefined, versatzYM: undefined });
+/** Zentriertes Voll-Feld über der Nutzfläche („Automatisch füllen"). */
+export function vollFeldFuer(f: Flaeche, modul: ModuleType): BelegungsFeldM {
+  return vollFeld({ ...felderInput(f, modul), ausrichtung: f.ausrichtung });
 }
 
 export function aktiveModule(f: Flaeche, raster: BelegungRaster): number {
@@ -565,26 +461,23 @@ function migriereProjekt(roh: Projekt): Projekt {
   projekt.flaechen = projekt.flaechen.map((f) =>
     f.foto?.eckenPx && f.markierungFertig === undefined ? { ...f, markierungFertig: true } : f,
   );
-  // 16.07.2026: alte ABSOLUTE Lösch-Felder (geloescht) → RELATIV zum Gitter-Anker
-  // (geloeschtRel), damit die Löcher am Raster kleben statt am Dach. Umrechnung
-  // über den Anker der aktuellen Standardlage (bestmögliche Annäherung).
-  const migModul = modulById(projekt.modulId);
+  // 16.07.2026 (Felder-Umbau): Alt-Schlüssel des Automatismus strippen. Genrih:
+  // „es gibt eh keine gespeicherten Belegungen" — Alt-Belegungen werden NICHT
+  // konvertiert; die Fläche startet unbelegt („Automatisch füllen" ist ein Klick).
   projekt.flaechen = projekt.flaechen.map((f) => {
-    if (!f.geloescht?.length) {
-      if ('geloescht' in f) {
-        const { geloescht: _leer, ...rest } = f;
-        return rest;
-      }
-      return f;
+    const rest = { ...f } as Flaeche & Record<string, unknown>;
+    for (const alt of [
+      'optimierung',
+      'versatzXM',
+      'versatzYM',
+      'baender',
+      'extraModule',
+      'geloescht',
+      'geloeschtRel',
+    ]) {
+      delete rest[alt];
     }
-    const anker = berechneRaster(belegungInput(f, migModul));
-    const rel = f.geloescht.map((g) => ({
-      ...g,
-      xM: g.xM - anker.ankerXM,
-      yM: g.yM - anker.ankerYM,
-    }));
-    const { geloescht: _alt, ...rest } = f;
-    return { ...rest, geloeschtRel: [...(f.geloeschtRel ?? []), ...rel] };
+    return { ...rest, felder: f.felder ?? [], inaktiv: [] };
   });
   return projekt;
 }

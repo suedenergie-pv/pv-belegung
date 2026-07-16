@@ -1,6 +1,6 @@
 'use client';
 
-import type { BelegungRaster, ModuleType } from '@pv-belegung/engine';
+import { posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
 import {
   homographie,
   inverseHomographie,
@@ -19,6 +19,7 @@ import {
   type Dachfarbe,
   type Flaeche,
   type PunktM,
+  type RechteckM,
 } from '../lib/model';
 
 /**
@@ -35,24 +36,41 @@ export interface ZeichnenProps {
   onMoveM?: (p: PunktM | null) => void;
 }
 
-/**
- * Geistermodul unter dem Cursor (Live-Vorschau beim „Modul setzen", Genrih 08.07.):
- * halbtransparentes Modul an der SNAP-Position, grün = passt / rot = passt nicht.
- * Wird in Draufsicht als Rechteck, im Foto als homographisch projiziertes Viereck
- * gezeichnet — also in der echten Perspektive der Anlage.
- */
-/** Auswahl-Umrandung: Modul-Keys ("row-col") + optionale Farbe (Default Akzent-Orange). */
+/** Auswahl-Umrandung: Modul-Keys (posKey) + optionale Farbe (Default Akzent-Orange). */
 export interface Hervorheben {
   keys: string[];
   farbe?: string;
 }
 
-export interface GeistModul {
-  xM: number;
-  yM: number;
-  wM: number;
-  hM: number;
-  ok: boolean;
+/**
+ * Belegungsfeld-Umrandung (16.07.2026): das vom Nutzer gezogene Rechteck, das die
+ * Module hält. Ausgewählte Felder werden kräftig gezeichnet.
+ */
+export interface FeldAnzeige {
+  rect: RechteckM;
+  ausgewaehlt: boolean;
+}
+
+/**
+ * Live-Vorschau beim Aufziehen eines neuen Felds: blaues Rechteck + Modulzahl,
+ * damit man vor dem Loslassen sieht, was hineinpasst.
+ */
+export interface FeldVorschau {
+  rect: RechteckM;
+  anzahl: number;
+}
+
+/**
+ * Zeiger-Gesten für den Felder-Modus (Ziehen = Feld aufziehen/verschieben).
+ * Koordinaten in Flächen-/Rahmen-Metern — in der Draufsicht direkt aus der viewBox,
+ * im Foto über die inverse Homographie. Pointer-Events (nicht Mouse), damit
+ * Touch/Stift auf dem Tablet dieselbe Bahn nehmen.
+ */
+export interface PointerProps {
+  onDownM: (p: PunktM) => void;
+  /** null = Zeiger hat die Fläche verlassen / Geste abgebrochen */
+  onMoveM: (p: PunktM | null) => void;
+  onUpM: (p: PunktM) => void;
 }
 
 /**
@@ -100,6 +118,39 @@ function DachPattern({ id, farbe }: { id: string; farbe: Dachfarbe }) {
 }
 
 /**
+ * Pointer-Gesten aufs SVG verdrahten: setPointerCapture, damit ein Zieh-Vorgang
+ * auch dann sauber endet, wenn der Zeiger die Fläche verlässt. `zuM` bildet den
+ * Event auf Flächen-Meter ab (Draufsicht: viewBox, Foto: inverse Homographie).
+ */
+function pointerHandler(
+  p: PointerProps,
+  zuM: (e: { clientX: number; clientY: number; currentTarget: SVGSVGElement }) => PunktM | null,
+) {
+  return {
+    onPointerDown: (e: React.PointerEvent<SVGSVGElement>) => {
+      const m = zuM(e);
+      if (!m) return;
+      // Erst die Geste starten, dann Capture versuchen: setPointerCapture wirft
+      // NotFoundError, wenn der Pointer nicht (mehr) aktiv ist — das darf das
+      // Ziehen nicht verhindern.
+      p.onDownM(m);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId); // Zeiger darf die Fläche verlassen
+      } catch {
+        // ohne Capture endet die Geste über pointerup/-cancel — gut genug
+      }
+    },
+    onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => p.onMoveM(zuM(e)),
+    onPointerUp: (e: React.PointerEvent<SVGSVGElement>) => {
+      const m = zuM(e);
+      if (m) p.onUpM(m);
+      else p.onMoveM(null);
+    },
+    onPointerCancel: () => p.onMoveM(null),
+  };
+}
+
+/**
  * Kanonisches Modul-Asset (SPEC §11.2, von Genrih geliefert) als <g> in <defs>.
  * Wird per <use transform="matrix(...)"> je Modul instanziert — in Draufsicht
  * (Meter-Koordinaten) UND Foto (Homographie-projizierte Ecken), damit ein Modul
@@ -133,7 +184,7 @@ export function moduleAufHomographie({
   fotoBreitePx: number;
   druck?: boolean;
   toggle?: (key: string) => void;
-  /** Diese Module (keys "row-col") umranden — Auswahl (Zusatzmodul, Lösch-Auswahl). */
+  /** Diese Module (keys aus posKey) umranden. */
   hervorheben?: Hervorheben;
 }) {
   const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
@@ -143,7 +194,7 @@ export function moduleAufHomographie({
     [x, y + hh],
   ];
   return raster.positionen.map((p) => {
-    const key = `${p.row}-${p.col}`;
+    const key = posKey(p);
     const aus = flaeche.inaktiv.includes(key);
     if (aus && druck) return null; // deaktivierte Module im Druck weglassen
     // Modulmaße/Ausrichtung je Position (bei gemischten Bändern verschieden).
@@ -164,7 +215,8 @@ export function moduleAufHomographie({
         onClick={toggle ? () => toggle(key) : undefined}
       >
         {dreiecke.map((dr, di) => {
-          const cid = `clip-${flaeche.id}-${key}-${di}`;
+          // ':' aus dem posKey raus — in url(#…)-Referenzen ist es ein Sonderzeichen
+          const cid = `clip-${flaeche.id}-${key.replace(':', '-')}-${di}`;
           return (
             <g key={di}>
               <clipPath id={cid} clipPathUnits="userSpaceOnUse">
@@ -209,23 +261,29 @@ export function DachSvg({
   druck,
   masse = true,
   hervorheben,
-  geist,
+  felderAnzeige,
+  feldVorschau,
+  pointer,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
   modul: ModuleType;
   onToggle?: (key: string) => void;
   zeichnen?: ZeichnenProps;
-  /** Live-Vorschau-Modul unter dem Cursor (Modul setzen). */
-  geist?: GeistModul | null;
   /** Druck/PDF: nur Foto + Module, keine Markierungs-Overlays (Umriss/Hindernis/
    *  Randlinie), deaktivierte Module ausblenden — soll realistisch aussehen. */
   druck?: boolean;
   /** Maßketten (Traufe/Sparren/Umriss) einblenden — im Skizzierer umschaltbar,
    *  im Druck ohnehin immer aus. Default an. */
   masse?: boolean;
-  /** Module (keys "row-col") umranden (gewähltes Zusatzmodul, Lösch-Auswahl …). */
+  /** Module (keys aus posKey) umranden. */
   hervorheben?: Hervorheben;
+  /** Belegungsfelder umranden (gestrichelt; ausgewählte kräftig). Nie im Druck. */
+  felderAnzeige?: FeldAnzeige[];
+  /** Live-Vorschau beim Aufziehen eines Felds. Nie im Druck. */
+  feldVorschau?: FeldVorschau | null;
+  /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
+  pointer?: PointerProps;
 }) {
   // B = RAHMENbreite (bei 'schief' > Traufe): viewBox, Klick-Mapping, Homographie-
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
@@ -345,6 +403,57 @@ export function DachSvg({
     </>
   );
 
+  /**
+   * Belegungsfeld-Overlay in Flächen-Metern (Draufsicht/Alt-Foto). `pointerEvents:
+   * none` auf allem, damit Zieh-Gesten immer beim SVG landen und nicht an einem
+   * Overlay hängenbleiben.
+   */
+  const felderM = druck ? null : (
+    <g style={{ pointerEvents: 'none' }}>
+      {(felderAnzeige ?? []).map((fa, i) => (
+        <rect
+          key={i}
+          x={fa.rect.xM}
+          y={fa.rect.yM}
+          width={fa.rect.breiteM}
+          height={fa.rect.hoeheM}
+          fill="rgba(2,132,199,0.06)"
+          stroke="#0284c7"
+          strokeWidth={fa.ausgewaehlt ? 0.08 : 0.04}
+          strokeDasharray={fa.ausgewaehlt ? undefined : '0.15 0.1'}
+        />
+      ))}
+      {feldVorschau && (
+        <>
+          <rect
+            x={feldVorschau.rect.xM}
+            y={feldVorschau.rect.yM}
+            width={feldVorschau.rect.breiteM}
+            height={feldVorschau.rect.hoeheM}
+            fill="rgba(2,132,199,0.15)"
+            stroke="#0284c7"
+            strokeWidth={0.06}
+            strokeDasharray="0.15 0.1"
+          />
+          <text
+            x={feldVorschau.rect.xM + feldVorschau.rect.breiteM / 2}
+            y={feldVorschau.rect.yM + feldVorschau.rect.hoeheM / 2}
+            fontSize={0.4}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="#ffffff"
+            stroke="#0f172a"
+            strokeWidth={0.12}
+            paintOrder="stroke"
+            fontWeight={700}
+          >
+            {feldVorschau.anzahl}
+          </text>
+        </>
+      )}
+    </g>
+  );
+
   // Belegung in Flächen-Koordinaten (Meter) — identisch für beide Hintergründe
   const belegung = (
     <>
@@ -361,10 +470,10 @@ export function DachSvg({
         />
       )}
       {raster.positionen.map((p) => {
-        const key = `${p.row}-${p.col}`;
+        const key = posKey(p);
         const aus = flaeche.inaktiv.includes(key);
         if (aus && druck) return null; // deaktivierte Module im Druck weglassen
-        const mB = p.wM; // Modulmaße je Position (gemischte Bänder)
+        const mB = p.wM; // Modulmaße je Position (je Feld verschieden)
         const mH = p.hM;
         const TL: Punkt = [p.xM, p.yM];
         const TR: Punkt = [p.xM + mB, p.yM];
@@ -397,6 +506,7 @@ export function DachSvg({
         );
       })}
       {!druck && overlayM}
+      {felderM}
     </>
   );
 
@@ -413,7 +523,11 @@ export function DachSvg({
         [x + w, y + hh],
         [x, y + hh],
       ];
-      const eventZuM = (e: React.MouseEvent<SVGSVGElement>): PunktM | null => {
+      const eventZuM = (e: {
+        clientX: number;
+        clientY: number;
+        currentTarget: SVGSVGElement;
+      }): PunktM | null => {
         const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveQuelle(flaeche));
         if (!inv) return null;
         const rect = e.currentTarget.getBoundingClientRect();
@@ -432,6 +546,7 @@ export function DachSvg({
       const moveM = zeichnen?.aktiv && zeichnen.onMoveM
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
+      const zeiger = pointer ? pointerHandler(pointer, eventZuM) : undefined;
       return (
         <div
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -443,11 +558,13 @@ export function DachSvg({
         >
           <svg
             viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-            className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
+            className={`block h-full w-full ${zeichnen?.aktiv || pointer ? 'cursor-crosshair' : ''}`}
             preserveAspectRatio="xMidYMid meet"
+            style={pointer ? { touchAction: 'none' } : undefined}
             onClick={klickM}
             onMouseMove={moveM}
             onMouseLeave={moveM ? () => zeichnen!.onMoveM!(null) : undefined}
+            {...zeiger}
           >
             <defs>
               <ModulAsset id={assetId} modul={modul} />
@@ -463,15 +580,68 @@ export function DachSvg({
               toggle,
               hervorheben,
             })}
-            {geist && (
-              <path
-                d={projPfad(h, rechteck(geist.xM, geist.yM, geist.wM, geist.hM))}
-                fill={geist.ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}
-                stroke={geist.ok ? '#10b981' : '#ef4444'}
-                strokeWidth={foto.breitePx * 0.003}
-                strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
-                style={{ pointerEvents: 'none' }}
-              />
+            {/* Belegungsfelder perspektivisch (gleiche Homographie wie die Module) */}
+            {!druck && (
+              <g style={{ pointerEvents: 'none' }}>
+                {(felderAnzeige ?? []).map((fa, i) => (
+                  <path
+                    key={i}
+                    d={projPfad(
+                      h,
+                      rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
+                    )}
+                    fill="rgba(2,132,199,0.06)"
+                    stroke="#0284c7"
+                    strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
+                    strokeDasharray={
+                      fa.ausgewaehlt
+                        ? undefined
+                        : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
+                    }
+                  />
+                ))}
+                {feldVorschau && (
+                  <>
+                    <path
+                      d={projPfad(
+                        h,
+                        rechteck(
+                          feldVorschau.rect.xM,
+                          feldVorschau.rect.yM,
+                          feldVorschau.rect.breiteM,
+                          feldVorschau.rect.hoeheM,
+                        ),
+                      )}
+                      fill="rgba(2,132,199,0.15)"
+                      stroke="#0284c7"
+                      strokeWidth={foto.breitePx * 0.003}
+                      strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
+                    />
+                    {(() => {
+                      const [mx, my] = projiziere(h, [
+                        feldVorschau.rect.xM + feldVorschau.rect.breiteM / 2,
+                        feldVorschau.rect.yM + feldVorschau.rect.hoeheM / 2,
+                      ]);
+                      return (
+                        <text
+                          x={mx}
+                          y={my}
+                          fontSize={foto.breitePx * 0.035}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fill="#ffffff"
+                          stroke="#0f172a"
+                          strokeWidth={foto.breitePx * 0.008}
+                          paintOrder="stroke"
+                          fontWeight={700}
+                        >
+                          {feldVorschau.anzahl}
+                        </text>
+                      );
+                    })()}
+                  </>
+                )}
+              </g>
             )}
             {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
             {!druck && umriss && (
@@ -563,6 +733,21 @@ export function DachSvg({
     );
   }
 
+  // Draufsicht: die viewBox IST das Flächen-Koordinatensystem (Meter) — Event-Pixel
+  // nur über das Bounding-Rect skalieren, kein Solver (SPEC §3.5).
+  const draufsichtZuM = (e: {
+    clientX: number;
+    clientY: number;
+    currentTarget: SVGSVGElement;
+  }): PunktM | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null; // 0×0-Viewport (Preview-Falle)
+    const xM = ((e.clientX - rect.left) / rect.width) * B;
+    const yM = ((e.clientY - rect.top) / rect.height) * H;
+    return [Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))];
+  };
+  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuM) : undefined;
+
   return (
     <div
       className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -570,31 +755,24 @@ export function DachSvg({
     >
       <svg
         viewBox={`0 0 ${B} ${H}`}
-        className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
+        className={`block h-full w-full ${zeichnen?.aktiv || pointer ? 'cursor-crosshair' : ''}`}
         preserveAspectRatio="xMidYMid meet"
+        style={pointer ? { touchAction: 'none' } : undefined}
         onClick={
           zeichnen?.aktiv
             ? (e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) return;
-                const xM = ((e.clientX - rect.left) / rect.width) * B;
-                const yM = ((e.clientY - rect.top) / rect.height) * H;
-                zeichnen.onKlickM([Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))]);
+                const p = draufsichtZuM(e);
+                if (p) zeichnen.onKlickM(p);
               }
             : undefined
         }
         onMouseMove={
           zeichnen?.aktiv && zeichnen.onMoveM
-            ? (e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) return;
-                const xM = ((e.clientX - rect.left) / rect.width) * B;
-                const yM = ((e.clientY - rect.top) / rect.height) * H;
-                zeichnen.onMoveM!([Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))]);
-              }
+            ? (e) => zeichnen.onMoveM!(draufsichtZuM(e))
             : undefined
         }
         onMouseLeave={zeichnen?.aktiv && zeichnen.onMoveM ? () => zeichnen.onMoveM!(null) : undefined}
+        {...zeigerDraufsicht}
       >
         <defs>
           <ModulAsset id={assetId} modul={modul} />
@@ -602,19 +780,6 @@ export function DachSvg({
         </defs>
         <rect width={B} height={H} fill={`url(#${patId})`} />
         {belegung}
-        {geist && (
-          <rect
-            x={geist.xM}
-            y={geist.yM}
-            width={geist.wM}
-            height={geist.hM}
-            fill={geist.ok ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}
-            stroke={geist.ok ? '#10b981' : '#ef4444'}
-            strokeWidth={0.05}
-            strokeDasharray="0.12 0.08"
-            style={{ pointerEvents: 'none' }}
-          />
-        )}
         {!druck && masse && renderMasse(0.3, (p) => p)}
       </svg>
     </div>

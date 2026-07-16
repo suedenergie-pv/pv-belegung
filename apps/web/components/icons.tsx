@@ -147,6 +147,17 @@ export function IconReihenVersetzen(p: IconProps) {
   );
 }
 
+/** Belegungsfeld aufziehen (gestricheltes Rechteck mit Plus). */
+export function IconFeld(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M3 6.5 V4.5 A1.5 1.5 0 0 1 4.5 3 H6.5 M17.5 3 H19.5 A1.5 1.5 0 0 1 21 4.5 V6.5 M21 17.5 V19.5 A1.5 1.5 0 0 1 19.5 21 H17.5 M6.5 21 H4.5 A1.5 1.5 0 0 1 3 19.5 V17.5" />
+      <path d="M10.5 3 H13.5 M21 10.5 V13.5 M10.5 21 H13.5 M3 10.5 V13.5" opacity="0.45" />
+      <path d="M12 8.5 V15.5 M8.5 12 H15.5" />
+    </Icon>
+  );
+}
+
 /** Modul löschen (Rechteck mit X) — Feld bleibt dauerhaft leer. */
 export function IconModulLoeschen(p: IconProps) {
   return (

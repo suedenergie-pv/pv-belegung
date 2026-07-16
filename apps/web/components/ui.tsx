@@ -1,6 +1,75 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+
 /** Kleine gemeinsame Bausteine im hellen Dashboard-CI (weiße Karten, große Touch-Targets). */
+
+/**
+ * Knopf, der beim GEDRÜCKTHALTEN wiederholt auslöst (16.07.2026, Genrih): einmal
+ * sofort, danach alle 130 ms — dasselbe Gefühl wie eine gehaltene Pfeiltaste, nur
+ * per Finger. Wichtig für die Tablet-Version, wo es keine Tastatur gibt.
+ * Pointer-Events (nicht Mouse), damit Touch/Stift dieselbe Bahn nehmen.
+ */
+export function HoldButton({
+  onTrigger,
+  className,
+  title,
+  disabled,
+  children,
+  intervallMs = 130,
+}: {
+  onTrigger: () => void;
+  className?: string;
+  title?: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+  intervallMs?: number;
+}) {
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Frische Closure: onTrigger darf sich zwischen Renders ändern, ohne den Timer zu verlieren
+  const fn = useRef(onTrigger);
+  fn.current = onTrigger;
+
+  const stop = () => {
+    if (timer.current !== null) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+  };
+  // Timer nie über das Unmount hinaus laufen lassen
+  useEffect(() => stop, []);
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      className={className}
+      style={{ touchAction: 'none' }}
+      onPointerDown={(e) => {
+        if (disabled) return;
+        e.preventDefault(); // kein Fokus-/Scroll-Nebeneffekt beim Halten
+        // Erst auslösen, dann Capture: der Klick darf NIE daran scheitern, dass
+        // setPointerCapture wirft (NotFoundError, wenn der Pointer nicht mehr
+        // aktiv ist) — sonst wäre der Knopf still funktionslos.
+        fn.current();
+        stop();
+        timer.current = setInterval(() => fn.current(), intervallMs);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId); // Finger darf abrutschen
+        } catch {
+          // ohne Capture endet das Halten über pointerup/-leave — gut genug
+        }
+      }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onPointerLeave={stop}
+      onLostPointerCapture={stop}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function Karte({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittFlaechen } from '../components/SchrittFlaechen';
@@ -42,9 +42,34 @@ export default function Home() {
     setGeladen(true);
   }, []);
 
+  /**
+   * Speichern ENTKOPPELT (16.07.2026): `speichereProjekte` serialisiert das ganze
+   * Projekt inkl. Foto-DataURLs (mehrere MB) — bei jedem Tastendruck synchron
+   * ausgeführt blockiert das den Main-Thread, und gehaltene Pfeiltasten/Knöpfe
+   * schieben sichtbar stockend statt flüssig (gemessen: 3 statt 8 Schritten/s).
+   * Der State ist sofort aktuell, nur die Platte hinkt ~400 ms hinterher; beim
+   * Verlassen der Seite wird sofort geschrieben, damit nichts verloren geht.
+   */
+  const dbRef = useRef(db);
+  dbRef.current = db;
   useEffect(() => {
-    if (geladen) speichereProjekte(db);
+    if (!geladen) return;
+    const t = setTimeout(() => speichereProjekte(dbRef.current), 400);
+    return () => clearTimeout(t);
   }, [geladen, db]);
+
+  useEffect(() => {
+    if (!geladen) return;
+    const sichern = () => speichereProjekte(dbRef.current);
+    // pagehide deckt auch iOS-Safari ab, wo beforeunload nicht zuverlässig feuert
+    window.addEventListener('pagehide', sichern);
+    document.addEventListener('visibilitychange', sichern);
+    return () => {
+      window.removeEventListener('pagehide', sichern);
+      document.removeEventListener('visibilitychange', sichern);
+      sichern(); // Unmount: letzten Stand festschreiben
+    };
+  }, [geladen]);
 
   const aktiv: ProjektEintrag | undefined = useMemo(
     () => db.projekte.find((e) => e.id === db.aktivId),
