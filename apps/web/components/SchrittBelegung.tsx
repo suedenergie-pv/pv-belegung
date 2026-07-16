@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_FUGE_M, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
+import { feldSchrittmasse, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import {
   aktiveModule,
   artVon,
   farbenFuer,
+  felderInput,
   fmtDe,
   leerePositionenFuer,
   modulById,
@@ -328,9 +329,16 @@ export function SchrittBelegung({
         ...f,
         felder: felderVon(f).map((feld, i) => {
           if (i !== drag.index) return feld;
-          const { w, h } = modulMasse(modul, feld.quer);
-          const { rect, zellVersatz } = feldMitGriff(feld, drag.griff, dx, dy, w + DEFAULT_FUGE_M, h + DEFAULT_FUGE_M);
-          return { ...feld, ...rect, leer: leerVerschoben(feld.leer, zellVersatz.col, zellVersatz.row) };
+          // Schrittmaße aus der ENGINE — am Flachdach ist der Rasterschritt der
+          // Gestell-Pitch (Süd 1,80/1,90 m; O/W 2,48 m = 2 Zell-Spalten je Schritt),
+          // nicht das Modulmaß. Sonst verschöbe das Ziehen das ganze Gestell-Raster.
+          const sm = feldSchrittmasse(felderInput(f, modul), feld.quer);
+          const { rect, zellVersatz } = feldMitGriff(feld, drag.griff, dx, dy, sm.pitchXM, sm.pitchYM);
+          return {
+            ...feld,
+            ...rect,
+            leer: leerVerschoben(feld.leer, zellVersatz.col * sm.colsJeSchrittX, zellVersatz.row),
+          };
         }),
       };
     }

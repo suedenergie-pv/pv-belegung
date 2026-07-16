@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   berechneFelderRaster,
+  feldSchrittmasse,
   leerePositionen,
   vollFeld,
   type BelegungsFeldM,
@@ -127,6 +128,41 @@ describe('Flachdach Süd (PROFINESS Flat, 10°/15°)', () => {
     const ohne = berechneFelderRaster(dachSued, [feld]).positionen.length;
     const mit = berechneFelderRaster(mitKuppel, [feld]).positionen.length;
     expect(mit).toBeLessThan(ohne);
+  });
+});
+
+describe('feldSchrittmasse — Einrasten beim Größenziehen', () => {
+  it('flach: Modulmaß + Fuge, 1 Spalte je Schritt', () => {
+    const sm = feldSchrittmasse({ module: M }, true);
+    expect(sm.pitchXM).toBeCloseTo(1.782, 6);
+    expect(sm.pitchYM).toBeCloseTo(1.154, 6);
+    expect(sm.colsJeSchrittX).toBe(1);
+  });
+
+  it('Süd: y-Schritt = Gestell-Pitch (nicht Modulmaß!)', () => {
+    const sm = feldSchrittmasse({ module: M, montage: SUED10 }, true);
+    expect(sm.pitchXM).toBeCloseTo(1.782, 6);
+    expect(sm.pitchYM).toBeCloseTo(1.8, 6);
+    expect(sm.colsJeSchrittX).toBe(1);
+  });
+
+  it('Ost-West: x-Schritt = Paar-Pitch 2,48, ein Schritt = 2 Zell-Spalten', () => {
+    const sm = feldSchrittmasse({ module: M, montage: OW }, true);
+    expect(sm.pitchXM).toBeCloseTo(2.48, 6);
+    expect(sm.pitchYM).toBeCloseTo(1.782, 6);
+    expect(sm.colsJeSchrittX).toBe(2);
+  });
+
+  it('Beweis der Invariante: Feld links um einen Schritt gewachsen → alte O/W-Module stehen exakt', () => {
+    const feld: BelegungsFeldM = { xM: 4, yM: 1, breiteM: 4.96, hoeheM: 1.8, quer: true };
+    const vorher = berechneFelderRaster(dachOW, [feld]).positionen;
+    const sm = feldSchrittmasse({ module: M, montage: OW }, true);
+    const gewachsen: BelegungsFeldM = { ...feld, xM: 4 - sm.pitchXM, breiteM: 4.96 + sm.pitchXM };
+    const nachher = berechneFelderRaster(dachOW, [gewachsen]).positionen;
+    expect(nachher.length).toBe(vorher.length + 2); // ein Paar mehr
+    for (const p of vorher) {
+      expect(nachher.some((q) => Math.abs(q.xM - p.xM) < 1e-9 && Math.abs(q.yM - p.yM) < 1e-9)).toBe(true);
+    }
   });
 });
 

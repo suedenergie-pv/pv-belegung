@@ -21,6 +21,7 @@ export {
   berechneFelderRaster,
   berechneRaster,
   besterVersatz,
+  feldSchrittmasse,
   leerePositionen,
   posKey,
   vollFeld,

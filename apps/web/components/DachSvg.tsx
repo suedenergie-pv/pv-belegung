@@ -677,7 +677,7 @@ export function DachSvg({
         [x + w, y + hh],
         [x, y + hh],
       ];
-      const eventZuM = (e: {
+      const eventZuMRoh = (e: {
         clientX: number;
         clientY: number;
         currentTarget: SVGSVGElement;
@@ -689,7 +689,15 @@ export function DachSvg({
         const px = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
         const py = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
         const [xM, yM] = projiziere(inv, [px, py]);
-        return [Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))];
+        return [xM, yM];
+      };
+      // Geklemmt NUR fürs Zeichnen (Umriss-/Hindernis-Punkte gehören auf die Fläche).
+      // Zieh-GESTEN brauchen die rohe Position: geklemmt könnte man ein randnahes
+      // Feld nie über den Rand ziehen — der Zug „endete" an der Dachkante und das
+      // Einrasten der linken/oberen Kante kam nie über einen halben Pitch (Bug 16.07.).
+      const eventZuM = (e: Parameters<typeof eventZuMRoh>[0]): PunktM | null => {
+        const p = eventZuMRoh(e);
+        return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
       };
       const klickM = zeichnen?.aktiv
         ? (e: React.MouseEvent<SVGSVGElement>) => {
@@ -700,7 +708,7 @@ export function DachSvg({
       const moveM = zeichnen?.aktiv && zeichnen.onMoveM
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
-      const zeiger = pointer ? pointerHandler(pointer, eventZuM) : undefined;
+      const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh) : undefined;
       return (
         <div
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -925,18 +933,22 @@ export function DachSvg({
 
   // Draufsicht: die viewBox IST das Flächen-Koordinatensystem (Meter) — Event-Pixel
   // nur über das Bounding-Rect skalieren, kein Solver (SPEC §3.5).
-  const draufsichtZuM = (e: {
+  const draufsichtZuMRoh = (e: {
     clientX: number;
     clientY: number;
     currentTarget: SVGSVGElement;
   }): PunktM | null => {
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null; // 0×0-Viewport (Preview-Falle)
-    const xM = ((e.clientX - rect.left) / rect.width) * B;
-    const yM = ((e.clientY - rect.top) / rect.height) * H;
-    return [Math.max(0, Math.min(B, xM)), Math.max(0, Math.min(H, yM))];
+    return [((e.clientX - rect.left) / rect.width) * B, ((e.clientY - rect.top) / rect.height) * H];
   };
-  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuM) : undefined;
+  // Geklemmt nur fürs ZEICHNEN; Zieh-Gesten brauchen die rohe Position (sonst kann
+  // ein randnahes Feld nie über den Flächenrand gezogen/vergrößert werden, 16.07.).
+  const draufsichtZuM = (e: Parameters<typeof draufsichtZuMRoh>[0]): PunktM | null => {
+    const p = draufsichtZuMRoh(e);
+    return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
+  };
+  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuMRoh) : undefined;
 
   return (
     <div

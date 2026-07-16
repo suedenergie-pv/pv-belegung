@@ -680,6 +680,33 @@ function feldZellen(
 }
 
 /**
+ * Raster-Schrittmaße eines Felds (16.07.2026): um wie viel die LINKE/OBERE
+ * Feldkante beim Größenziehen einrasten muss, damit die bestehenden Zellen exakt
+ * stehen bleiben — und wie viele Zell-SPALTEN ein x-Schritt verschiebt (Ost-West:
+ * 2, ein Schritt = ein Modul-Paar). Ohne das würde das Ziehen am Flachdach das
+ * Gestell-Raster verschieben und die leer-Zellen falsch umnummerieren.
+ */
+export function feldSchrittmasse(
+  input: Pick<FelderInput, 'module' | 'fugeM' | 'montage'>,
+  quer: boolean,
+): { pitchXM: number; pitchYM: number; colsJeSchrittX: number } {
+  const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
+  if (!input.montage) {
+    const { w, h } = dimsVon(input.module, quer ? 'quer' : 'hoch');
+    return { pitchXM: w + fugeM, pitchYM: h + fugeM, colsJeSchrittX: 1 };
+  }
+  const { w: laengsM, h: querM } = dimsVon(input.module, 'quer');
+  const tiefe = querM * Math.cos(input.montage.winkelDeg * GRAD);
+  const pitch = Math.max(input.montage.pitchM, tiefe + 0.01);
+  if (input.montage.aufstaenderung === 'sued') {
+    return { pitchXM: laengsM + fugeM, pitchYM: pitch, colsJeSchrittX: 1 };
+  }
+  const spalt = input.montage.firstspaltM ?? 0.05;
+  const paarTiefe = 2 * tiefe + spalt;
+  return { pitchXM: Math.max(pitch, paarTiefe), pitchYM: laengsM + fugeM, colsJeSchrittX: 2 };
+}
+
+/**
  * Belegung aus Feldern (SPEC §9, Feld-Modus). Reihenfolge = Priorität: ein
  * Modul entfällt, wenn es ein bereits platziertes Modul eines FRÜHEREN Felds
  * überlappt — so kann sich der Nutzer Felder überlappen lassen, ohne dass je
