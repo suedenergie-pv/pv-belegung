@@ -178,6 +178,21 @@ export function SchrittBelegung({
     auswahl?.flaecheId === f.id ? auswahl.indices.filter((i) => i < felderVon(f).length) : [];
 
   /**
+   * Welcher Ausrichtungs-Knopf leuchtet? Das, was die betroffenen Felder TATSÄCHLICH
+   * haben (Auswahl, sonst alle) — bei gemischten Feldern keiner. Ohne Felder gilt die
+   * Vorgabe für neue.
+   */
+  const ausrichtungAktiv = (f: Flaeche): 'hoch' | 'quer' | null => {
+    const felder = felderVon(f);
+    const indices = auswahlVon(f);
+    const betroffen = indices.length ? felder.filter((_, i) => indices.includes(i)) : felder;
+    if (betroffen.length === 0) return f.ausrichtung;
+    if (betroffen.every((x) => x.quer)) return 'quer';
+    if (betroffen.every((x) => !x.quer)) return 'hoch';
+    return null; // gemischt
+  };
+
+  /**
    * Feld-Position in den Rahmen klemmen: es darf über den Rand hinausragen (dann
    * fallen Module weg — genau das wollte Genrih), aber nicht komplett verschwinden.
    */
@@ -383,14 +398,21 @@ export function SchrittBelegung({
     setAuswahl(null);
   };
 
-  /** Ausgewählte Felder zwischen quer und hochkant kippen (Zellraster ändert sich). */
-  const auswahlDrehen = (f: Flaeche) => {
+  /**
+   * Quer/Hochkant (16.07.2026, Genrih: „funktioniert nicht"): der Knopf dreht die
+   * MODULE — sonst passiert beim Klicken sichtbar nichts. Sind Felder ausgewählt,
+   * gilt es nur für die (gemischte Dächer bleiben möglich), sonst für alle. Der
+   * Wert ist gleichzeitig die Ausrichtung für neu gezogene Felder.
+   */
+  const setzeAusrichtung = (f: Flaeche, ausrichtung: 'hoch' | 'quer') => {
+    const quer = ausrichtung === 'quer';
     const indices = auswahlVon(f);
-    if (indices.length === 0) return;
+    const betroffen = (i: number) => indices.length === 0 || indices.includes(i);
     patchFlaeche(f.id, {
+      ausrichtung,
       felder: felderVon(f).map((feld, i) =>
-        // leer verwerfen: die Zellnummern meinen nach dem Drehen andere Module
-        indices.includes(i) ? { ...feld, quer: !feld.quer, leer: undefined } : feld,
+        // leer verwerfen: nach dem Drehen meinen die Zellnummern andere Module
+        betroffen(i) && feld.quer !== quer ? { ...feld, quer, leer: undefined } : feld,
       ),
     });
   };
@@ -558,17 +580,25 @@ export function SchrittBelegung({
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
                 <WerkzeugKnopf
-                  aktiv={f.ausrichtung === 'quer'}
-                  title="Ausrichtung für NEUE Felder (bestehende über „Drehen“ ändern)"
-                  onClick={() => patchFlaeche(f.id, { ausrichtung: 'quer' })}
+                  aktiv={ausrichtungAktiv(fEff) === 'quer'}
+                  title={
+                    gewaehlt.length > 0
+                      ? `Die ${gewaehlt.length} ausgewählten Felder quer legen`
+                      : 'Alle Module quer legen (und Vorgabe für neue Felder)'
+                  }
+                  onClick={() => setzeAusrichtung(f, 'quer')}
                 >
                   <IconModulQuer />
                   Quer
                 </WerkzeugKnopf>
                 <WerkzeugKnopf
-                  aktiv={f.ausrichtung === 'hoch'}
-                  title="Ausrichtung für NEUE Felder (bestehende über „Drehen“ ändern)"
-                  onClick={() => patchFlaeche(f.id, { ausrichtung: 'hoch' })}
+                  aktiv={ausrichtungAktiv(fEff) === 'hoch'}
+                  title={
+                    gewaehlt.length > 0
+                      ? `Die ${gewaehlt.length} ausgewählten Felder hochkant stellen`
+                      : 'Alle Module hochkant stellen (und Vorgabe für neue Felder)'
+                  }
+                  onClick={() => setzeAusrichtung(f, 'hoch')}
                 >
                   <IconModulHoch />
                   Hochkant
@@ -804,15 +834,6 @@ export function SchrittBelegung({
                       onClick={() => setAuswahl(null)}
                     >
                       ✕ Auswahl aufheben
-                    </button>
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      disabled={gewaehlt.length === 0}
-                      title="Module der ausgewählten Felder zwischen quer und hochkant umschalten"
-                      onClick={() => auswahlDrehen(f)}
-                    >
-                      ⟳ Drehen
                     </button>
                     {leerZahl > 0 && (
                       <button
