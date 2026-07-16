@@ -32,6 +32,7 @@ export type {
   BelegungRaster,
   BelegungsFeldM,
   FelderInput,
+  FlachdachMontage,
   ModulPosition,
 } from './belegung';
 export {

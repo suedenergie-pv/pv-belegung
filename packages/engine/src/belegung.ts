@@ -82,6 +82,12 @@ export interface ModulPosition {
    * klassischen Auto-Raster (berechneRaster).
    */
   feld?: number;
+  /**
+   * Kippseite bei Ost-West-Aufständerung (welcher Himmelsrichtung das Modul
+   * zugeneigt ist) — fürs Rendering (Zelt-Optik) und den Export. Fehlt bei
+   * Süd-Aufständerung und flacher Belegung.
+   */
+  seite?: 'ost' | 'west';
 }
 
 export interface BelegungRaster {
@@ -545,11 +551,39 @@ export interface BelegungsFeldM {
   leer?: readonly string[];
 }
 
+/**
+ * Flachdach-Aufständerung (16.07.2026, System PROFINESS Flat — Maße aus der
+ * Montageanleitung 05/2025, docs/datenblaetter/PROFINESS-Flat-Montageanleitung-
+ * Flachdach_05_2025.pdf; für Modulrahmen 1050–1170 mm, nur QUER liegende Module):
+ *
+ * - 'sued': alle Module nach Süden gekippt (10° oder 15°). Kipprichtung = Flächen-y
+ *   (Konvention: Unterkante der Fläche = Süden). Reihen-Pitch laut Querschnitten:
+ *   1,80 m @10° bzw. ~1,90 m @15° (Standard-Südsystem).
+ * - 'ostwest': Modul-PAARE, Zeltfirst in Nord-Süd-Richtung, Kipprichtung = Flächen-x.
+ *   Paar-Pitch laut Querschnitten exakt 2,48 m (2er-Gestell; 4er = 4,96 m —
+ *   Paare stoßen bündig aneinander), Winkel ca. 10°.
+ *
+ * Der Modul-FUSSABDRUCK in Kipprichtung ist die Projektion widthMm·cos(winkel) —
+ * reine Trigonometrie, kein Solver. Der Rest des Pitchs ist Gasse/Gestell.
+ */
+export interface FlachdachMontage {
+  aufstaenderung: 'sued' | 'ostwest';
+  /** Modulmontagewinkel, Grad (PROFINESS: Süd 10/15, Ost-West 10) */
+  winkelDeg: number;
+  /** Gestell-Pitch in Kipprichtung, Meter (Süd: Reihen-Pitch; O/W: Paar-Pitch) */
+  pitchM: number;
+  /** Spalt am Zeltfirst zwischen den beiden Modulen eines O/W-Paars, Meter (Optik) */
+  firstspaltM?: number;
+}
+
 /** Rahmenbedingungen der Fläche für die Feld-Belegung (ohne Ausrichtung/Optimierer). */
 export type FelderInput = Pick<
   BelegungInput,
   'breiteM' | 'hoeheM' | 'module' | 'randM' | 'fugeM' | 'umrissM' | 'hindernisseM'
->;
+> & {
+  /** Gesetzt = Flachdach-Aufständerung; fehlt = flache Dachbelegung (Schrägdach/Fassade). */
+  montage?: FlachdachMontage;
+};
 
 /**
  * Eindeutiger UI-Key einer Modulposition. Feld-Module: "f{feld}:{row}-{col}"
@@ -558,6 +592,88 @@ export type FelderInput = Pick<
  */
 export function posKey(p: Pick<ModulPosition, 'feld' | 'row' | 'col'>): string {
   return p.feld === undefined ? `${p.row}-${p.col}` : `f${p.feld}:${p.row}-${p.col}`;
+}
+
+/** Zelle eines Belegungsfelds, Koordinaten RELATIV zur linken oberen Feldecke. */
+interface FeldZelle {
+  row: number;
+  col: number;
+  xM: number;
+  yM: number;
+  wM: number;
+  hM: number;
+  quer: boolean;
+  seite?: 'ost' | 'west';
+}
+
+const GRAD = Math.PI / 180;
+
+/**
+ * Zellen eines Felds erzeugen — der EINZIGE Ort, an dem sich Schrägdach-,
+ * Süd- und Ost-West-Belegung unterscheiden. Alles danach (Zone, Überlappung,
+ * leer, UI-Werkzeuge) arbeitet identisch auf den Zellen.
+ */
+function feldZellen(
+  feld: BelegungsFeldM,
+  module: ModuleType,
+  fugeM: number,
+  montage: FlachdachMontage | undefined,
+): FeldZelle[] {
+  const EPS = 1e-9;
+  const zellen: FeldZelle[] = [];
+
+  if (!montage) {
+    // Flache Belegung (Schrägdach/Fassade): Module dicht an dicht mit Klemmfuge.
+    const { w, h } = dimsVon(module, feld.quer ? 'quer' : 'hoch');
+    if (w <= 0 || h <= 0) return zellen;
+    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (w + fugeM)));
+    const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (h + fugeM)));
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        zellen.push({ row, col, xM: col * (w + fugeM), yM: row * (h + fugeM), wM: w, hM: h, quer: feld.quer });
+      }
+    }
+    return zellen;
+  }
+
+  // Flachdach: immer QUER liegende Module (PROFINESS Flat). Fußabdruck in
+  // Kipprichtung = Projektion widthMm·cos(winkel); der Pitch kommt vom Gestell.
+  const { w: laengsM, h: querM } = dimsVon(module, 'quer'); // 1,762 × 1,134
+  const tiefe = querM * Math.cos(montage.winkelDeg * GRAD);
+  const pitch = Math.max(montage.pitchM, tiefe + 0.01);
+
+  if (montage.aufstaenderung === 'sued') {
+    // Reihen quer zur Kipprichtung (y): erste Reihe braucht nur den Fußabdruck,
+    // jede weitere den vollen Gestell-Pitch (Verschattungs-/Systemabstand).
+    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (laengsM + fugeM)));
+    const rows = feld.hoeheM + EPS >= tiefe
+      ? 1 + Math.floor((feld.hoeheM - tiefe + EPS) / pitch)
+      : 0;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        zellen.push({ row, col, xM: col * (laengsM + fugeM), yM: row * pitch, wM: laengsM, hM: tiefe, quer: true });
+      }
+    }
+    return zellen;
+  }
+
+  // Ost-West: Paare kippen in x-Richtung (Zeltfirst vertikal). Ein Paar = Ost- +
+  // West-Modul mit Firstspalt; Paar-Pitch 2,48 m (Paare stoßen bündig aneinander).
+  const spalt = montage.firstspaltM ?? 0.05;
+  const paarTiefe = 2 * tiefe + spalt;
+  const paare = feld.breiteM + EPS >= paarTiefe
+    ? 1 + Math.floor((feld.breiteM - paarTiefe + EPS) / Math.max(pitch, paarTiefe))
+    : 0;
+  const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (laengsM + fugeM)));
+  for (let row = 0; row < rows; row++) {
+    for (let paar = 0; paar < paare; paar++) {
+      const x0 = paar * Math.max(pitch, paarTiefe);
+      const yM = row * (laengsM + fugeM);
+      zellen.push({ row, col: paar * 2, xM: x0, yM, wM: tiefe, hM: laengsM, quer: true, seite: 'ost' });
+      zellen.push({ row, col: paar * 2 + 1, xM: x0 + tiefe + spalt, yM, wM: tiefe, hM: laengsM, quer: true, seite: 'west' });
+    }
+  }
+  return zellen;
 }
 
 /**
@@ -577,34 +693,37 @@ export function berechneFelderRaster(
   const positionen: ModulPosition[] = [];
 
   felder.forEach((feld, fi) => {
-    const { w, h } = dimsVon(input.module, feld.quer ? 'quer' : 'hoch');
-    const pitchX = w + fugeM;
-    const pitchY = h + fugeM;
-    if (w <= 0 || h <= 0) return;
-    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / pitchX));
-    const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / pitchY));
     const leer = new Set(feld.leer ?? []);
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        if (leer.has(`${row}-${col}`)) continue;
-        const xM = feld.xM + col * pitchX;
-        const yM = feld.yM + row * pitchY;
-        // Randabstand zur Dachkante (das Feld selbst darf überstehen)
-        if (xM < randM - EPS || yM < randM - EPS) continue;
-        if (xM + w > input.breiteM - randM + EPS) continue;
-        if (yM + h > input.hoeheM - randM + EPS) continue;
-        if (!inZone(xM, yM, w, h)) continue;
-        // Kein Modul auf ein schon platziertes (früheres Feld gewinnt)
-        const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
-        if (
-          positionen.some((q) =>
-            rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM }),
-          )
-        ) {
-          continue;
-        }
-        positionen.push({ row, col, xM, yM, quer: feld.quer, wM: w, hM: h, feld: fi });
+    for (const z of feldZellen(feld, input.module, fugeM, input.montage)) {
+      if (leer.has(`${z.row}-${z.col}`)) continue;
+      const xM = feld.xM + z.xM;
+      const yM = feld.yM + z.yM;
+      // Randabstand zur Dachkante (das Feld selbst darf überstehen)
+      if (xM < randM - EPS || yM < randM - EPS) continue;
+      if (xM + z.wM > input.breiteM - randM + EPS) continue;
+      if (yM + z.hM > input.hoeheM - randM + EPS) continue;
+      if (!inZone(xM, yM, z.wM, z.hM)) continue;
+      // Kein Modul auf ein schon platziertes (früheres Feld gewinnt)
+      const rect: RechteckM = { xM, yM, breiteM: z.wM, hoeheM: z.hM };
+      if (
+        positionen.some((q) =>
+          rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM }),
+        )
+      ) {
+        continue;
       }
+      const pos: ModulPosition = {
+        row: z.row,
+        col: z.col,
+        xM,
+        yM,
+        quer: z.quer,
+        wM: z.wM,
+        hM: z.hM,
+        feld: fi,
+      };
+      if (z.seite) pos.seite = z.seite;
+      positionen.push(pos);
     }
   });
 
@@ -661,21 +780,28 @@ export function leerePositionen(
 export function vollFeld(input: FelderInput & { ausrichtung: 'hoch' | 'quer' }): BelegungsFeldM {
   const randM = input.randM ?? DEFAULT_RAND_M;
   const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
-  const { w, h } = dimsVon(input.module, input.ausrichtung);
   const nutzB = input.breiteM - 2 * randM;
   const nutzH = input.hoeheM - 2 * randM;
-  const cols = nutzB >= w ? Math.floor((nutzB + fugeM) / (w + fugeM)) : 0;
-  const rows = nutzH >= h ? Math.floor((nutzH + fugeM) / (h + fugeM)) : 0;
-  if (cols === 0 || rows === 0) {
-    return { xM: randM, yM: randM, breiteM: 0, hoeheM: 0, quer: input.ausrichtung === 'quer' };
-  }
-  const belegtB = cols * w + (cols - 1) * fugeM;
-  const belegtH = rows * h + (rows - 1) * fugeM;
+  // Flachdach ist immer quer (PROFINESS Flat: ausschließlich querliegende Module)
+  const quer = input.montage ? true : input.ausrichtung === 'quer';
+  // Probe-Feld über die ganze Nutzfläche → die Zellen selbst sagen, wie groß das
+  // exakt gefüllte Feld ist (eine Mathe-Quelle für alle Montagearten).
+  const probe: BelegungsFeldM = {
+    xM: 0,
+    yM: 0,
+    breiteM: Math.max(0, nutzB),
+    hoeheM: Math.max(0, nutzH),
+    quer,
+  };
+  const zellen = feldZellen(probe, input.module, fugeM, input.montage);
+  if (zellen.length === 0) return { xM: randM, yM: randM, breiteM: 0, hoeheM: 0, quer };
+  const belegtB = Math.max(...zellen.map((z) => z.xM + z.wM));
+  const belegtH = Math.max(...zellen.map((z) => z.yM + z.hM));
   return {
     xM: randM + (nutzB - belegtB) / 2,
     yM: randM + (nutzH - belegtH) / 2,
     breiteM: belegtB,
     hoeheM: belegtH,
-    quer: input.ausrichtung === 'quer',
+    quer,
   };
 }
