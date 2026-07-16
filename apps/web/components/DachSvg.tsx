@@ -147,6 +147,51 @@ function DachPattern({ id, farbe }: { id: string; farbe: Dachfarbe }) {
       </pattern>
     );
   }
+  if (farbe.art === 'flach') {
+    // Flachdach: Bitumen = Bahnen mit Überlappungsnaht; Kies = feine Sprenkel
+    if (farbe.id === 'bitumen') {
+      return (
+        <pattern id={id} width={1} height={1} patternUnits="userSpaceOnUse">
+          <rect width={1} height={1} fill={farbe.fill} />
+          <line x1={0.97} y1={0} x2={0.97} y2={1} stroke={farbe.dunkel} strokeWidth={0.04} />
+          <line x1={0.99} y1={0} x2={0.99} y2={1} stroke="#ffffff" strokeWidth={0.006} opacity={0.12} />
+        </pattern>
+      );
+    }
+    return (
+      <pattern id={id} width={0.4} height={0.4} patternUnits="userSpaceOnUse">
+        <rect width={0.4} height={0.4} fill={farbe.fill} />
+        <circle cx={0.08} cy={0.1} r={0.015} fill={farbe.dunkel} opacity={0.6} />
+        <circle cx={0.25} cy={0.05} r={0.012} fill="#ffffff" opacity={0.35} />
+        <circle cx={0.33} cy={0.22} r={0.014} fill={farbe.dunkel} opacity={0.5} />
+        <circle cx={0.15} cy={0.3} r={0.012} fill="#ffffff" opacity={0.3} />
+        <circle cx={0.36} cy={0.36} r={0.01} fill={farbe.dunkel} opacity={0.45} />
+      </pattern>
+    );
+  }
+  if (farbe.art === 'wand') {
+    // Fassade: Klinker = Läuferverband; Putz = fast glatt mit leichter Struktur
+    if (farbe.id === 'klinker') {
+      return (
+        <pattern id={id} width={0.48} height={0.14} patternUnits="userSpaceOnUse">
+          <rect width={0.48} height={0.14} fill={farbe.fill} />
+          <line x1={0} y1={0.07} x2={0.48} y2={0.07} stroke="#d8d2c8" strokeWidth={0.012} />
+          <line x1={0} y1={0.14} x2={0.48} y2={0.14} stroke="#d8d2c8" strokeWidth={0.012} />
+          <line x1={0.24} y1={0} x2={0.24} y2={0.07} stroke="#d8d2c8" strokeWidth={0.012} />
+          <line x1={0} y1={0.07} x2={0} y2={0.14} stroke="#d8d2c8" strokeWidth={0.012} />
+          <line x1={0.48} y1={0.07} x2={0.48} y2={0.14} stroke="#d8d2c8" strokeWidth={0.012} />
+        </pattern>
+      );
+    }
+    return (
+      <pattern id={id} width={0.5} height={0.5} patternUnits="userSpaceOnUse">
+        <rect width={0.5} height={0.5} fill={farbe.fill} />
+        <circle cx={0.12} cy={0.18} r={0.02} fill={farbe.dunkel} opacity={0.15} />
+        <circle cx={0.38} cy={0.4} r={0.025} fill={farbe.dunkel} opacity={0.12} />
+        <circle cx={0.3} cy={0.08} r={0.018} fill="#ffffff" opacity={0.2} />
+      </pattern>
+    );
+  }
   // Betonziegel / engobiert: rechteckige Pfannen, halbversetzt
   return (
     <pattern id={id} width={0.6} height={0.84} patternUnits="userSpaceOnUse">
@@ -274,6 +319,14 @@ export function moduleAufHomographie({
             </g>
           );
         })}
+        {/* Ost-West-Zelt: Westhälfte leicht abschatten, damit man die Kippung sieht */}
+        {p.seite === 'west' && (
+          <path
+            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            fill="rgba(0,0,0,0.22)"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
         <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="transparent" />
         {aus && (
           <path
@@ -576,6 +629,17 @@ export function DachSvg({
             onClick={toggle ? () => toggle(key) : undefined}
           >
             <use href={`#${assetId}`} transform={modulMatrix(TL, TR, BL, p.quer)} />
+            {/* Ost-West-Zelt: Westhälfte leicht abschatten (Kippung sichtbar) */}
+            {p.seite === 'west' && (
+              <rect
+                x={p.xM}
+                y={p.yM}
+                width={mB}
+                height={mH}
+                fill="rgba(0,0,0,0.22)"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
             <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="transparent" />
             {aus && (
               <rect

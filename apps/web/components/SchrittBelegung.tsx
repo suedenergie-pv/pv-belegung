@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_FUGE_M, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import {
   aktiveModule,
+  artVon,
+  farbenFuer,
   fmtDe,
   leerePositionenFuer,
   modulById,
@@ -19,7 +21,6 @@ import {
   type PunktM,
   type RechteckM,
 } from '../lib/model';
-import { DACHFARBEN } from '../lib/model';
 import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
 import {
@@ -718,6 +719,13 @@ export function SchrittBelegung({
 
             {/* Zeile 2 — EINSTELLUNGEN: Ausrichtung, Randabstand, Dachfarbe */}
             <div className="mb-3 flex flex-wrap items-center gap-2">
+              {artVon(f) === 'flachdach' ? (
+                <span className="text-sm text-slate-500">
+                  {f.flachdach?.aufstaenderung === 'ostwest'
+                    ? `Ost-West ${f.flachdach.winkelDeg}° (PROFINESS Flat, quer)`
+                    : `Süd ${f.flachdach?.winkelDeg ?? 10}° (PROFINESS Flat, quer)`}
+                </span>
+              ) : (
               <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
                 <WerkzeugKnopf
                   aktiv={ausrichtungAktiv(fEff) === 'quer'}
@@ -744,6 +752,7 @@ export function SchrittBelegung({
                   Hochkant
                 </WerkzeugKnopf>
               </div>
+              )}
 
               <label className="flex items-center gap-1.5 text-sm text-slate-600">
                 Rand
@@ -765,7 +774,7 @@ export function SchrittBelegung({
               </label>
 
               <div className="ml-auto flex gap-1.5">
-                {DACHFARBEN.map((d) => (
+                {farbenFuer(artVon(f)).map((d) => (
                   <button
                     key={d.id}
                     type="button"

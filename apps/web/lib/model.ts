@@ -31,9 +31,28 @@ export const DACHFARBEN = [
   { id: 'anthrazit', name: 'Betonziegel anthrazit', fill: '#3d4249', dunkel: '#2b2f35', art: 'beton' },
   { id: 'schiefer', name: 'Engobiert schwarz', fill: '#26282c', dunkel: '#17181b', art: 'beton' },
   { id: 'grau', name: 'Blech (Stehfalz)', fill: '#8b9199', dunkel: '#6e747d', art: 'blech' },
+  // Flachdach (16.07.2026)
+  { id: 'bitumen', name: 'Bitumenbahn', fill: '#4a4d52', dunkel: '#3a3d41', art: 'flach' },
+  { id: 'kies', name: 'Kiesdach', fill: '#9aa0a6', dunkel: '#7d8288', art: 'flach' },
+  // Fassade (16.07.2026)
+  { id: 'putz', name: 'Putz hell', fill: '#d8d5cd', dunkel: '#bdb9af', art: 'wand' },
+  { id: 'klinker', name: 'Klinker', fill: '#8a4a38', dunkel: '#6e3a2b', art: 'wand' },
 ] as const;
 export type DachfarbeId = (typeof DACHFARBEN)[number]['id'];
 export type Dachfarbe = (typeof DACHFARBEN)[number];
+
+/** Art der Fläche (16.07.2026): Schrägdach (Default), Flachdach, Fassade. */
+export type FlaechenArt = 'dach' | 'flachdach' | 'fassade';
+
+/** Zur Flächen-Art passende Eindeckungen/Oberflächen. */
+export function farbenFuer(art: FlaechenArt): Dachfarbe[] {
+  const arten: Record<FlaechenArt, string[]> = {
+    dach: ['ziegel', 'beton', 'blech'],
+    flachdach: ['flach'],
+    fassade: ['wand'],
+  };
+  return DACHFARBEN.filter((d) => arten[art].includes(d.art));
+}
 
 /**
  * Drohnenfoto als Belegungs-Hintergrund (eigenes Foto, lizenzrechtlich ok —
@@ -87,9 +106,24 @@ export type Dachform = 'rechteck' | 'trapez' | 'schief';
 export interface Flaeche {
   id: string;
   name: string;
-  /** Traufkante, Meter */
+  /**
+   * Art der Fläche (Default 'dach'). 'flachdach' belegt mit Aufständerung
+   * (siehe flachdach-Block); 'fassade' ist eine senkrechte Ebene (Neigung 90°) —
+   * geometrisch identisch zum Schrägdach, Foto frontal statt von oben.
+   */
+  art?: FlaechenArt;
+  /**
+   * Flachdach-Aufständerung (nur bei art 'flachdach'). Defaults = System
+   * PROFINESS Flat (Montageanleitung 05/2025 in docs/datenblaetter/):
+   * Ost-West 10° mit Paar-Pitch 2,48 m; Süd 10°/15° mit Reihen-Pitch 1,80/1,90 m.
+   * pitchM ist editierbar (anderes Gestell/anderer Reihenabstand).
+   * KONVENTION: Unterkante der Fläche = Süden (Süd kippt nach unten,
+   * Ost-West kippt in x-Richtung mit Zeltfirst senkrecht).
+   */
+  flachdach?: { aufstaenderung: 'sued' | 'ostwest'; winkelDeg: number; pitchM?: number };
+  /** Traufkante, Meter (Flachdach: Ost-West-Ausdehnung; Fassade: Wandbreite) */
   breiteM: number;
-  /** Sparrenlänge (wahres Maß, Aufmaß — SPEC §4.1), Meter */
+  /** Sparrenlänge (wahres Maß, Aufmaß — SPEC §4.1), Meter (Flachdach: Nord-Süd-Tiefe; Fassade: Wandhöhe) */
   hoeheM: number;
   neigungDeg: number;
   azimutDeg: number;
@@ -225,8 +259,33 @@ export type { PunktM, RechteckM };
 
 export { DEFAULT_RAND_M };
 
+export function artVon(f: Flaeche): FlaechenArt {
+  return f.art ?? 'dach';
+}
+
+/**
+ * Gestell-Pitch-Default nach PROFINESS Flat (Montageanleitung 05/2025 im Repo):
+ * Ost-West 10° → 2,48 m (Paar); Süd 10° → 1,80 m, Süd 15° → 1,90 m (Reihe).
+ */
+export function flachdachPitchDefault(aufstaenderung: 'sued' | 'ostwest', winkelDeg: number): number {
+  if (aufstaenderung === 'ostwest') return 2.48;
+  return winkelDeg >= 15 ? 1.9 : 1.8;
+}
+
+/**
+ * Randabstand-Default je Flächen-Art: Schrägdach/Fassade 5 cm; Flachdach nach
+ * PROFINESS-Empfehlung (Windlast): O/W und Süd 10° → 0,60 m, Süd 15° → 0,80 m.
+ */
+export function randDefaultVon(f: Flaeche): number {
+  if (artVon(f) === 'flachdach') {
+    const fd = f.flachdach;
+    return fd?.aufstaenderung === 'sued' && fd.winkelDeg >= 15 ? 0.8 : 0.6;
+  }
+  return DEFAULT_RAND_M;
+}
+
 export function randVon(f: Flaeche): number {
-  return f.randM ?? DEFAULT_RAND_M;
+  return f.randM ?? randDefaultVon(f);
 }
 
 export interface UiStringDef {
@@ -306,7 +365,7 @@ export function wrById(id: string): InverterType {
 
 /** Rahmenbedingungen der Fläche für die Feld-Belegung (Engine-Input). */
 export function felderInput(f: Flaeche, modul: ModuleType): FelderInput {
-  return {
+  const basis: FelderInput = {
     // Rahmenbreite (Traufe + Firstversatz bei 'schief'), NICHT die reine Traufe.
     breiteM: rahmenBreiteVon(f),
     hoeheM: f.hoeheM,
@@ -315,6 +374,16 @@ export function felderInput(f: Flaeche, modul: ModuleType): FelderInput {
     umrissM: umrissVon(f),
     hindernisseM: f.hindernisse,
   };
+  if (artVon(f) === 'flachdach' && f.flachdach) {
+    basis.montage = {
+      aufstaenderung: f.flachdach.aufstaenderung,
+      winkelDeg: f.flachdach.winkelDeg,
+      pitchM:
+        f.flachdach.pitchM ??
+        flachdachPitchDefault(f.flachdach.aufstaenderung, f.flachdach.winkelDeg),
+    };
+  }
+  return basis;
 }
 
 /** Modulmaße (Meter) in der gewünschten Ausrichtung. */
@@ -595,6 +664,11 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
       const raster = rasterFuer(f, modul);
       return {
         id: f.id,
+        // ASCII snake_case (SPEC §13): dach | fassade | flachdach_sued_10 | flachdach_ostwest_10
+        montage:
+          artVon(f) === 'flachdach' && f.flachdach
+            ? `flachdach_${f.flachdach.aufstaenderung}_${f.flachdach.winkelDeg}`
+            : artVon(f),
         neigungDeg: f.neigungDeg,
         azimutDeg: f.azimutDeg,
         flaecheM2: Math.round(f.breiteM * f.hoeheM * 10) / 10,

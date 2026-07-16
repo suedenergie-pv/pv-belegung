@@ -133,7 +133,8 @@ export default function Home() {
       f.hoeheM > 0 &&
       Number.isFinite(f.neigungDeg) &&
       f.neigungDeg >= 0 &&
-      f.neigungDeg <= 75,
+      // 90° = Fassade (16.07.2026); Schrägdächer bleiben praktisch bei ≤ 75°
+      f.neigungDeg <= 90,
   );
   const weiterErlaubt = schritt !== 1 || flaechenOk;
 

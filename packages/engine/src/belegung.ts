@@ -669,8 +669,11 @@ function feldZellen(
     for (let paar = 0; paar < paare; paar++) {
       const x0 = paar * Math.max(pitch, paarTiefe);
       const yM = row * (laengsM + fugeM);
-      zellen.push({ row, col: paar * 2, xM: x0, yM, wM: tiefe, hM: laengsM, quer: true, seite: 'ost' });
-      zellen.push({ row, col: paar * 2 + 1, xM: x0 + tiefe + spalt, yM, wM: tiefe, hM: laengsM, quer: true, seite: 'west' });
+      // quer: false — physisch liegen die Module quer AUF DEM GESTELL, aber in der
+      // Draufsicht läuft ihre LANGE Kante vertikal (parallel zum Zeltfirst). Das
+      // quer-Flag steuert die Drehung des Render-Assets, und die ist hier „hochkant".
+      zellen.push({ row, col: paar * 2, xM: x0, yM, wM: tiefe, hM: laengsM, quer: false, seite: 'ost' });
+      zellen.push({ row, col: paar * 2 + 1, xM: x0 + tiefe + spalt, yM, wM: tiefe, hM: laengsM, quer: false, seite: 'west' });
     }
   }
   return zellen;
