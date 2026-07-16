@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { posKey, type BelegungsFeldM } from '@pv-belegung/engine';
+import { DEFAULT_FUGE_M, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import {
   aktiveModule,
   fmtDe,
@@ -76,21 +76,70 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
  * Feldgröße aus einem Griff-Zug (16.07.2026): nur die vom Griff berührten Kanten
  * wandern (`nw` = links+oben, `e` = nur rechts …). Zieht man eine Kante über die
  * gegenüberliegende hinaus, klappt das Rechteck um, statt negativ zu werden.
+ *
+ * WICHTIG — die LINKE/OBERE Kante rastet in ganzen Modulschritten ein: das Zellraster
+ * hängt an der linken oberen Feldecke, also würde ein freies Ziehen dort die ganze
+ * Belegung mitschieben (Module wandern, abgeschaltete Zellen landen woanders → „Lücken,
+ * obwohl Module reinpassen", Genrih 16.07.). Mit dem Raster als Schrittweite bleiben die
+ * bestehenden Module exakt stehen; es kommen nur ganze Spalten/Reihen dazu oder weg.
+ * Rechts/unten darf frei gezogen werden (dort hängt keine Phase dran).
+ *
+ * `zellVersatz` sagt, um wie viele Spalten/Reihen sich die Zell-Nummerierung dabei
+ * verschoben hat — die abgeschalteten Zellen (`leer`) müssen entsprechend mitwandern.
  */
-function feldMitGriff(feld: BelegungsFeldM, griff: GriffId, dx: number, dy: number): RechteckM {
-  let { xM: links, yM: oben, breiteM, hoeheM } = feld;
-  let rechts = links + breiteM;
-  let unten = oben + hoeheM;
-  if (griff.includes('w')) links += dx;
+function feldMitGriff(
+  feld: BelegungsFeldM,
+  griff: GriffId,
+  dx: number,
+  dy: number,
+  pitchX: number,
+  pitchY: number,
+): { rect: RechteckM; zellVersatz: { col: number; row: number } } {
+  let links = feld.xM;
+  let oben = feld.yM;
+  let rechts = links + feld.breiteM;
+  let unten = oben + feld.hoeheM;
+  let dCol = 0;
+  let dRow = 0;
+  if (griff.includes('w')) {
+    const k = Math.round(dx / pitchX); // ganze Modulschritte
+    links += k * pitchX;
+    dCol = -k; // Feld wächst nach links (k<0) → jede Zelle rückt eine Spalte weiter
+  }
   if (griff.includes('e')) rechts += dx;
-  if (griff.includes('n')) oben += dy;
+  if (griff.includes('n')) {
+    const k = Math.round(dy / pitchY);
+    oben += k * pitchY;
+    dRow = -k;
+  }
   if (griff.includes('s')) unten += dy;
   return {
-    xM: Math.min(links, rechts),
-    yM: Math.min(oben, unten),
-    breiteM: Math.max(MIN_FELD_M, Math.abs(rechts - links)),
-    hoeheM: Math.max(MIN_FELD_M, Math.abs(unten - oben)),
+    rect: {
+      xM: Math.min(links, rechts),
+      yM: Math.min(oben, unten),
+      breiteM: Math.max(MIN_FELD_M, Math.abs(rechts - links)),
+      hoeheM: Math.max(MIN_FELD_M, Math.abs(unten - oben)),
+    },
+    zellVersatz: { col: dCol, row: dRow },
   };
+}
+
+/** `leer`-Zellen um (dCol,dRow) umnummerieren; was aus dem Feld fällt, entfällt. */
+function leerVerschoben(
+  leer: readonly string[] | undefined,
+  dCol: number,
+  dRow: number,
+): string[] | undefined {
+  if (!leer?.length) return undefined;
+  if (dCol === 0 && dRow === 0) return [...leer];
+  const neu = leer
+    .map((z) => {
+      const [r, c] = z.split('-').map(Number);
+      return [r! + dRow, c! + dCol] as const;
+    })
+    .filter(([r, c]) => r >= 0 && c >= 0)
+    .map(([r, c]) => `${r}-${c}`);
+  return neu.length ? neu : undefined;
 }
 
 /** Normalisiertes Rechteck aus zwei gezogenen Ecken. */
@@ -276,9 +325,12 @@ export function SchrittBelegung({
     if (drag.art === 'resize') {
       return {
         ...f,
-        felder: felderVon(f).map((feld, i) =>
-          i === drag.index ? { ...feld, ...feldMitGriff(feld, drag.griff, dx, dy) } : feld,
-        ),
+        felder: felderVon(f).map((feld, i) => {
+          if (i !== drag.index) return feld;
+          const { w, h } = modulMasse(modul, feld.quer);
+          const { rect, zellVersatz } = feldMitGriff(feld, drag.griff, dx, dy, w + DEFAULT_FUGE_M, h + DEFAULT_FUGE_M);
+          return { ...feld, ...rect, leer: leerVerschoben(feld.leer, zellVersatz.col, zellVersatz.row) };
+        }),
       };
     }
     return f;
@@ -404,19 +456,14 @@ export function SchrittBelegung({
         setAuswahl({ flaecheId: f.id, indices: [felder.length] });
       }
     } else {
-      // Verschieben/Größe-Ändern committen (Auswahl bleibt bestehen)
+      // Verschieben/Größe-Ändern committen (Auswahl bleibt bestehen). Beim RESIZE
+      // NICHT runden: die Kante ist exakt auf die Modulteilung eingerastet, und
+      // cm-Rundung würde die Phase je Zug um Millimeter verziehen (summiert sich).
       const bewegt = mitDrag(f).felder ?? [];
-      const betrifft = (i: number) => (drag.art === 'move' ? drag.indices.includes(i) : i === drag.index);
       patchFlaeche(f.id, {
         felder: bewegt.map((feld, i) =>
-          betrifft(i)
-            ? {
-                ...feld,
-                xM: round2(feld.xM),
-                yM: round2(feld.yM),
-                breiteM: round2(feld.breiteM),
-                hoeheM: round2(feld.hoeheM),
-              }
+          drag.art === 'move' && drag.indices.includes(i)
+            ? { ...feld, xM: round2(feld.xM), yM: round2(feld.yM) }
             : feld,
         ),
       });
