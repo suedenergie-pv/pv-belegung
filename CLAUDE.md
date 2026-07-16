@@ -67,13 +67,70 @@ Stringcheck-Umbenennung, Belegungs-Optimierer, SüdEnergie-Logo im PDF-Kopf
 **Noch offen:**
 1. ~~PV*SOL-Gegenrechnung (das Gate)~~ — Genrih 13.07.: „auf das Gate scheißen wir."
    Nicht mehr nachhalten.
-2. Ideen: Foto-Feinpositionierung, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
+2. Ideen: Tablet-Version (die Pfeil-Knöpfe sind dafür da), Felder per Griff größer
+   ziehen/Snap, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
+
+⚠️ **Die Belegung läuft seit 16.07.2026 über den FELDER-MODUS** (Nutzer zieht Rechtecke).
+Alle Beschreibungen von Auto-Belegung, Optimierer, „Reihen frei versetzen", Versatz/
+„Beste Position", „Modul setzen", „Einzeln verschieben" und gelöschten Fußabdrücken in
+den Übergaben vom 06.–16.07. sind HISTORIE — dieser Code ist entfernt. Siehe die
+Felder-Übergabe direkt unten.
 
 **Regeln dabei:** Engine rechnet, UI rechnet nie (SPEC §3.4/§3.5). Elektrik nur
 aus Datenblatt-PDFs. Jede Engine-Änderung mit Tests (`npx vitest run --root
 packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsch,
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
+
+## Session-Übergabe 16.07.2026 (9. Session — Fable/Opus): FELDER-MODUS ersetzt den Automatismus
+
+**Das ist jetzt die Belegungs-Wahrheit — alles darunter über Automatik/Optimierer/
+Versatz/Zusatzmodule ist HISTORIE (Code ist raus).** Genrih: „Belegungsautomatismus
+mildern" — nach mehreren Bug-Wellen ersetzt durch SolarEdge-Designer-Prinzip.
+
+**Bedienung:** Neue Flächen starten LEER. Der Nutzer zieht per Klick+Ziehen beliebig
+viele **Belegungsfelder** (Rechtecke) ins Dach, die sich mit Modulen füllen. Antippen =
+aus-/abwählen (mehrere); Ziehen am Feld = Drag&Drop; **Pfeiltasten** (nativer OS-Key-
+Repeat) oder **Pfeil-Knöpfe mit Halte-Wiederholung** (`HoldButton` in ui.tsx, 130 ms —
+BLEIBT für die Tablet-Version, Genrih ausdrücklich). Über Rand/Umriss/Hindernis
+hinausragende Module fallen einfach weg (Feld bleibt, ≥ 0,5 m im Rahmen).
+„Modul löschen" = Zellen antippen. „Automatisch füllen" = ein zentriertes Feld über die
+Nutzfläche (= alte Vollbelegung, aber verschiebbar).
+
+**Architektur:**
+- Engine `berechneFelderRaster(FelderInput, BelegungsFeldM[])` + `vollFeld` + `posKey`
+  (belegung.ts). Überlappende Felder: **früheres gewinnt**, nie zwei Module übereinander.
+- `BelegungsFeldM.leer` = gelöschte Zellen als **feld-lokale** `"row-col"`-Identität →
+  Löcher wandern beim Verschieben von selbst mit. **Merke: nie wieder Löcher/Module an
+  Dach-Koordinaten hängen** — genau das erzeugte die 13./16.07.-Bugs.
+- `Flaeche.felder` ist die EINZIGE Belegungsquelle; `rasterFuer` = reiner Engine-Aufruf
+  ohne UI-Nachfilterung. Alt-Schlüssel werden in `migriereProjekt` gestrippt.
+- `berechneRaster`/`besterVersatz` bleiben in der Engine (Tests hängen dran), werden
+  von der UI aber NICHT mehr benutzt.
+- DachSvg: `pointer`-Prop (Pointer-Events, `touchAction: none`) für beide Zweige
+  (Draufsicht + Foto/Homographie), `felderAnzeige`/`feldVorschau`; `geist` ist raus.
+
+**Drei echte Fehler dabei gefunden (Fallen für die nächste Session):**
+1. `patchFlaeche` las die Fläche aus der **gerenderten Closure** — gehaltene Pfeile
+   feuern schneller als React rendert, jeder zweite Schritt ging verloren (gemessen:
+   2 statt 8/s). Fix: `projektRef` wird beim Patchen sofort mitgezogen.
+2. `speichereProjekte` lief **synchron bei jedem Schritt** und serialisierte das ganze
+   Projekt inkl. Foto-DataURLs → Main-Thread blockiert (1-s-Sleep dauerte 1,84 s).
+   Fix: 400 ms debounced + Flush bei `pagehide`/Unmount (page.tsx).
+   ⚠️ **Testfalle:** localStorage hinkt jetzt 400 ms nach — beim Verifizieren länger
+   warten, sonst misst man alte Werte. Und der pagehide-Flush überschreibt einen per
+   `localStorage.setItem` gesetzten Teststand beim Reload (Workaround: setItem sperren).
+3. `setPointerCapture` stand VOR dem Auslösen; wirft es (NotFoundError bei inaktivem
+   Pointer), war der Knopf/Zug still tot. Reihenfolge gedreht + try/catch.
+   Dazu: Sicherheitsnetz gegen verlorenes `pointerup` (window-Fallback), sonst blieb ein
+   Drag ewig offen und zeigte die Belegung dauerhaft verschoben an.
+
+⚠️ **Preview-Falle (neu):** `setInterval` wird im Preview-Tab auf ~1×/s gedrosselt
+(`visibilityState: 'hidden'`) — die Halte-Wiederholung ist dort NICHT messbar (ein
+nackter `setInterval(130)` feuert genauso langsam). Nicht auf Codefehler schließen.
+
+Nicht im Scope v1: Felder per Griff größer ziehen (löschen + neu ziehen), Snap,
+Undo-History.
 
 ## Session-Übergabe 16.07.2026 (8. Session — Fable): Anker-Umbau nach „komplett verbuggt"
 
