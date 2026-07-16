@@ -82,6 +82,25 @@ packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsc
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
 
+## Session-Übergabe 16.07.2026 (10. Session — Fable): Flachdach + Fassade
+
+`Flaeche.art: 'dach' | 'flachdach' | 'fassade'` (Auswahl in Schritt „Dachflächen").
+
+- **Flachdach** nach **PROFINESS Flat** (Genrih: „Profioness Ost West, schau selber
+  online" — Montageanleitung 05/2025 liegt in `docs/datenblaetter/`, Quelle
+  profiness.de): Ost-West 10° mit **Paar-Pitch 2,48 m** (2er-Gestell 2,48 / 4er 4,96 →
+  Paare bündig), Süd 10°/15° mit **Reihen-Pitch 1,80/1,90 m** (Querschnitte S. 22),
+  Randabstand-Defaults 0,60/0,80 m (Windlast, S. 7), **nur querliegende Module**
+  (Rahmen 1050–1170 mm). Engine: `feldZellen`-Generator in `berechneFelderRaster`
+  (`FelderInput.montage`), Fußabdruck = widthMm·cos(winkel), O/W-Module tragen
+  `seite: 'ost'|'west'` (Westhälfte wird abgeschattet gerendert). **Konvention:
+  Unterkante der Fläche = Süden.** Alle Felder-Werkzeuge unverändert.
+- **Fassade** = ebene Fläche mit Neigung fest 90° (Validierung bis 90° geöffnet),
+  Foto frontal, KEIN Engine-Sonderfall. Oberflächen Putz/Klinker; Fenster = Hindernis.
+- Payload: `flaechen[].montage` (`dach | fassade | flachdach_sued_10 | …`).
+- Pitch je Fläche editierbar (anderes Gestell); `flachdachPitchDefault`/`randDefaultVon`
+  in model.ts sind die einzige Stelle mit den PROFINESS-Werten.
+
 ## Session-Übergabe 16.07.2026 (9. Session — Fable/Opus): FELDER-MODUS ersetzt den Automatismus
 
 **Das ist jetzt die Belegungs-Wahrheit — alles darunter über Automatik/Optimierer/
