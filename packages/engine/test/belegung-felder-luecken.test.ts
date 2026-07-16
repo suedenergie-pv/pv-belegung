@@ -118,7 +118,8 @@ describe('Keine Lücken trotz Platz (16.07.2026)', () => {
     };
     expect(luecken(input, [feld])).toEqual([]);
     // Gegenprobe: genau 2 Module weniger als ohne leer
-    const ohne = berechneFelderRaster(input, [{ ...feld, leer: undefined }]).positionen.length;
+    const { leer: _leer, ...ohneLeer } = feld;
+    const ohne = berechneFelderRaster(input, [ohneLeer]).positionen.length;
     expect(berechneFelderRaster(input, [feld]).positionen.length).toBe(ohne - 2);
   });
 });
