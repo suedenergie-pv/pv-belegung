@@ -21,6 +21,7 @@ export {
   berechneFelderRaster,
   berechneRaster,
   besterVersatz,
+  leerePositionen,
   posKey,
   vollFeld,
   DEFAULT_FUGE_M,

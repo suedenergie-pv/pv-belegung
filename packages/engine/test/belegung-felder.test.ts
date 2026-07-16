@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   berechneFelderRaster,
+  leerePositionen,
   posKey,
   vollFeld,
   type BelegungsFeldM,
@@ -153,6 +154,39 @@ describe('berechneFelderRaster — gelöschte Zellen (leer)', () => {
 
   it('leere Zellen zurückholen = leer entfernen', () => {
     expect(berechneFelderRaster(dach, [feld(3, 2, 2, 2)]).positionen).toHaveLength(4);
+  });
+});
+
+describe('leerePositionen — Geister zum einzelnen Zurückholen (16.07.2026)', () => {
+  it('liefert genau die abgeschalteten Zellen, an ihrer echten Position', () => {
+    const f: BelegungsFeldM = { ...feld(3, 2, 2, 2), leer: ['0-1', '1-0'] };
+    const geister = leerePositionen(dach, [f]);
+    expect(geister).toHaveLength(2);
+    expect(geister.map(posKey).sort()).toEqual(['f0:0-1', 'f0:1-0']);
+    // Position = wo das Modul läge (Zelle 0-1 = zweite Spalte der ersten Reihe)
+    const g = geister.find((p) => p.col === 1 && p.row === 0)!;
+    expect(g.xM).toBeCloseTo(4.782, 6);
+    expect(g.yM).toBeCloseTo(2, 6);
+    expect(g.wM).toBeCloseTo(1.762, 6);
+  });
+
+  it('ohne leer-Zellen keine Geister', () => {
+    expect(leerePositionen(dach, [feld(3, 2, 2, 2)])).toHaveLength(0);
+  });
+
+  it('Zellen außerhalb der Zone erzeugen keine Geister (dort läge ohnehin nichts)', () => {
+    // Feld ragt links raus: Spalte 0 ist außerhalb — als leer markiert bleibt sie unsichtbar
+    const f: BelegungsFeldM = { ...feld(-1, 2, 2, 2), leer: ['0-0', '0-1'] };
+    const geister = leerePositionen(dach, [f]);
+    expect(geister.map(posKey)).toEqual(['f0:0-1']); // nur die Zelle, die drin läge
+  });
+
+  it('von einem anderen Feld gefüllte Lücke ist kein Geist', () => {
+    // A lässt (0,0) frei, B liegt exakt darauf → die Stelle ist belegt, kein Geist
+    const a: BelegungsFeldM = { ...feld(1, 1, 2, 1), leer: ['0-0'] };
+    const b: BelegungsFeldM = { xM: 1, yM: 1, breiteM: 1.762, hoeheM: 1.134, quer: true };
+    expect(berechneFelderRaster(dach, [a, b]).positionen).toHaveLength(2); // A(0-1) + B
+    expect(leerePositionen(dach, [a, b])).toHaveLength(0);
   });
 });
 

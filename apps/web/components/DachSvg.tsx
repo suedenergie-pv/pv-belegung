@@ -61,6 +61,39 @@ export interface FeldVorschau {
 }
 
 /**
+ * Abgeschaltetes Modul (Geist): gestrichelter Umriss an der Stelle, wo das Modul
+ * läge — damit man es einzeln wieder anschalten kann (Klick → `onToggle(key)`).
+ */
+export interface GeistPosition {
+  key: string;
+  xM: number;
+  yM: number;
+  wM: number;
+  hM: number;
+}
+
+/**
+ * Griff zum Ändern der Feldgröße (16.07.2026, Genrih: „Felder korrigieren können").
+ * Die 8 Positionen eines Rechtecks; `nw` = links oben … `e` = rechte Kantenmitte.
+ */
+export type GriffId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+/** Die 8 Griff-Punkte eines Felds in Flächen-Metern (Reihenfolge = Render-Reihenfolge). */
+export function griffPunkte(r: RechteckM): { id: GriffId; p: PunktM }[] {
+  const { xM: x, yM: y, breiteM: b, hoeheM: h } = r;
+  return [
+    { id: 'nw', p: [x, y] },
+    { id: 'n', p: [x + b / 2, y] },
+    { id: 'ne', p: [x + b, y] },
+    { id: 'e', p: [x + b, y + h / 2] },
+    { id: 'se', p: [x + b, y + h] },
+    { id: 's', p: [x + b / 2, y + h] },
+    { id: 'sw', p: [x, y + h] },
+    { id: 'w', p: [x, y + h / 2] },
+  ];
+}
+
+/**
  * Zeiger-Gesten für den Felder-Modus (Ziehen = Feld aufziehen/verschieben).
  * Koordinaten in Flächen-/Rahmen-Metern — in der Draufsicht direkt aus der viewBox,
  * im Foto über die inverse Homographie. Pointer-Events (nicht Mouse), damit
@@ -263,6 +296,7 @@ export function DachSvg({
   hervorheben,
   felderAnzeige,
   feldVorschau,
+  geister,
   pointer,
 }: {
   flaeche: Flaeche;
@@ -282,6 +316,8 @@ export function DachSvg({
   felderAnzeige?: FeldAnzeige[];
   /** Live-Vorschau beim Aufziehen eines Felds. Nie im Druck. */
   feldVorschau?: FeldVorschau | null;
+  /** Abgeschaltete Module als klickbare Geister (Modus „Module an/aus"). Nie im Druck. */
+  geister?: GeistPosition[];
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
 }) {
@@ -409,19 +445,56 @@ export function DachSvg({
    * Overlay hängenbleiben.
    */
   const felderM = druck ? null : (
-    <g style={{ pointerEvents: 'none' }}>
+    <g>
+      {/* Abgeschaltete Module: klickbar, damit man sie EINZELN zurückholen kann */}
+      {(geister ?? []).map((g) => (
+        <g
+          key={g.key}
+          className={toggle ? 'cursor-pointer' : undefined}
+          onClick={toggle ? () => toggle(g.key) : undefined}
+        >
+          <rect
+            x={g.xM}
+            y={g.yM}
+            width={g.wM}
+            height={g.hM}
+            fill="rgba(15,23,42,0.10)"
+            stroke="#0f172a"
+            strokeWidth={0.03}
+            strokeDasharray="0.1 0.08"
+            strokeOpacity={0.6}
+          />
+        </g>
+      ))}
+      <g style={{ pointerEvents: 'none' }}>
       {(felderAnzeige ?? []).map((fa, i) => (
-        <rect
-          key={i}
-          x={fa.rect.xM}
-          y={fa.rect.yM}
-          width={fa.rect.breiteM}
-          height={fa.rect.hoeheM}
-          fill="rgba(2,132,199,0.06)"
-          stroke="#0284c7"
-          strokeWidth={fa.ausgewaehlt ? 0.08 : 0.04}
-          strokeDasharray={fa.ausgewaehlt ? undefined : '0.15 0.1'}
-        />
+        <g key={i}>
+          <rect
+            x={fa.rect.xM}
+            y={fa.rect.yM}
+            width={fa.rect.breiteM}
+            height={fa.rect.hoeheM}
+            fill="rgba(2,132,199,0.06)"
+            stroke="#0284c7"
+            strokeWidth={fa.ausgewaehlt ? 0.08 : 0.04}
+            strokeDasharray={fa.ausgewaehlt ? undefined : '0.15 0.1'}
+          />
+          {/* Griffe: nur am ausgewählten Feld — daran zieht man die Größe */}
+          {fa.ausgewaehlt &&
+            griffPunkte(fa.rect).map(({ id, p }) => (
+              <rect
+                key={id}
+                x={p[0] - 0.11}
+                y={p[1] - 0.11}
+                width={0.22}
+                height={0.22}
+                rx={0.04}
+                fill="#ffffff"
+                stroke="#0284c7"
+                strokeWidth={0.05}
+              />
+            ))}
+        </g>
       ))}
       {feldVorschau && (
         <>
@@ -451,6 +524,7 @@ export function DachSvg({
           </text>
         </>
       )}
+      </g>
     </g>
   );
 
@@ -580,25 +654,59 @@ export function DachSvg({
               toggle,
               hervorheben,
             })}
+            {/* Abgeschaltete Module (Geister) — klickbar zum einzelnen Zurückholen */}
+            {!druck &&
+              (geister ?? []).map((g) => (
+                <path
+                  key={g.key}
+                  d={projPfad(h, rechteck(g.xM, g.yM, g.wM, g.hM))}
+                  fill="rgba(15,23,42,0.18)"
+                  stroke="#ffffff"
+                  strokeWidth={foto.breitePx * 0.002}
+                  strokeDasharray={`${foto.breitePx * 0.006} ${foto.breitePx * 0.004}`}
+                  className={toggle ? 'cursor-pointer' : undefined}
+                  onClick={toggle ? () => toggle(g.key) : undefined}
+                />
+              ))}
             {/* Belegungsfelder perspektivisch (gleiche Homographie wie die Module) */}
             {!druck && (
               <g style={{ pointerEvents: 'none' }}>
                 {(felderAnzeige ?? []).map((fa, i) => (
-                  <path
-                    key={i}
-                    d={projPfad(
-                      h,
-                      rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
-                    )}
-                    fill="rgba(2,132,199,0.06)"
-                    stroke="#0284c7"
-                    strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
-                    strokeDasharray={
-                      fa.ausgewaehlt
-                        ? undefined
-                        : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
-                    }
-                  />
+                  <g key={i}>
+                    <path
+                      d={projPfad(
+                        h,
+                        rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
+                      )}
+                      fill="rgba(2,132,199,0.06)"
+                      stroke="#0284c7"
+                      strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
+                      strokeDasharray={
+                        fa.ausgewaehlt
+                          ? undefined
+                          : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
+                      }
+                    />
+                    {/* Griffe am ausgewählten Feld — an die projizierten Ecken gesetzt */}
+                    {fa.ausgewaehlt &&
+                      griffPunkte(fa.rect).map(({ id, p }) => {
+                        const [gx, gy] = projiziere(h, [p[0], p[1]]);
+                        const r = foto.breitePx * 0.008;
+                        return (
+                          <rect
+                            key={id}
+                            x={gx - r}
+                            y={gy - r}
+                            width={r * 2}
+                            height={r * 2}
+                            rx={r * 0.3}
+                            fill="#ffffff"
+                            stroke="#0284c7"
+                            strokeWidth={foto.breitePx * 0.002}
+                          />
+                        );
+                      })}
+                  </g>
                 ))}
                 {feldVorschau && (
                   <>

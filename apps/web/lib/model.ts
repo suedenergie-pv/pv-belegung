@@ -5,6 +5,7 @@ import {
   DEFAULT_RAND_M,
   berechneFelderRaster,
   checkStringPlan,
+  leerePositionen,
   schraegGeometrie,
   trapezUmriss,
   vollFeld,
@@ -336,6 +337,11 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
 /** Zentriertes Voll-Feld über der Nutzfläche („Automatisch füllen"). */
 export function vollFeldFuer(f: Flaeche, modul: ModuleType): BelegungsFeldM {
   return vollFeld({ ...felderInput(f, modul), ausrichtung: f.ausrichtung });
+}
+
+/** Abgeschaltete Modul-Plätze (nur zum Anzeigen im „Module an/aus"-Modus). */
+export function leerePositionenFuer(f: Flaeche, modul: ModuleType) {
+  return leerePositionen(felderInput(f, modul), f.felder ?? []);
 }
 
 export function aktiveModule(f: Flaeche, raster: BelegungRaster): number {

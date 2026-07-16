@@ -5,6 +5,7 @@ import { posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import {
   aktiveModule,
   fmtDe,
+  leerePositionenFuer,
   modulById,
   modulMasse,
   rahmenBreiteVon,
@@ -19,7 +20,7 @@ import {
   type RechteckM,
 } from '../lib/model';
 import { DACHFARBEN } from '../lib/model';
-import { DachSvg } from './DachSvg';
+import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
 import {
   IconFeld,
@@ -50,14 +51,47 @@ type WerkzeugArt = 'zellen';
 /** Laufende Zeiger-Geste — lebt nur im State, wird erst beim Loslassen committet. */
 type Drag =
   | { art: 'neu'; flaecheId: string; start: PunktM; aktuell: PunktM }
-  | { art: 'move'; flaecheId: string; start: PunktM; aktuell: PunktM; indices: number[] };
+  | { art: 'move'; flaecheId: string; start: PunktM; aktuell: PunktM; indices: number[] }
+  | {
+      art: 'resize';
+      flaecheId: string;
+      start: PunktM;
+      aktuell: PunktM;
+      index: number;
+      griff: GriffId;
+    };
 
 /** Klick vs. Ziehen: darunter gilt die Geste als Klick (Meter). */
 const KLICK_SCHWELLE_M = 0.05;
 /** So viel Feld muss im Rahmen bleiben, damit es nicht „verloren geht" (Meter). */
 const MIN_SICHTBAR_M = 0.5;
+/** Fangradius der Größen-Griffe (Meter) — etwa Fingerbreite auf dem Tablet. */
+const GRIFF_FANG_M = 0.35;
+/** Kleinste Feldgröße beim Ziehen an den Griffen (Meter). */
+const MIN_FELD_M = 0.2;
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Feldgröße aus einem Griff-Zug (16.07.2026): nur die vom Griff berührten Kanten
+ * wandern (`nw` = links+oben, `e` = nur rechts …). Zieht man eine Kante über die
+ * gegenüberliegende hinaus, klappt das Rechteck um, statt negativ zu werden.
+ */
+function feldMitGriff(feld: BelegungsFeldM, griff: GriffId, dx: number, dy: number): RechteckM {
+  let { xM: links, yM: oben, breiteM, hoeheM } = feld;
+  let rechts = links + breiteM;
+  let unten = oben + hoeheM;
+  if (griff.includes('w')) links += dx;
+  if (griff.includes('e')) rechts += dx;
+  if (griff.includes('n')) oben += dy;
+  if (griff.includes('s')) unten += dy;
+  return {
+    xM: Math.min(links, rechts),
+    yM: Math.min(oben, unten),
+    breiteM: Math.max(MIN_FELD_M, Math.abs(rechts - links)),
+    hoeheM: Math.max(MIN_FELD_M, Math.abs(unten - oben)),
+  };
+}
 
 /** Normalisiertes Rechteck aus zwei gezogenen Ecken. */
 function rechteckAus(a: PunktM, b: PunktM): RechteckM {
@@ -212,15 +246,28 @@ export function SchrittBelegung({
    * Mausschritt ruckeln. Commit passiert einmalig beim Loslassen.
    */
   const mitDrag = (f: Flaeche): Flaeche => {
-    if (!drag || drag.flaecheId !== f.id || drag.art !== 'move') return f;
+    if (!drag || drag.flaecheId !== f.id) return f;
     const dx = drag.aktuell[0] - drag.start[0];
     const dy = drag.aktuell[1] - drag.start[1];
-    return {
-      ...f,
-      felder: felderVon(f).map((feld, i) =>
-        drag.indices.includes(i) ? { ...feld, ...klemmeFeld(f, feld, feld.xM + dx, feld.yM + dy) } : feld,
-      ),
-    };
+    if (drag.art === 'move') {
+      return {
+        ...f,
+        felder: felderVon(f).map((feld, i) =>
+          drag.indices.includes(i)
+            ? { ...feld, ...klemmeFeld(f, feld, feld.xM + dx, feld.yM + dy) }
+            : feld,
+        ),
+      };
+    }
+    if (drag.art === 'resize') {
+      return {
+        ...f,
+        felder: felderVon(f).map((feld, i) =>
+          i === drag.index ? { ...feld, ...feldMitGriff(feld, drag.griff, dx, dy) } : feld,
+        ),
+      };
+    }
+    return f;
   };
 
   /**
@@ -273,6 +320,19 @@ export function SchrittBelegung({
 
   const onDownM = (f: Flaeche, p: PunktM) => {
     const felder = felderVon(f);
+    // Griffe der AUSGEWÄHLTEN Felder haben Vorrang vor allem anderen — sie liegen
+    // auf dem Feldrand, dort würde sonst sofort das Verschieben starten.
+    for (const i of auswahlVon(f)) {
+      const feld = felder[i];
+      if (!feld) continue;
+      for (const { id, p: gp } of griffPunkte(feld)) {
+        if (Math.hypot(p[0] - gp[0], p[1] - gp[1]) <= GRIFF_FANG_M) {
+          dragAktiv.current = true;
+          setDrag({ art: 'resize', flaecheId: f.id, start: p, aktuell: p, index: i, griff: id });
+          return;
+        }
+      }
+    }
     // Oberstes Feld unter dem Zeiger gewinnt (später gezogen = weiter oben)
     let treffer = -1;
     for (let i = felder.length - 1; i >= 0; i--) {
@@ -297,9 +357,10 @@ export function SchrittBelegung({
     dragAktiv.current = false;
     const weit = Math.hypot(p[0] - drag.start[0], p[1] - drag.start[1]) >= KLICK_SCHWELLE_M;
     if (!weit) {
-      // Klick: ins Leere = Auswahl aufheben; auf ein Feld = an-/abwählen
+      // Klick: ins Leere = Auswahl aufheben; auf ein Feld = an-/abwählen;
+      // auf einen Griff = nichts (Auswahl behalten, sonst verlöre man sie sofort)
       if (drag.art === 'neu') setAuswahl(null);
-      else {
+      else if (drag.art === 'move') {
         const i = drag.indices[drag.indices.length - 1]!;
         const alt = auswahlVon(f);
         const neu = alt.includes(i) ? alt.filter((x) => x !== i) : [...alt, i];
@@ -329,11 +390,20 @@ export function SchrittBelegung({
         setAuswahl({ flaecheId: f.id, indices: [felder.length] });
       }
     } else {
-      // Verschieben committen (Auswahl bleibt bestehen)
+      // Verschieben/Größe-Ändern committen (Auswahl bleibt bestehen)
       const bewegt = mitDrag(f).felder ?? [];
+      const betrifft = (i: number) => (drag.art === 'move' ? drag.indices.includes(i) : i === drag.index);
       patchFlaeche(f.id, {
         felder: bewegt.map((feld, i) =>
-          drag.indices.includes(i) ? { ...feld, xM: round2(feld.xM), yM: round2(feld.yM) } : feld,
+          betrifft(i)
+            ? {
+                ...feld,
+                xM: round2(feld.xM),
+                yM: round2(feld.yM),
+                breiteM: round2(feld.breiteM),
+                hoeheM: round2(feld.hoeheM),
+              }
+            : feld,
         ),
       });
     }
@@ -425,18 +495,27 @@ export function SchrittBelegung({
       felder: felderVon(f).map((feld, i) => (indices.includes(i) ? { ...feld, leer: undefined } : feld)),
     });
 
-  /** „Modul löschen": angetipptes Modul dauerhaft aus seinem Feld nehmen. */
-  const zelleLoeschen = (f: Flaeche, key: string) => {
+  /**
+   * „Module an/aus": angetipptes Modul abschalten — oder einen angetippten Geist
+   * wieder anschalten (16.07.2026, Genrih). Toggle statt Einbahnstraße: vorher
+   * konnte man ein versehentlich abgeschaltetes Modul nur alle-auf-einmal
+   * zurückholen, weil die Lücke unsichtbar war.
+   */
+  const zelleToggle = (fArg: Flaeche, key: string) => {
+    const f = frisch(fArg);
     const m = /^f(\d+):(-?\d+)-(-?\d+)$/.exec(key);
     if (!m) return;
     const fi = Number(m[1]);
     const zelle = `${m[2]}-${m[3]}`;
     const felder = felderVon(f);
-    if (!felder[fi] || felder[fi]!.leer?.includes(zelle)) return;
+    const feld = felder[fi];
+    if (!feld) return;
+    const aus = feld.leer?.includes(zelle) ?? false;
+    const leer = aus
+      ? (feld.leer ?? []).filter((z) => z !== zelle)
+      : [...(feld.leer ?? []), zelle];
     patchFlaeche(f.id, {
-      felder: felder.map((feld, i) =>
-        i === fi ? { ...feld, leer: [...(feld.leer ?? []), zelle] } : feld,
-      ),
+      felder: felder.map((x, i) => (i === fi ? { ...x, leer: leer.length ? leer : undefined } : x)),
     });
   };
 
@@ -543,12 +622,12 @@ export function SchrittBelegung({
                     title={
                       felder.length === 0
                         ? 'Erst ein Belegungsfeld aufziehen'
-                        : 'Einzelne Module antippen und dauerhaft entfernen'
+                        : 'Einzelne Module antippen zum Ab- und wieder Anschalten'
                     }
                     onClick={() => setzeModus(f, modusArt(f) === 'zellen' ? null : 'zellen')}
                   >
                     <IconModulLoeschen />
-                    Modul löschen
+                    Module an/aus
                   </WerkzeugKnopf>
                 </div>
                 <div className="ml-auto flex flex-wrap gap-2">
@@ -865,17 +944,19 @@ export function SchrittBelegung({
                 <p className="mt-1 text-xs text-sky-800">
                   <strong>Ziehen</strong> auf freier Fläche = neues Feld · <strong>Antippen</strong>{' '}
                   = aus-/abwählen (mehrere möglich) · <strong>Ziehen am Feld</strong> = verschieben ·{' '}
+                  <strong>an den weißen Griffen ziehen</strong> = Größe korrigieren ·{' '}
                   <strong>Pfeiltasten</strong> (oder die Knöpfe, gedrückt halten) = cm-genau schieben.
-                  Über den Rand/Umriss/ein Hindernis geschobene Module fallen einfach weg.
+                  Über den Rand/Umriss/ein Hindernis geschobene Module fallen einfach weg. Einzelne
+                  Module ab-/anschalten: Werkzeug „Module an/aus".
                 </p>
               </div>
             )}
 
             {belegungZeigen && modusArt(f) === 'zellen' && (
-              <div className="mb-3 rounded-lg bg-red-50 px-3 py-2">
+              <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-red-800">
-                    Module antippen — sie verschwinden sofort.
+                  <span className="text-sm font-medium text-slate-700">
+                    Module antippen zum Ab- und wieder Anschalten.
                   </span>
                   {leerZahl > 0 && (
                     <button
@@ -883,16 +964,17 @@ export function SchrittBelegung({
                       className={aktionKlasse}
                       onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}
                     >
-                      Alle zurückholen ({leerZahl})
+                      Alle anschalten ({leerZahl})
                     </button>
                   )}
                   <button type="button" className={aktionKlasse} onClick={() => setzeModus(f, null)}>
                     ✓ Fertig
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-red-800">
-                  <strong>Modul löschen:</strong> die Lücke gehört zum Feld und wandert beim
-                  Verschieben mit. Über „Alle zurückholen" jederzeit rückgängig.
+                <p className="mt-1 text-xs text-slate-500">
+                  Abgeschaltete Module bleiben als graue Lücke sichtbar — nochmal antippen holt sie
+                  zurück. Die Lücke gehört zum Feld und wandert beim Verschieben mit. Im PDF ist
+                  dort nichts.
                 </p>
               </div>
             )}
@@ -908,6 +990,17 @@ export function SchrittBelegung({
                   ausgewaehlt: gewaehlt.includes(k),
                 }))}
                 feldVorschau={vorschauFuer(f)}
+                geister={
+                  modusArt(f) === 'zellen'
+                    ? leerePositionenFuer(fEff, modul).map((p) => ({
+                        key: posKey(p),
+                        xM: p.xM,
+                        yM: p.yM,
+                        wM: p.wM,
+                        hM: p.hM,
+                      }))
+                    : undefined
+                }
                 pointer={
                   felderWerkzeug
                     ? {
@@ -925,7 +1018,7 @@ export function SchrittBelegung({
                     ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
                     : undefined
                 }
-                onToggle={modusArt(f) === 'zellen' ? (key) => zelleLoeschen(f, key) : undefined}
+                onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
               />
             )}
 

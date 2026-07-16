@@ -625,6 +625,34 @@ export function berechneFelderRaster(
 }
 
 /**
+ * Die als `leer` markierten Zellen eines Felds — also die Plätze, an denen ein Modul
+ * LIEGEN WÜRDE, wenn der Nutzer es nicht abgeschaltet hätte (16.07.2026). Nur zum
+ * ANZEIGEN im Bearbeiten-Modus: ohne sichtbare Lücke könnte man ein versehentlich
+ * abgeschaltetes Modul nicht einzeln zurückholen. Zählt nirgends mit (kWp/Export
+ * laufen über berechneFelderRaster).
+ */
+export function leerePositionen(
+  input: FelderInput,
+  felder: readonly BelegungsFeldM[],
+): ModulPosition[] {
+  const ohneLuecken = berechneFelderRaster(
+    input,
+    felder.map(({ leer: _leer, ...rest }) => rest),
+  );
+  const belegt = berechneFelderRaster(input, felder);
+  const belegteKeys = new Set(belegt.positionen.map(posKey));
+  return ohneLuecken.positionen.filter((p) => {
+    if (belegteKeys.has(posKey(p))) return false; // liegt ja ein Modul
+    // Bei überlappenden Feldern kann die Lücke von einem anderen Feld gefüllt sein —
+    // dann ist sie nicht frei und darf nicht als Geist erscheinen.
+    const rect: RechteckM = { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM };
+    return !belegt.positionen.some((q) =>
+      rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM }),
+    );
+  });
+}
+
+/**
  * Zentriertes Voll-Feld über der Nutzfläche („Automatisch füllen"): exakt so
  * groß, dass cols×rows Module hineinpassen — entspricht der früheren zentrierten
  * Standardbelegung, aber als ganz normales, verschiebbares Feld. Passt kein Modul,
