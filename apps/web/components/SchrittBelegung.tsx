@@ -163,68 +163,80 @@ export function SchrittBelegung({
 
   const round2 = (v: number) => Math.round(v * 100) / 100;
 
-  /**
-   * Gelöschte Felder um (dx,dy) mitschieben: die Leerstellen gehören zur ANLAGE,
-   * nicht zum Dach — beim Verschieben wandern sie mit, sonst fräsen sie Löcher in
-   * die verschobene Belegung (Genrih 13.07.). Exakt derselbe Delta wie das Gitter,
-   * ohne Rundung, damit Loch und Modulplatz deckungsgleich bleiben.
-   */
-  const geloeschtVerschoben = (f: Flaeche, dx: number, dy: number) =>
-    f.geloescht?.length && (dx !== 0 || dy !== 0)
-      ? f.geloescht.map((g) => ({ ...g, xM: g.xM + dx, yM: g.yM + dy }))
-      : f.geloescht;
+  // Gelöschte Felder brauchen beim Verschieben KEINE Sonderbehandlung mehr: sie
+  // sind relativ zum Gitter-Anker gespeichert (geloeschtRel) und kleben damit von
+  // selbst am Raster — egal ob Nudge, „Beste Position" oder Optimierer (16.07.2026).
 
   /** Ganze Belegung um `schrittCm` in eine Richtung schieben (sx/sy ∈ {-1,0,1}). */
   const nudge = (f: Flaeche, sx: number, sy: number) => {
     const step = Math.max(0.01, schrittCm / 100);
     const klemm = (v: number, grenze: number) => Math.max(-grenze, Math.min(grenze, v));
-    const nx = round2(klemm((f.versatzXM ?? 0) + sx * step, rahmenBreiteVon(f)));
-    const ny = round2(klemm((f.versatzYM ?? 0) + sy * step, f.hoeheM));
     patchFlaeche(f.id, {
-      versatzXM: nx,
-      versatzYM: ny,
+      versatzXM: round2(klemm((f.versatzXM ?? 0) + sx * step, rahmenBreiteVon(f))),
+      versatzYM: round2(klemm((f.versatzYM ?? 0) + sy * step, f.hoeheM)),
       inaktiv: [],
-      geloescht: geloeschtVerschoben(f, nx - (f.versatzXM ?? 0), ny - (f.versatzYM ?? 0)),
     });
   };
 
-  const bestePosition = (f: Flaeche) => {
-    const best = besterVersatzFuer(f, modul);
-    patchFlaeche(f.id, {
-      ...best,
-      inaktiv: [],
-      geloescht: geloeschtVerschoben(
-        f,
-        best.versatzXM - (f.versatzXM ?? 0),
-        best.versatzYM - (f.versatzYM ?? 0),
-      ),
-    });
-  };
+  const bestePosition = (f: Flaeche) =>
+    patchFlaeche(f.id, { ...besterVersatzFuer(f, modul), inaktiv: [] });
 
   /** Zurück auf automatische Lage (Versatz entfernen). */
   const versatzZuruecksetzen = (f: Flaeche) =>
-    patchFlaeche(f.id, {
-      versatzXM: undefined,
-      versatzYM: undefined,
-      inaktiv: [],
-      geloescht: geloeschtVerschoben(f, -(f.versatzXM ?? 0), -(f.versatzYM ?? 0)),
-    });
+    patchFlaeche(f.id, { versatzXM: undefined, versatzYM: undefined, inaktiv: [] });
 
-  /** Zusatzmodul mittig auf den Klick, y auf die nächste Rasterreihe fangen, in die Zone klemmen. */
+  /**
+   * Zusatzmodul mittig auf den Klick; y wird auf die nächste GITTERreihe gefangen.
+   * Die Reihen kommen aus dem Gitter-Anker der Engine — nicht aus den belegten
+   * Modulen, sonst fehlt eine komplett gelöschte/leere Reihe in der Fangliste und
+   * das Modul hängt daneben, obwohl Platz ist (Genrih 16.07.). `freiY` = ungefangene
+   * Alternative für den Fall, dass die gefangene Reihe belegt ist.
+   */
   const snapExtra = (f: Flaeche, p: PunktM, quer: boolean) => {
     const { w, h } = modulMasse(modul, quer);
     const rand = randVon(f);
-    const reihenY = [
-      ...new Set(rasterFuer(f, modul).positionen.filter((q) => q.row >= 0).map((q) => q.yM)),
-    ];
-    let yM = p[1] - h / 2;
-    if (reihenY.length) {
-      yM = reihenY.reduce((a, b) => (Math.abs(b - yM) < Math.abs(a - yM) ? b : a), reihenY[0]!);
+    const raster = rasterFuer(f, modul);
+    const klemmY = (v: number) => Math.max(rand, Math.min(f.hoeheM - rand - h, v));
+    const freiY = klemmY(p[1] - h / 2);
+    const reihenY: number[] = [];
+    if (!f.baender) {
+      const pitchY = raster.modulHoeheM + raster.fugeM;
+      const k0 = Math.ceil((rand - raster.ankerYM) / pitchY - 1e-9);
+      for (let k = k0; reihenY.length <= 500; k++) {
+        const y = raster.ankerYM + k * pitchY;
+        if (y + raster.modulHoeheM > f.hoeheM - rand + 1e-6) break;
+        reihenY.push(y);
+      }
+    } else {
+      // Gemischte Bänder: kein einheitliches Gitter → an den belegten Reihen fangen
+      reihenY.push(...new Set(raster.positionen.filter((q) => q.row >= 0).map((q) => q.yM)));
     }
+    const yM = reihenY.length
+      ? klemmY(reihenY.reduce((a, b) => (Math.abs(b - freiY) < Math.abs(a - freiY) ? b : a), reihenY[0]!))
+      : freiY;
     return {
       xM: Math.max(rand, Math.min(rahmenBreiteVon(f) - rand - w, p[0] - w / 2)),
-      yM: Math.max(rand, Math.min(f.hoeheM - rand - h, yM)),
+      yM,
+      freiY,
     };
+  };
+
+  /**
+   * Ziel fürs Setzen/Versetzen: erst die gefangene Reihe probieren, sonst die freie
+   * Klickposition — was zuerst gültig ist. Vorher scheiterte das Setzen komplett,
+   * wenn die nächstgelegene Reihe voll war, obwohl daneben Platz gewesen wäre.
+   */
+  const zielExtra = (
+    f: Flaeche,
+    p: PunktM,
+    quer: boolean,
+    ausser?: number,
+  ): { xM: number; yM: number; ok: boolean } => {
+    const s = snapExtra(f, p, quer);
+    if (extraModulGueltig(f, modul, s.xM, s.yM, quer, ausser)) return { xM: s.xM, yM: s.yM, ok: true };
+    if (Math.abs(s.freiY - s.yM) > 1e-9 && extraModulGueltig(f, modul, s.xM, s.freiY, quer, ausser))
+      return { xM: s.xM, yM: s.freiY, ok: true };
+    return { xM: s.xM, yM: s.yM, ok: false };
   };
 
   /**
@@ -245,18 +257,18 @@ export function SchrittBelegung({
     if (gewaehltExtra != null && extras[gewaehltExtra]) {
       // Gewähltes Modul auf die freie Stelle verschieben
       const e = extras[gewaehltExtra]!;
-      const { xM, yM } = snapExtra(f, p, e.quer);
-      if (extraModulGueltig(f, modul, xM, yM, e.quer, gewaehltExtra))
+      const z = zielExtra(f, p, e.quer, gewaehltExtra);
+      if (z.ok)
         patchFlaeche(f.id, {
-          extraModule: extras.map((x, i) => (i === gewaehltExtra ? { ...x, xM, yM } : x)),
+          extraModule: extras.map((x, i) => (i === gewaehltExtra ? { ...x, xM: z.xM, yM: z.yM } : x)),
         });
       return;
     }
     // Neues Modul setzen und gleich auswählen
     const quer = f.ausrichtung === 'quer';
-    const { xM, yM } = snapExtra(f, p, quer);
-    if (!extraModulGueltig(f, modul, xM, yM, quer)) return;
-    patchFlaeche(f.id, { extraModule: [...extras, { xM, yM, quer }] });
+    const z = zielExtra(f, p, quer);
+    if (!z.ok) return;
+    patchFlaeche(f.id, { extraModule: [...extras, { xM: z.xM, yM: z.yM, quer }] });
     setGewaehltExtra(extras.length);
   };
 
@@ -269,10 +281,9 @@ export function SchrittBelegung({
     if (!geistM) return null;
     const gewaehlt = gewaehltExtra != null ? f.extraModule?.[gewaehltExtra] : undefined;
     const quer = gewaehlt ? gewaehlt.quer : f.ausrichtung === 'quer';
-    const { xM, yM } = snapExtra(f, geistM, quer);
+    const z = zielExtra(f, geistM, quer, gewaehltExtra ?? undefined);
     const { w, h } = modulMasse(modul, quer);
-    const ok = extraModulGueltig(f, modul, xM, yM, quer, gewaehltExtra ?? undefined);
-    return { xM, yM, wM: w, hM: h, ok };
+    return { xM: z.xM, yM: z.yM, wM: w, hM: h, ok: z.ok };
   };
 
   /** Gewähltes Zusatzmodul um schrittCm in eine Richtung schieben (validiert). */
@@ -308,11 +319,24 @@ export function SchrittBelegung({
       setEinzelAuswahl((a) => (a.includes(idx) ? a.filter((i) => i !== idx) : [...a, idx]));
       return;
     }
-    const p = rasterFuer(f, modul).positionen.find((q) => `${q.row}-${q.col}` === key);
+    const raster = rasterFuer(f, modul);
+    const p = raster.positionen.find((q) => `${q.row}-${q.col}` === key);
     if (!p) return;
     const extras = f.extraModule ?? [];
+    // Schutz vor Doppel-Umwandlung (schnelle Klicks vor dem Re-Render): liegt an
+    // der Stelle schon ein Zusatzmodul, nur auswählen statt erneut umwandeln.
+    const vorhanden = extras.findIndex(
+      (x) => Math.abs(x.xM - p.xM) < 1e-6 && Math.abs(x.yM - p.yM) < 1e-6,
+    );
+    if (vorhanden >= 0) {
+      setEinzelAuswahl((a) => (a.includes(vorhanden) ? a : [...a, vorhanden]));
+      return;
+    }
     patchFlaeche(f.id, {
-      geloescht: [...(f.geloescht ?? []), { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM }],
+      geloeschtRel: [
+        ...(f.geloeschtRel ?? []),
+        { xM: p.xM - raster.ankerXM, yM: p.yM - raster.ankerYM, breiteM: p.wM, hoeheM: p.hM },
+      ],
       extraModule: [...extras, { xM: p.xM, yM: p.yM, quer: p.quer }],
       inaktiv: f.inaktiv.filter((k) => k !== key),
     });
@@ -358,10 +382,17 @@ export function SchrittBelegung({
         continue;
       }
       const p = raster.positionen.find((q) => `${q.row}-${q.col}` === key);
-      if (p) felder.push({ xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM });
+      // Fußabdruck relativ zum Gitter-Anker → klebt am Raster (16.07.2026)
+      if (p)
+        felder.push({
+          xM: p.xM - raster.ankerXM,
+          yM: p.yM - raster.ankerYM,
+          breiteM: p.wM,
+          hoeheM: p.hM,
+        });
     }
     patchFlaeche(f.id, {
-      geloescht: [...(f.geloescht ?? []), ...felder],
+      geloeschtRel: [...(f.geloeschtRel ?? []), ...felder],
       extraModule: extraWeg.size
         ? (f.extraModule ?? []).filter((_, i) => !extraWeg.has(i))
         : f.extraModule,
@@ -493,13 +524,20 @@ export function SchrittBelegung({
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
                     aktiv={modusArt(f) === 'verschieben'}
-                    disabled={!!f.baender}
-                    title={f.baender ? 'Erst „Alle Reihen gleich“ — Verschieben geht nur bei einheitlichen Reihen' : 'Ganze Belegung cm-weise schieben'}
+                    disabled={!!f.baender || !!raster.reihenVersetzt}
+                    title={
+                      f.baender
+                        ? 'Erst „Alle Reihen gleich“ — Verschieben geht nur bei einheitlichen Reihen'
+                        : raster.reihenVersetzt
+                          ? 'Die Reihen sind einzeln versetzt („Reihen frei versetzen"/Schrägdach) — Verschieben braucht fluchtende Spalten'
+                          : 'Ganze Belegung cm-weise schieben'
+                    }
                     onClick={() => {
-                      if (f.baender) return;
+                      if (f.baender || raster.reihenVersetzt) return;
                       const an = modusArt(f) !== 'verschieben';
                       setzeModus(f, an ? 'verschieben' : null);
-                      // Beim Aktivieren Versatz aktivieren (Lattice ab aktueller Lage)
+                      // Beim Aktivieren Versatz aktivieren (Gitter ab der Standardlage —
+                      // dank gemeinsamem Anker exakt dieselbe Belegung, kein Springen)
                       if (an && f.versatzXM === undefined)
                         patchFlaeche(f.id, { versatzXM: 0, versatzYM: 0 });
                     }}
@@ -572,15 +610,15 @@ export function SchrittBelegung({
                       Alle zeigen
                     </button>
                   )}
-                  {(f.geloescht?.length ?? 0) > 0 && (
+                  {(f.geloeschtRel?.length ?? 0) > 0 && (
                     <button
                       type="button"
                       className={aktionKlasse}
                       title="Alle endgültig gelöschten Modul-Felder wieder freigeben"
-                      onClick={() => patchFlaeche(f.id, { geloescht: undefined })}
+                      onClick={() => patchFlaeche(f.id, { geloeschtRel: undefined })}
                     >
                       <IconAlleZeigen />
-                      Gelöschte zurückholen ({f.geloescht!.length})
+                      Gelöschte zurückholen ({f.geloeschtRel!.length})
                     </button>
                   )}
                 </div>

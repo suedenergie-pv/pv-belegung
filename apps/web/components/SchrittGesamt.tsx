@@ -91,8 +91,10 @@ export function SchrittGesamt({
       if (neu.length >= 4) {
         const vier: [Punkt, Punkt, Punkt, Punkt] = [neu[0]!, neu[1]!, neu[2]!, neu[3]!];
         const ecken = firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
-        // Neu platziert → Umriss/Hindernisse zurücksetzen, in den Bearbeiten-Modus
-        patchFlaeche(platziereId, { gesamtEckenPx: ecken, umrissM: undefined, hindernisse: [], inaktiv: [] });
+        // NUR die Anker-Ecken setzen (16.07.2026): Umriss/Hindernisse sind in
+        // Flächen-METERN gespeichert und vom Foto-Anker unabhängig — sie hier zu
+        // löschen zerschoss die Belegung und die Einzelflächen-Ansicht (Genrih).
+        patchFlaeche(platziereId, { gesamtEckenPx: ecken });
         setPunkte([]);
         setFirstLinie(null);
         return setPhase('edit');

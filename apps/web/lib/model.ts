@@ -129,14 +129,21 @@ export interface Flaeche {
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
   hindernisse?: RechteckM[];
   /**
-   * Endgültig gelöschte Modul-Felder (Fußabdrücke in Flächen-Metern, 13.07.2026,
-   * Genrih): diese Stellen bleiben DAUERHAFT leer — jedes Rastermodul, das so ein
-   * Feld überlappt, entfällt, auch nach Verschieben/Neu-Rechnen. Nur manuell
-   * gesetzte Zusatzmodule (extraModule) dürfen dort wieder hin. Bewusst NICHT als
-   * Engine-Hindernis geführt, damit der Optimierer die übrige Belegung beim
-   * Löschen nicht umsortiert (Filter erst nach berechneRaster).
+   * VERALTET (nur noch für die Migration gelesen): gelöschte Modul-Felder als
+   * ABSOLUTE Dach-Koordinaten (13.07.2026). Absolut gespeichert rissen die Löcher
+   * vom Raster ab, sobald der Optimierer/Versatz die Belegung anders verankerte
+   * (doppelte Modulschichten, Genrih 16.07.). → geloeschtRel.
    */
   geloescht?: RechteckM[];
+  /**
+   * Endgültig gelöschte Modul-Felder (16.07.2026), RELATIV zum Gitter-Anker
+   * (BelegungRaster.ankerXM/ankerYM): die Löcher kleben damit am RASTER und
+   * wandern bei Verschieben/„Beste Position"/Optimierer automatisch mit — jedes
+   * Rastermodul, das so ein Feld überlappt, entfällt (Filter NACH der Engine,
+   * Keys bleiben stabil). Nur manuell gesetzte Zusatzmodule (extraModule) dürfen
+   * dort wieder hin.
+   */
+  geloeschtRel?: RechteckM[];
   /**
    * Ausrichtung je Band (Reihe) von oben nach unten. Fehlt/leer = alle Reihen
    * gleich `ausrichtung`. Sobald ein Band abweicht, rechnet die Engine die Fläche
@@ -351,17 +358,23 @@ export function modulMasse(modul: ModuleType, quer: boolean): { w: number; h: nu
 
 export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
   const raster = berechneRaster(belegungInput(f, modul));
-  // Endgültig gelöschte Felder: überlappende Rastermodule entfallen — NACH der
-  // Engine (Keys row/col bleiben stabil, Optimierer sortiert nichts um).
-  const geloescht = f.geloescht ?? [];
-  let positionen = geloescht.length
-    ? raster.positionen.filter(
-        (p) =>
-          !geloescht.some((g) =>
-            rechteckeUeberlappen({ xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM }, g),
-          ),
-      )
-    : raster.positionen;
+  let positionen = raster.positionen;
+  // Endgültig gelöschte Felder (relativ zum Gitter-Anker → kleben am Raster):
+  // überlappende Rastermodule entfallen — NACH der Engine (Keys row/col bleiben
+  // stabil, Optimierer sortiert nichts um).
+  const geloescht = (f.geloeschtRel ?? []).map((g) => ({
+    ...g,
+    xM: raster.ankerXM + g.xM,
+    yM: raster.ankerYM + g.yM,
+  }));
+  if (geloescht.length) {
+    positionen = positionen.filter(
+      (p) =>
+        !geloescht.some((g) =>
+          rechteckeUeberlappen({ xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM }, g),
+        ),
+    );
+  }
   const extra = f.extraModule;
   if (extra?.length) {
     // Manuelle Zusatzmodule als Positionen anhängen (row = -1 → eindeutige Keys "-1-i");
@@ -370,6 +383,18 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
       const { w, h } = modulMasse(modul, e.quer);
       return { row: -1, col: i, xM: e.xM, yM: e.yM, quer: e.quer, wM: w, hM: h };
     });
+    // Zusatzmodule GEWINNEN: Rastermodule, die ein Extra überlappen, entfallen.
+    // Damit kann konstruktiv nie eine doppelte Modulschicht entstehen, egal wie
+    // sich das Layout ändert (Genrih 16.07.: „haut eine Schicht Module drauf").
+    positionen = positionen.filter(
+      (p) =>
+        !zusatz.some((z) =>
+          rechteckeUeberlappen(
+            { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM },
+            { xM: z.xM, yM: z.yM, breiteM: z.wM, hoeheM: z.hM },
+          ),
+        ),
+    );
     positionen = [...positionen, ...zusatz];
   }
   return positionen === raster.positionen ? raster : { ...raster, positionen };
@@ -540,6 +565,27 @@ function migriereProjekt(roh: Projekt): Projekt {
   projekt.flaechen = projekt.flaechen.map((f) =>
     f.foto?.eckenPx && f.markierungFertig === undefined ? { ...f, markierungFertig: true } : f,
   );
+  // 16.07.2026: alte ABSOLUTE Lösch-Felder (geloescht) → RELATIV zum Gitter-Anker
+  // (geloeschtRel), damit die Löcher am Raster kleben statt am Dach. Umrechnung
+  // über den Anker der aktuellen Standardlage (bestmögliche Annäherung).
+  const migModul = modulById(projekt.modulId);
+  projekt.flaechen = projekt.flaechen.map((f) => {
+    if (!f.geloescht?.length) {
+      if ('geloescht' in f) {
+        const { geloescht: _leer, ...rest } = f;
+        return rest;
+      }
+      return f;
+    }
+    const anker = berechneRaster(belegungInput(f, migModul));
+    const rel = f.geloescht.map((g) => ({
+      ...g,
+      xM: g.xM - anker.ankerXM,
+      yM: g.yM - anker.ankerYM,
+    }));
+    const { geloescht: _alt, ...rest } = f;
+    return { ...rest, geloeschtRel: [...(f.geloeschtRel ?? []), ...rel] };
+  });
   return projekt;
 }
 

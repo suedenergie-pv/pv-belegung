@@ -244,6 +244,66 @@ describe('Schiefe Dachfläche / Parallelogramm (schraegGeometrie, 08.07.2026)', 
   });
 });
 
+describe('Gitter-Anker & Versatz-Konsistenz (16.07.2026)', () => {
+  // Parallelogramm-Umriss: hier greift der Block-Optimierer (dx ≠ 0) — genau der
+  // Fall, in dem der Versatz-Pfad früher anders verankert war (Belegung sprang
+  // beim Einschalten von „Verschieben", Lösch-Felder passten nicht mehr; Genrih).
+  const schraeg = 2.2;
+  const basis = {
+    breiteM: 10 + schraeg,
+    hoeheM: 6,
+    module: M,
+    ausrichtung: 'quer' as const,
+    umrissM: [[schraeg, 0], [10 + schraeg, 0], [10, 6], [0, 6]] as [number, number][],
+  };
+  const sortiert = (r: ReturnType<typeof berechneRaster>) =>
+    [...r.positionen].sort((a, b) => a.yM - b.yM || a.xM - b.xM).map((p) => [p.xM, p.yM]);
+
+  it('versatz (0,0) entspricht exakt der Standardlage (inkl. Optimierer-dx)', () => {
+    const std = berechneRaster(basis);
+    expect(std.reihenVersetzt).toBe(false); // auto bleibt hier der Block
+    const v0 = berechneRaster({ ...basis, versatzXM: 0, versatzYM: 0 });
+    const a = sortiert(std);
+    const b = sortiert(v0);
+    expect(b.length).toBe(a.length);
+    a.forEach(([x, y], i) => {
+      expect(b[i]![0]).toBeCloseTo(x!, 9);
+      expect(b[i]![1]).toBeCloseTo(y!, 9);
+    });
+  });
+
+  it('jede Position liegt auf dem Anker-Gitter (anker + k·pitch)', () => {
+    for (const input of [
+      basis,
+      { ...basis, versatzXM: 0.13, versatzYM: -0.07 },
+      { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const },
+    ]) {
+      const r = berechneRaster(input);
+      expect(r.positionen.length).toBeGreaterThan(0);
+      for (const p of r.positionen) {
+        const kx = (p.xM - r.ankerXM) / (r.modulBreiteM + r.fugeM);
+        const ky = (p.yM - r.ankerYM) / (r.modulHoeheM + r.fugeM);
+        expect(Math.abs(kx - Math.round(kx))).toBeLessThan(1e-6);
+        expect(Math.abs(ky - Math.round(ky))).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it("reihenVersetzt: true bei 'frei' am Parallelogramm, false am Rechteck", () => {
+    expect(berechneRaster({ ...basis, optimierung: 'frei' }).reihenVersetzt).toBe(true);
+    expect(
+      berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' }).reihenVersetzt,
+    ).toBe(false);
+  });
+
+  it('besterVersatz zählt auf demselben Anker wie berechneRaster (Umriss-Dach)', () => {
+    const best = besterVersatz(basis);
+    const beiBest = berechneRaster({ ...basis, ...best }).positionen.length;
+    const bei0 = berechneRaster({ ...basis, versatzXM: 0, versatzYM: 0 }).positionen.length;
+    expect(beiBest).toBeGreaterThanOrEqual(bei0);
+  });
+});
+
 describe('Manueller Versatz / Nudge (07.07.2026)', () => {
   const basis = { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const };
   // Hindernis, das nur Reihe0/Spalte0 streift (x 0,40..0,65) → 1 Modul entfaellt.

@@ -87,6 +87,20 @@ export interface BelegungRaster {
   positionen: ModulPosition[];
   randM: number;
   fugeM: number;
+  /**
+   * Anker der Gitterphase (16.07.2026): linke obere Ecke der Zelle (0,0) — jede
+   * Modulposition liegt auf anker + k·pitch. Bezugspunkt für Dinge, die am RASTER
+   * kleben sollen (z. B. endgültig gelöschte Felder in der UI): relativ zum Anker
+   * gespeichert wandern sie automatisch mit Versatz/Optimierer mit.
+   */
+  ankerXM: number;
+  ankerYM: number;
+  /**
+   * true = mindestens eine Reihe weicht vom ausgerichteten Block ab (Spalten
+   * fluchten nicht). Der manuelle Versatz (EIN Gitter) kann diese Lage nicht
+   * darstellen — die UI sperrt „Verschieben" dann ehrlich.
+   */
+  reihenVersetzt?: boolean;
 }
 
 /**
@@ -101,6 +115,45 @@ function gitterAchse(anker: number, pitch: number, size: number, rand: number, d
   const res: number[] = [];
   for (let v = anker + k0 * pitch; v + size <= maxPos + 1e-9; v += pitch) res.push(v);
   return res;
+}
+
+/**
+ * Bester globaler Block-Versatz dx (Optimierer-Kandidat 1): das ganze Raster
+ * horizontal so schieben, dass die meisten Module gültig sind; bei Gleichstand
+ * gewinnt der kleinste |dx|. Geteilt zwischen berechneRaster und besterVersatz,
+ * damit BEIDE dieselbe Standardlage als Anker benutzen (16.07.2026).
+ */
+function sucheBlockDx(a: {
+  optimieren: boolean;
+  x0: number;
+  cols: number;
+  pitchX: number;
+  yPos: readonly number[];
+  gueltig: (xM: number, yM: number) => boolean;
+  dxMin: number;
+  dxMax: number;
+  schritt: number;
+}): number {
+  if (!a.optimieren) return 0;
+  const EPS = 1e-4;
+  const zaehle = (v: number): number => {
+    let n = 0;
+    for (const yM of a.yPos)
+      for (let col = 0; col < a.cols; col++) if (a.gueltig(a.x0 + v + col * a.pitchX, yM)) n++;
+    return n;
+  };
+  let dx = 0;
+  let best = zaehle(0);
+  let bestAbs = 0;
+  for (let v = a.dxMin; v <= a.dxMax + EPS; v += a.schritt) {
+    const n = zaehle(v);
+    if (n > best || (n === best && Math.abs(v) < bestAbs - EPS)) {
+      best = n;
+      bestAbs = Math.abs(v);
+      dx = v;
+    }
+  }
+  return dx;
 }
 
 export function berechneRaster(input: BelegungInput): BelegungRaster {
@@ -155,7 +208,18 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
     }
     const rowsMix = positionen.reduce((m, p) => Math.max(m, p.row + 1), 0);
     const colsMix = positionen.reduce((m, p) => Math.max(m, p.col + 1), 0);
-    return { cols: colsMix, rows: rowsMix, modulBreiteM, modulHoeheM, positionen, randM, fugeM };
+    return {
+      cols: colsMix,
+      rows: rowsMix,
+      modulBreiteM,
+      modulHoeheM,
+      positionen,
+      randM,
+      fugeM,
+      // Bänder-Stapel hat kein einheitliches Gitter — Anker = Zonen-Ecke (Näherung).
+      ankerXM: randM,
+      ankerYM: randM,
+    };
   }
 
   // ---- Einheitliches Raster (Basis-Ausrichtung) + Optimierer (wie bisher) ----
@@ -195,13 +259,42 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
   const annotiere = (roh: Roh[]): ModulPosition[] =>
     roh.map((p) => ({ ...p, quer: querBasis, wM: modulBreiteM, hM: modulHoeheM }));
 
+  /**
+   * Positions-Optimierung (SPEC §9, Stand 07.07.2026). Zwei Kandidaten:
+   * (1) AUSGERICHTET — das ganze Raster als Block horizontal verschieben, Spalten
+   *     bleiben reihenübergreifend gerade. Das ist der Standard: sieht sauber aus,
+   *     kein Reihen-Versatz. (2) REIHENWEISE — jede Reihe darf einzeln abweichen,
+   *     falls sie dadurch strikt mehr Module fasst (schräge/komplexe Dächer).
+   * Reihenweise wird NUR genommen, wenn es deutlich mehr Module bringt (Schwelle),
+   * sonst gerade montieren wenn offensichtlich Platz ist (Genrih 07.07.).
+   */
+
+  // (1) Bester globaler Block-Versatz dx — auch als ANKER des Versatz-Pfads:
+  // versatz (0,0) muss exakt der Standardlage entsprechen, sonst springt die
+  // Belegung beim Einschalten von „Verschieben" und relativ gespeicherte
+  // Lösch-Felder passen nicht mehr (Bug 16.07.2026, Genrih).
+  const dx = sucheBlockDx({
+    optimieren,
+    x0,
+    cols,
+    pitchX,
+    yPos,
+    gueltig,
+    dxMin: -x0,
+    dxMax: input.breiteM - belegtB - x0,
+    schritt,
+  });
+  const basisX0 = x0 + dx;
+
   // ---- Manueller Versatz (Nudge, 07.07.2026) ----
-  // Ist ein Versatz gesetzt, wird das Gitter phasenverschoben ab der zentrierten
-  // Lage (x0/y0) + Versatz gelegt und wie immer gefiltert. Der Auto-Optimierer
-  // (dx-Suche) entfällt dann komplett — das hält auch besterVersatz schnell.
+  // Ist ein Versatz gesetzt, wird das Gitter phasenverschoben ab der OPTIMIERTEN
+  // Standardlage (basisX0/y0) + Versatz gelegt und wie immer gefiltert. Der
+  // Reihen-Kandidat entfällt (ein Gitter, eine Phase).
   if (input.versatzXM !== undefined || input.versatzYM !== undefined) {
-    const xs = gitterAchse(x0 + (input.versatzXM ?? 0), pitchX, modulBreiteM, randM, input.breiteM);
-    const ys = gitterAchse(y0 + (input.versatzYM ?? 0), pitchY, modulHoeheM, randM, input.hoeheM);
+    const ax = basisX0 + (input.versatzXM ?? 0);
+    const ay = y0 + (input.versatzYM ?? 0);
+    const xs = gitterAchse(ax, pitchX, modulBreiteM, randM, input.breiteM);
+    const ys = gitterAchse(ay, pitchY, modulHoeheM, randM, input.hoeheM);
     const roh: Roh[] = [];
     ys.forEach((yM, iy) =>
       xs.forEach((xM, ix) => {
@@ -216,42 +309,10 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
       positionen: annotiere(roh),
       randM,
       fugeM,
+      ankerXM: ax,
+      ankerYM: ay,
     };
   }
-
-  /**
-   * Positions-Optimierung (SPEC §9, Stand 07.07.2026). Zwei Kandidaten:
-   * (1) AUSGERICHTET — das ganze Raster als Block horizontal verschieben, Spalten
-   *     bleiben reihenübergreifend gerade. Das ist der Standard: sieht sauber aus,
-   *     kein Reihen-Versatz. (2) REIHENWEISE — jede Reihe darf einzeln abweichen,
-   *     falls sie dadurch strikt mehr Module fasst (schräge/komplexe Dächer).
-   * Reihenweise wird NUR genommen, wenn es deutlich mehr Module bringt (Schwelle),
-   * sonst gerade montieren wenn offensichtlich Platz ist (Genrih 07.07.).
-   */
-
-  // (1) Bester globaler Block-Versatz dx
-  let dx = 0;
-  if (optimieren) {
-    const zaehle = (v: number): number => {
-      let n = 0;
-      for (const yM of yPos)
-        for (let col = 0; col < cols; col++) if (gueltig(x0 + v + col * pitchX, yM)) n++;
-      return n;
-    };
-    let best = zaehle(0);
-    let bestAbs = 0;
-    const dxMin = -x0;
-    const dxMax = input.breiteM - belegtB - x0;
-    for (let v = dxMin; v <= dxMax + EPS; v += schritt) {
-      const n = zaehle(v);
-      if (n > best || (n === best && Math.abs(v) < bestAbs - EPS)) {
-        best = n;
-        bestAbs = Math.abs(v);
-        dx = v;
-      }
-    }
-  }
-  const basisX0 = x0 + dx;
 
   const ausgerichtet: Roh[] = [];
   for (let row = 0; row < rows; row++) {
@@ -315,8 +376,25 @@ export function berechneRaster(input: BelegungInput): BelegungRaster {
     reihenweise && reihenweise.length >= ausgerichtet.length + schwelle
       ? reihenweise
       : ausgerichtet;
+  // Weicht die gewählte Lage tatsächlich vom Block ab? (Bei 'frei' kann der
+  // Reihen-Kandidat inhaltlich identisch sein — dann ist nichts versetzt.)
+  const reihenVersetzt =
+    roh !== ausgerichtet &&
+    (roh.length !== ausgerichtet.length ||
+      roh.some((p, i) => Math.abs(p.xM - ausgerichtet[i]!.xM) > 1e-9));
 
-  return { cols, rows, modulBreiteM, modulHoeheM, positionen: annotiere(roh), randM, fugeM };
+  return {
+    cols,
+    rows,
+    modulBreiteM,
+    modulHoeheM,
+    positionen: annotiere(roh),
+    randM,
+    fugeM,
+    ankerXM: basisX0,
+    ankerYM: y0,
+    reihenVersetzt,
+  };
 }
 
 /**
@@ -343,9 +421,38 @@ export function besterVersatz(input: BelegungInput): { versatzXM: number; versat
   const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
   const hindernisse = input.hindernisseM ?? [];
 
+  // Derselbe Block-Anker wie in berechneRaster (versatz relativ zur Standardlage):
+  // ohne das zählt besterVersatz auf einem anders verankerten Gitter und der
+  // zurückgegebene Versatz träfe eine andere Lage, als berechneRaster dann legt.
+  const gueltigDim = (xM: number, yM: number): boolean => {
+    const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
+    if (umriss && !rechteckImUmriss(rect, umriss, randM)) return false;
+    return !hindernisse.some((h) => rechteckeUeberlappen(rect, h));
+  };
+  const yPos: number[] = [];
+  for (let row = 0; row < rows; row++) yPos.push(y0 + row * pitchY);
+  const belegtB = cols > 0 ? cols * modulBreiteM + (cols - 1) * fugeM : 0;
+  const optimieren =
+    (!!umriss || (hindernisse.length > 0 && input.optimierung === 'frei')) &&
+    cols > 0 &&
+    rows > 0 &&
+    (input.optimierePosition ?? true);
+  const dx = sucheBlockDx({
+    optimieren,
+    x0,
+    cols,
+    pitchX,
+    yPos,
+    gueltig: gueltigDim,
+    dxMin: -x0,
+    dxMax: input.breiteM - belegtB - x0,
+    schritt: pitchX / 24,
+  });
+  const basisX0 = x0 + dx;
+
   // Zählung inline (ohne berechneRaster/Objekt-Kopie je Versuch → schnell genug für viele Kandidaten).
   const anzahl = (vx: number, vy: number): number => {
-    const xs = gitterAchse(x0 + vx, pitchX, modulBreiteM, randM, input.breiteM);
+    const xs = gitterAchse(basisX0 + vx, pitchX, modulBreiteM, randM, input.breiteM);
     const ys = gitterAchse(y0 + vy, pitchY, modulHoeheM, randM, input.hoeheM);
     let n = 0;
     for (const yM of ys)
