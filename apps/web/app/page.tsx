@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittFlaechen } from '../components/SchrittFlaechen';
-import { SchrittGesamt } from '../components/SchrittGesamt';
 import { SchrittProjekt } from '../components/SchrittProjekt';
 import {
   eintragDatum,
@@ -21,7 +20,7 @@ import {
 // „Stringcheck" ist seit 13.07.2026 ausgeblendet (Genrih: kein Main-Feature, soll
 // im finalen Programm nicht zu sehen sein). Die Rechenlogik (Engine R1–R12,
 // SchrittStrings, pruefeStringplan) bleibt vollständig im Projekt.
-const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Gesamtansicht', 'Export'] as const;
+const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Export'] as const;
 
 export default function Home() {
   const [db, setDb] = useState<ProjektDb>({ aktivId: null, projekte: [] });
@@ -160,7 +159,7 @@ export default function Home() {
           {db.projekte.length} {db.projekte.length === 1 ? 'Projekt' : 'Projekte'}
         </span>
         <div className="ml-auto flex gap-2">
-          <button type="button" className={knopf} onClick={neuesAnlegen}>
+          <button type="button" className={knopf} onClick={neuesAnlegen} disabled={!geladen}>
             + Neu
           </button>
           <button type="button" className={knopf} onClick={dupliziereAktiv} disabled={!aktiv}>
@@ -199,8 +198,7 @@ export default function Home() {
       {schritt === 0 && <SchrittProjekt projekt={projekt} onChange={setProjekt} />}
       {schritt === 1 && <SchrittFlaechen projekt={projekt} onChange={setProjekt} />}
       {schritt === 2 && <SchrittBelegung projekt={projekt} onChange={setProjekt} />}
-      {schritt === 3 && <SchrittGesamt projekt={projekt} onChange={setProjekt} />}
-      {schritt === 4 && <SchrittExport projekt={projekt} />}
+      {schritt === 3 && <SchrittExport projekt={projekt} />}
 
       <div className="flex justify-between">
         <button

@@ -2,15 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { feldSchrittmasse, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
+import { dateiZuBild } from '../lib/bild';
 import {
   aktiveModule,
   artVon,
+  dachFotoVon,
   farbenFuer,
   felderInput,
   fmtDe,
   leerePositionenFuer,
   modulById,
   modulMasse,
+  neueFotoId,
+  projektFotoVon,
   rahmenBreiteVon,
   randVon,
   rasterFuer,
@@ -18,14 +22,18 @@ import {
   vollFeldFuer,
   zonenVon,
   type Flaeche,
+  type FotoZuordnung,
   type Projekt,
+  type ProjektFoto,
   type PunktM,
   type RechteckM,
 } from '../lib/model';
 import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
+import { fotoFlaechenInhalt, ProjektFotoSvg } from './GesamtSvg';
 import {
   IconFeld,
+  IconFoto,
   IconHindernis,
   IconLeeren,
   IconMasse,
@@ -219,6 +227,9 @@ export function SchrittBelegung({
    * zweiter Commit würde das Delta ein zweites Mal aufaddieren.
    */
   const dragAktiv = useRef(false);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
+  /** null = neues Foto; string = dieses Foto ersetzen. */
+  const fotoZielRef = useRef<string | null>(null);
 
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
@@ -243,6 +254,116 @@ export function SchrittBelegung({
     };
     projektRef.current = neu; // sofort mitziehen, nicht erst beim nächsten Render
     onChange(neu);
+  };
+
+  /** Projektänderung ebenfalls über den aktuellen Ref-Stand, nicht über alte Render-Closures. */
+  const aendereProjekt = (fn: (p: Projekt) => Projekt) => {
+    const neu = fn(projektRef.current);
+    projektRef.current = neu;
+    onChange(neu);
+  };
+
+  const waehleFotoDatei = (fotoId: string | null) => {
+    fotoZielRef.current = fotoId;
+    fotoInputRef.current?.click();
+  };
+
+  const fotoDateiGewaehlt = async (file: File) => {
+    const bild = await dateiZuBild(file);
+    const zielId = fotoZielRef.current;
+    aendereProjekt((p) => {
+      if (zielId) {
+        return {
+          ...p,
+          fotos: p.fotos.map((foto) =>
+            foto.id === zielId ? { ...foto, ...bild } : foto,
+          ),
+          // Neue Pixelmaße machen alte Anker unbrauchbar; Flächen bleiben zugeordnet,
+          // müssen aber auf dem neuen Bild sauber neu markiert werden.
+          flaechen: p.flaechen.map((f) =>
+            f.fotoZuordnung?.fotoId === zielId
+              ? {
+                  ...f,
+                  fotoZuordnung: { fotoId: zielId, traufePx: null },
+                  markierungFertig: false,
+                }
+              : f,
+          ),
+        };
+      }
+      const id = neueFotoId();
+      const foto: ProjektFoto = {
+        id,
+        name: `Drohnenfoto ${p.fotos.length + 1}`,
+        ...bild,
+      };
+      return { ...p, fotos: [...p.fotos, foto] };
+    });
+  };
+
+  /** Eine Fläche genau einem primären Belegungsfoto zuordnen oder davon lösen. */
+  const setzeFotoZuordnung = (flaecheId: string, fotoId: string | null) => {
+    setAuswahl(null);
+    setDrag(null);
+    setZeichnung(null);
+    setModus(null);
+    aendereProjekt((p) => ({
+      ...p,
+      flaechen: p.flaechen.map((f) => {
+        if (f.id !== flaecheId) return f;
+        const neu = { ...f };
+        delete neu.foto;
+        delete neu.gesamtEckenPx;
+        if (fotoId) {
+          neu.fotoZuordnung = { fotoId, traufePx: null };
+          neu.markierungFertig = false;
+        } else {
+          delete neu.fotoZuordnung;
+          delete neu.markierungFertig;
+        }
+        return neu;
+      }),
+    }));
+  };
+
+  const loescheFoto = (foto: ProjektFoto) => {
+    const anzahl = projektRef.current.flaechen.filter(
+      (f) => f.fotoZuordnung?.fotoId === foto.id,
+    ).length;
+    if (
+      !window.confirm(
+        anzahl > 0
+          ? `„${foto.name}“ löschen? ${anzahl} zugeordnete ${anzahl === 1 ? 'Fläche wird' : 'Flächen werden'} vom Foto gelöst; Belegungsfelder bleiben erhalten.`
+          : `„${foto.name}“ löschen?`,
+      )
+    ) return;
+    aendereProjekt((p) => ({
+      ...p,
+      fotos: p.fotos.filter((x) => x.id !== foto.id),
+      flaechen: p.flaechen.map((f) => {
+        if (f.fotoZuordnung?.fotoId !== foto.id) return f;
+        const neu = { ...f };
+        delete neu.fotoZuordnung;
+        delete neu.markierungFertig;
+        return neu;
+      }),
+    }));
+  };
+
+  /** FotoHintergrund arbeitet weiter mit DachFoto; hier zurück ins neue Modell übersetzen. */
+  const patchFotoFlaeche = (f: Flaeche, patch: Partial<Flaeche>) => {
+    const { foto, ...rest } = patch;
+    const neu: Partial<Flaeche> = { ...rest };
+    if (foto && f.fotoZuordnung) {
+      const z: FotoZuordnung = {
+        fotoId: f.fotoZuordnung.fotoId,
+        traufePx: foto.traufePx,
+      };
+      if (foto.eckenPx) z.eckenPx = foto.eckenPx;
+      if (foto.pxProM !== undefined) z.pxProM = foto.pxProM;
+      neu.fotoZuordnung = z;
+    }
+    patchFlaeche(f.id, neu);
   };
 
   /** Fläche im AKTUELLEN Stand (nicht der gerenderten Closure) — für Wiederhol-Aktionen. */
@@ -645,28 +766,206 @@ export function SchrittBelegung({
         </div>
       </Karte>
 
+      <input
+        ref={fotoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) await fotoDateiGewaehlt(file);
+        }}
+      />
+
+      <Karte>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div>
+            <KartenTitel>Belegungsfotos</KartenTitel>
+            <p className="mt-1 text-sm text-slate-500">
+              Ein Foto kann mehrere Dachflächen enthalten. Jede Fläche hat genau ein primäres
+              Belegungsfoto und behält darin ihre eigene Perspektive und ihren eigenen Umriss.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="ml-auto inline-flex h-10 items-center gap-2 rounded-lg bg-akzent px-4 text-sm font-semibold text-white hover:bg-akzent/90"
+            onClick={() => waehleFotoDatei(null)}
+          >
+            <IconFoto />
+            Foto hinzufügen
+          </button>
+        </div>
+
+        {projekt.fotos.length === 0 ? (
+          <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">
+            Noch kein Drohnenfoto. Die Flächen können unten weiterhin in der maßstäblichen
+            Draufsicht belegt werden oder nach dem Upload einem gemeinsamen Foto zugeordnet werden.
+          </p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {projekt.fotos.map((foto) => {
+              const zugeordnet = projekt.flaechen.filter(
+                (f) => f.fotoZuordnung?.fotoId === foto.id,
+              );
+              const frei = projekt.flaechen.filter((f) => !f.fotoZuordnung);
+              return (
+                <section key={foto.id} className="rounded-xl border border-slate-200 p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={foto.name}
+                      aria-label="Name des Drohnenfotos"
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        aendereProjekt((p) => ({
+                          ...p,
+                          fotos: p.fotos.map((x) => (x.id === foto.id ? { ...x, name } : x)),
+                        }));
+                      }}
+                      className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800"
+                    />
+                    <button
+                      type="button"
+                      className={aktionKlasse}
+                      onClick={() => waehleFotoDatei(foto.id)}
+                    >
+                      Ersetzen
+                    </button>
+                    <button
+                      type="button"
+                      className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                      onClick={() => loescheFoto(foto)}
+                    >
+                      Löschen
+                    </button>
+                  </div>
+
+                  <div
+                    className="mx-auto mb-3 w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                    style={{
+                      aspectRatio: `${foto.breitePx} / ${foto.hoehePx}`,
+                      maxHeight: 300,
+                      maxWidth: (300 * foto.breitePx) / foto.hoehePx,
+                    }}
+                  >
+                    <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {zugeordnet.map((f) => {
+                      const index = projekt.flaechen.findIndex((x) => x.id === f.id);
+                      return (
+                        <div key={f.id} className="flex overflow-hidden rounded-lg border border-slate-300 bg-white">
+                          <button
+                            type="button"
+                            className="h-9 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            title="Zur Bearbeitung dieser Fläche springen"
+                            onClick={() =>
+                              document.getElementById(`belegung-${f.id}`)?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start',
+                              })
+                            }
+                          >
+                            {f.fotoZuordnung?.eckenPx ? '✓ ' : '○ '}
+                            {zonenVon(f, index)} · {f.name}
+                          </button>
+                          <button
+                            type="button"
+                            className="h-9 border-l border-slate-200 px-2 text-red-500 hover:bg-red-50"
+                            title="Fläche von diesem Foto lösen"
+                            onClick={() => setzeFotoZuordnung(f.id, null)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {frei.length > 0 && (
+                      <select
+                        value=""
+                        aria-label={`Dachfläche zu ${foto.name} hinzufügen`}
+                        onChange={(e) => {
+                          if (e.target.value) setzeFotoZuordnung(e.target.value, foto.id);
+                        }}
+                        className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
+                      >
+                        <option value="">+ Dachfläche hinzufügen</option>
+                        {frei.map((f) => {
+                          const index = projekt.flaechen.findIndex((x) => x.id === f.id);
+                          return (
+                            <option key={f.id} value={f.id}>
+                              {zonenVon(f, index)} · {f.name}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                    {zugeordnet.length === 0 && frei.length === 0 && (
+                      <span className="text-sm text-slate-400">Keine Dachflächen vorhanden</span>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+
+        {projekt.flaechen.some((f) => !f.fotoZuordnung) && projekt.fotos.length > 0 && (
+          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Noch nicht zugeordnet:{' '}
+            {projekt.flaechen
+              .filter((f) => !f.fotoZuordnung)
+              .map((f, i) => zonenVon(f, projekt.flaechen.indexOf(f)))
+              .join(', ')}. Diese Flächen bleiben unten als normale Draufsicht bearbeitbar.
+          </p>
+        )}
+      </Karte>
+
       {projekt.flaechen.map((f, i) => {
-        const fEff = mitDrag(f);
+        const fotoAsset = projektFotoVon(projekt, f);
+        const foto = dachFotoVon(projekt, f);
+        const fMitFoto: Flaeche = foto ? { ...f, foto } : f;
+        const fEffBasis = mitDrag(f);
+        const fEff: Flaeche = foto ? { ...fEffBasis, foto } : fEffBasis;
         const raster = rasterFuer(fEff, modul);
         const aktiv = aktiveModule(fEff, raster);
         const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
         // Umriss/Hindernis-Zeichnen in SchrittBelegung nur für die Draufsicht
         // (ohne Foto). Bei Foto passiert das in FotoHintergrund auf dem leeren Dach.
-        const zeichenbar = !f.foto;
+        const zeichenbar = !foto;
         // Belegung erst zeigen, wenn keine Foto-Markierung mehr läuft (Hindernisse
         // werden VORHER auf dem leeren Foto gesetzt, Genrih 07.07.).
-        const belegungZeigen = !f.foto || !!f.markierungFertig || !!f.foto.traufePx;
+        const belegungZeigen = !foto || !!f.markierungFertig || !!foto.traufePx;
         const felder = felderVon(fEff);
         const gewaehlt = auswahlVon(f);
+        const gaubenAufFlaeche = projekt.flaechen.filter(
+          (x) => x.elternFlaecheId === f.id && !!x.gaubenTyp,
+        );
         // Felder-Werkzeug: aktiv, solange kein anderes Werkzeug und nichts gezeichnet wird
         const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen;
         const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
 
         return (
-          <Karte key={f.id}>
+          <Karte key={f.id} id={`belegung-${f.id}`}>
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <ZonenBadge label={zonenVon(f, i)} />
               <KartenTitel>{f.name}</KartenTitel>
+              <label className="flex items-center gap-1.5 text-sm text-slate-500">
+                Foto
+                <select
+                  value={f.fotoZuordnung?.fotoId ?? ''}
+                  onChange={(e) => setzeFotoZuordnung(f.id, e.target.value || null)}
+                  className="h-9 max-w-48 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
+                >
+                  <option value="">keins · Draufsicht</option>
+                  {projekt.fotos.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <span className="ml-auto text-sm text-slate-500">
                 {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)}{' '}
                 kWp
@@ -797,15 +1096,23 @@ export function SchrittBelegung({
               </div>
             </div>
 
-            <FotoHintergrund
-              flaeche={f}
-              onPatch={(patch) =>
-                onChange({
-                  ...projekt,
-                  flaechen: projekt.flaechen.map((x) => (x.id === f.id ? { ...x, ...patch } : x)),
-                })
-              }
-            />
+            {gaubenAufFlaeche.length > 0 && (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>Gaubenfuß aussparen:</strong>{' '}
+                {gaubenAufFlaeche.map((x, k) => zonenVon(x, projekt.flaechen.indexOf(x))).join(', ')}{' '}
+                {gaubenAufFlaeche.length === 1 ? 'liegt' : 'liegen'} auf dieser Hauptfläche.
+                Den verdeckten Bereich hier einmal mit „Hindernis markieren“ aussparen; die
+                Gaubenfläche selbst wird separat belegt.
+              </p>
+            )}
+
+            {foto && (
+              <FotoHintergrund
+                flaeche={fMitFoto}
+                fotoVerwalten={false}
+                onPatch={(patch) => patchFotoFlaeche(f, patch)}
+              />
+            )}
 
             {zeichenbar && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1091,6 +1398,16 @@ export function SchrittBelegung({
                     : undefined
                 }
                 onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
+                fotoOverlay={
+                  fotoAsset
+                    ? fotoFlaechenInhalt({
+                        projekt,
+                        foto: fotoAsset,
+                        ausblendenId: f.id,
+                        assetId: `modul-${f.id}`,
+                      })
+                    : undefined
+                }
               />
             )}
 
@@ -1113,7 +1430,7 @@ export function SchrittBelegung({
               <p className="mt-2 text-xs text-slate-400">
                 Randabstand {Math.round(randVon(f) * 100)} cm, Klemmfuge 20 mm
                 {f.umrissM ? `, Umriss mit ${f.umrissM.length} Ecken` : ''}
-                {f.foto ? ' · Kamin/Fenster/SAT über „✎ Markierung ändern" aufs leere Foto setzen.' : ''}
+                {foto ? ' · Kamin/Fenster/SAT über „✎ Markierung ändern" aufs leere Foto setzen.' : ''}
               </p>
             )}
           </Karte>

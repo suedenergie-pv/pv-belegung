@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   bauePayload,
+  dachFotoVon,
+  flaechenTitel,
   fmtDe,
   kwpGesamt,
   modulById,
@@ -15,7 +17,7 @@ import {
 } from '../lib/model';
 import { erzeugeBelegungsPdf } from '../lib/pdf-export';
 import { DachSvg } from './DachSvg';
-import { GesamtSvg } from './GesamtSvg';
+import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
 export function SchrittExport({ projekt }: { projekt: Projekt }) {
@@ -41,7 +43,9 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         (flaecheId) =>
           renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ??
           null,
-        () => renderRef.current?.querySelector<SVGSVGElement>('[data-gesamt] svg') ?? null,
+        (fotoId) =>
+          renderRef.current?.querySelector<SVGSVGElement>(`[data-foto="${fotoId}"] svg`) ??
+          null,
       );
     } catch (e) {
       setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
@@ -71,12 +75,12 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
             <dt className="text-slate-500">Wechselrichter</dt>
             <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : '— (nur Belegung)'}</dd>
           </div>
-          {projekt.flaechen.map((f) => {
+          {projekt.flaechen.map((f, i) => {
             const raster = rasterFuer(f, modul);
             return (
               <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
                 <dt className="text-slate-500">
-                  {f.name} · {f.neigungDeg}° · Azimut {f.azimutDeg}°
+                  {flaechenTitel(f, i)} · {f.neigungDeg}° · Azimut {f.azimutDeg}°
                 </dt>
                 <dd className="font-medium">
                   {aktiveModule(f, raster)} Module ({f.ausrichtung}) ·{' '}
@@ -179,16 +183,25 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         className="pointer-events-none fixed top-0 h-0 overflow-hidden"
         style={{ left: -10000, width: 1400 }}
       >
-        {projekt.flaechen.map((f) => (
-          <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
-            <DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul} druck />
+        {projekt.flaechen.map((f) => {
+          const foto = dachFotoVon(projekt, f);
+          const renderFlaeche = foto ? { ...f, foto } : f;
+          return (
+            <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
+              <DachSvg
+                flaeche={renderFlaeche}
+                raster={rasterFuer(f, modul)}
+                modul={modul}
+                druck
+              />
+            </div>
+          );
+        })}
+        {projekt.fotos.map((foto) => (
+          <div key={foto.id} data-foto={foto.id} style={{ width: 1400 }}>
+            <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />
           </div>
         ))}
-        {projekt.gesamtFoto && (
-          <div data-gesamt style={{ width: 1400 }}>
-            <GesamtSvg projekt={projekt} foto={projekt.gesamtFoto} />
-          </div>
-        )}
       </div>
     </div>
   );

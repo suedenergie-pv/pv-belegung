@@ -22,7 +22,7 @@ Leitprinzip UX: **idiotensicher = Auswahl wegnehmen, nicht erklären.** Dropdown
 
 ### 1.2 Output pro Projekt
 
-1. Dachplan (Draufsicht pro Fläche + zusammengesetzte Gesamtansicht, §11)
+1. Dachplan (Draufsicht pro Fläche + gruppierte Belegungsfotos, §8.4/§11)
 2. Modulbelegung (Anzahl, Ausrichtung, Position)
 3. Stringplan (Strings pro MPPT, validiert gegen Regelwerk §7)
 4. Grobe Anlagengröße (kWp = Modulanzahl × Pmax)
@@ -87,22 +87,35 @@ interface SharedEdge {
 
 Kanten ohne deklarierten Nachbarn werden im Kompositor mit dezenter Linie gerendert — kein Fehler, kein Solver-Eingriff.
 
-### 4.3 Gaube (`Dormer`) — parametrisch, KEIN Freihand-Polygon
+### 4.3 Gaube — eigene deklarierte Dachflächen (17.07.2026)
 
-Gauben kommen aus einem Katalog (Schlepp-, Sattel-, Flachdachgaube — deckt im Allgäu ~95 % ab). User wählt Typ, stempelt auf Mutterfläche, zieht Breite/Position. Freihand-Gauben sind verboten: eine Katalog-Gaube kann geometrisch nicht kaputt sein.
+Gauben werden vom Nutzer deklariert, niemals automatisch erkannt. Sie sind eigene
+belegbare Ebenen mit eigener Neigung, Ausrichtung, Perspektive, Foto-Zuordnung,
+Belegungsfeldern und Hindernissen. `elternFlaecheId` ordnet sie semantisch einem
+Hauptdach zu; daraus wird keine 3D-Geometrie gelöst.
 
 ```ts
-interface Dormer {
+interface DormerPlane {
   id: string;
   parentPlane: string;
-  type: 'shed' | 'gable' | 'flat';   // Schlepp / Sattel / Flach
-  widthM: number; depthM: number; positionOnPlane: Point2D;
-  clearanceM: number;                 // Abstandszone ums Footprint, Default 0.30
-  belegbar: boolean;                  // Default false; wenn true → erzeugt eigene kleine RoofPlane
+  type: 'flat' | 'gable';
+  side?: 'left' | 'right';            // Satteldachgaube = zwei Ebenen
+  widthM: number;
+  depthM: number;
+  pitchDeg: number;
+  covering: 'standing_seam' | 'tile' | 'other';
 }
 ```
 
-Eine Gaube erzeugt automatisch: (a) Ausschlusspolygon inkl. Clearance auf der Mutterfläche für die Belegungslogik, (b) einen 3D-Katalogkörper für den Kompositor.
+- **Flachdachgaube mit Stehfalz:** eine gering geneigte Ebene, Module dachparallel.
+  Sie darf ausdrücklich NICHT als `art: 'flachdach'` in die PROFINESS-Aufständerung
+  gelangen. Export-Montage: `gaube_stehfalz_dachparallel`.
+- **Satteldachgaube:** zwei eigenständige Ebenen (links/rechts), weil beide Seiten
+  andere Perspektive und Ausrichtung haben können.
+- Der Gaubenfuß wird auf der Elternfläche als Hindernis ausgespart. Solange keine
+  metrische Position der Gaube auf der Elternfläche erfasst wird, führt die UI den
+  Nutzer dafür ausdrücklich zum vorhandenen Hindernis-Werkzeug; es gibt keine
+  unzuverlässige Foto-Heuristik.
 
 ### 4.4 Hindernis (`Exclusion`)
 
@@ -286,6 +299,15 @@ Rule-based Solver, KEIN LLM: (1) gültige Stringlängen `n` je Modul×WR enumeri
 
 Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert Projekt als eskaliert. Anspruch des Tools sind 80 % Standarddächer, nicht 100 % — ehrliche Eskalation statt falscher Plan.
 
+### 8.4 Belegungsfotos und Flächenzuordnung (17.07.2026)
+
+- Drohnenfotos sind projektweite Bild-Assets. Ein Foto darf mehrere Dachflächen A/B/C enthalten; alternativ dürfen die Flächen auf mehrere Fotos verteilt werden.
+- Jede Dachfläche hat in v1 genau **ein primäres Belegungsfoto**. Die Zuordnung wird im Schritt „Belegung" frei gesetzt und kann später geändert werden. Flächen ohne Foto bleiben in der maßstäblichen Draufsicht bearbeitbar.
+- Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset. Dadurch hat jede Fläche auf demselben Foto ihre eigene Homographie, ihren eigenen Umriss und ihre eigenen Hindernisse.
+- Das frühere eigene UI-Tab „Gesamtansicht" entfällt. Die Foto-Gruppen im Belegungsschritt und im PDF übernehmen diese Aufgabe.
+- Gauben sind eigene untergeordnete Dachflächen (§4.3). Eine Flachdachgaube mit
+  Stehfalz bleibt dachparallel; eine Satteldachgaube besteht aus zwei Ebenen.
+
 ---
 
 ## 9. Belegungslogik
@@ -315,7 +337,7 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 
 ### 11.1 Ansichten
 
-- **v1:** Draufsicht pro Fläche (2D-Plan, wahre Maße, Modulraster, Dachfarbe) + zusammengesetzte Gesamtansicht als 2.5D-Isometrie (Kompositor: Ebenen an deklarierten Kanten, Gauben als Katalogkörper gestempelt). Stilisiert, nicht fotoreal — bewusster Premium-Look, umgeht Bildlizenz und Bildalter.
+- **v1:** Draufsicht pro Fläche (2D-Plan, wahre Maße, Modulraster, Dachfarbe) sowie ein oder mehrere Belegungsfotos. Auf jedem Foto werden alle zugeordneten Flächen mit ihrer eigenen projektiven Abbildung zusammengesetzt. Ein separates Gesamtansicht-Tab gibt es nicht mehr.
 - Kein Tilt/3D-Hover (konsistent mit Website-Designsystem).
 
 ### 11.2 Modul-Symbole (SVG `<symbol>` / `<use>`, freigegeben 04.07.2026)

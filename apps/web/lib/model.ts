@@ -44,6 +44,10 @@ export type Dachfarbe = (typeof DACHFARBEN)[number];
 /** Art der Fläche (16.07.2026): Schrägdach (Default), Flachdach, Fassade. */
 export type FlaechenArt = 'dach' | 'flachdach' | 'fassade';
 
+/** Gauben sind eigene Ebenen, aber KEINE aufgeständerten Flachdächer. */
+export type GaubenTyp = 'flachdach' | 'satteldach';
+export type GaubenSeite = 'links' | 'rechts';
+
 /** Zur Flächen-Art passende Eindeckungen/Oberflächen. */
 export function farbenFuer(art: FlaechenArt): Dachfarbe[] {
   const arten: Record<FlaechenArt, string[]> = {
@@ -98,6 +102,26 @@ export interface GesamtFoto {
 }
 
 /**
+ * Ein projektweites Drohnenfoto. Mehrere Flächen dürfen demselben Foto
+ * zugeordnet sein; das Bild selbst wird dadurch nur EINMAL im localStorage
+ * gespeichert. Die flächenspezifische Perspektive liegt in FotoZuordnung.
+ */
+export interface ProjektFoto extends GesamtFoto {
+  id: string;
+  name: string;
+}
+
+/** Lage genau einer Fläche auf ihrem primären Belegungsfoto. */
+export interface FotoZuordnung {
+  fotoId: string;
+  eckenPx?: Ecken;
+  /** Alt-/Zwischenmodus: nur Traufkante gesetzt, noch keine 4-Ecken-Homographie. */
+  traufePx: [number, number, number, number] | null;
+  /** Optionaler Maßstab aus der Ziegelzählung, flächenspezifisch. */
+  pxProM?: number;
+}
+
+/**
  * Parametrische Dachform (SPEC §9). 'trapez' = symmetrisches Walm/Krüppelwalm;
  * 'schief' = Parallelogramm / schiefes Trapez (First seitlich versetzt, Genrih 08.07.).
  */
@@ -112,6 +136,17 @@ export interface Flaeche {
    * geometrisch identisch zum Schrägdach, Foto frontal statt von oben.
    */
   art?: FlaechenArt;
+  /**
+   * Gaubenfläche mit eigener Perspektive/Neigung. Eine Flachdachgaube wird trotz
+   * geringer Neigung als normale Dachfläche gerechnet: dachparallel auf Stehfalz,
+   * niemals mit der PROFINESS-Aufständerung aus `art: 'flachdach'`.
+   */
+  gaubenTyp?: GaubenTyp;
+  /** Zugehöriges Hauptdach; rein semantisch, kein 3D-Solver. */
+  elternFlaecheId?: string;
+  /** Bei einer Satteldachgaube werden zwei eigenständige Ebenen angelegt. */
+  gaubenSeite?: GaubenSeite;
+  gaubenGruppeId?: string;
   /**
    * Flachdach-Aufständerung (nur bei art 'flachdach'). Defaults = System
    * PROFINESS Flat (Montageanleitung 05/2025 in docs/datenblaetter/):
@@ -143,6 +178,11 @@ export interface Flaeche {
   firstVersatzM?: number;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
+  /**
+   * Primäres Belegungsfoto im neuen Mehrfoto-Modell. Das Bild liegt einmalig in
+   * Projekt.fotos; hier stehen nur Zuordnung, Perspektive und Maßstab.
+   */
+  fotoZuordnung?: FotoZuordnung;
   /**
    * Lage dieser Fläche auf dem projektweiten Gesamtfoto (4 Anker-Ecken in
    * Foto-Pixeln, gleiche Konvention wie foto.eckenPx: Traufe links/rechts, First
@@ -187,6 +227,17 @@ export interface Flaeche {
 /** Anzeige-Buchstabe einer Fläche: fest vergebene zone, sonst Fallback aus dem Index. */
 export function zonenVon(f: Flaeche, index: number): string {
   return f.zone ?? zonenLabel(index);
+}
+
+/** Kompakte, eindeutige Bezeichnung für UI und PDF. */
+export function flaechenTitel(f: Flaeche, index: number): string {
+  const zone = zonenVon(f, index);
+  if (f.gaubenTyp === 'flachdach') return `${zone} · Flachdachgaube`;
+  if (f.gaubenTyp === 'satteldach') {
+    const seite = f.gaubenSeite ? ` ${f.gaubenSeite}` : '';
+    return `${zone} · Satteldachgaube${seite}`;
+  }
+  return `${zone} · ${f.name}`;
 }
 
 /** Nächster freier Zonen-Buchstabe beim Anlegen einer neuen Fläche. */
@@ -304,6 +355,10 @@ export interface Projekt {
   wrId: string | null;
   /** Strings je MPPT (Index 0 = MPPT 1) */
   mppts: UiStringDef[][];
+  /** Projektweite Belegungsfotos; jedes kann beliebig viele Flächen enthalten. */
+  fotos: ProjektFoto[];
+  /** Migrationsmarker für das Mehrfoto-Modell (17.07.2026). */
+  fotoModellVersion?: 2;
   /** Projektweites Gesamt-Drohnenfoto für die Gesamtansicht (optional). */
   gesamtFoto?: GesamtFoto;
 }
@@ -348,6 +403,68 @@ export function neuesProjekt(): Projekt {
     flaechen: [neueFlaeche(1, 'A')],
     wrId: null,
     mppts: [],
+    fotos: [],
+    fotoModellVersion: 2,
+  };
+}
+
+/**
+ * Neue Gaubenebene. Flachdachgauben starten als 5°-Stehfalzfläche mit
+ * dachparalleler Belegung; Satteldachgauben als normale geneigte Dachebene.
+ */
+export function neueGaubenFlaeche(
+  nr: number,
+  zone: string,
+  typ: GaubenTyp,
+  elternFlaecheId?: string,
+  seite?: GaubenSeite,
+  gruppeId?: string,
+): Flaeche {
+  const flach = typ === 'flachdach';
+  return {
+    ...neueFlaeche(nr, zone),
+    name: flach ? 'Flachdachgaube' : `Satteldachgaube${seite ? ` ${seite}` : ''}`,
+    art: 'dach',
+    gaubenTyp: typ,
+    elternFlaecheId,
+    gaubenSeite: seite,
+    gaubenGruppeId: gruppeId,
+    breiteM: 3,
+    hoeheM: 2.5,
+    neigungDeg: flach ? 5 : 30,
+    dachfarbe: flach ? 'grau' : 'anthrazit',
+    dachform: 'rechteck',
+    randM: DEFAULT_RAND_M,
+  };
+}
+
+/** Stabile neue Foto-ID für Uploads im Belegungstab. */
+export function neueFotoId(): string {
+  return `foto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Das zu einer Fläche gehörende Projektfoto, falls die Zuordnung gültig ist. */
+export function projektFotoVon(p: Projekt, f: Flaeche): ProjektFoto | undefined {
+  return f.fotoZuordnung
+    ? p.fotos.find((foto) => foto.id === f.fotoZuordnung!.fotoId)
+    : undefined;
+}
+
+/**
+ * Kompatibilitätsansicht für FotoHintergrund/DachSvg: Bild-Asset und
+ * flächenspezifische Zuordnung werden transient zu einem DachFoto zusammengesetzt.
+ */
+export function dachFotoVon(p: Projekt, f: Flaeche): DachFoto | undefined {
+  const asset = projektFotoVon(p, f);
+  const z = f.fotoZuordnung;
+  if (!asset || !z) return undefined;
+  return {
+    dataUrl: asset.dataUrl,
+    breitePx: asset.breitePx,
+    hoehePx: asset.hoehePx,
+    traufePx: z.traufePx,
+    ...(z.eckenPx ? { eckenPx: z.eckenPx } : {}),
+    ...(z.pxProM !== undefined ? { pxProM: z.pxProM } : {}),
   };
 }
 
@@ -517,9 +634,114 @@ export function eintragDatum(e: ProjektEintrag): string {
   });
 }
 
+/**
+ * Einmalige Migration der bisherigen zwei Foto-Wege:
+ * - Flaeche.foto (ein Bild je Fläche)
+ * - Projekt.gesamtFoto + Flaeche.gesamtEckenPx (ein gemeinsames Bild)
+ *
+ * Einzelbilder gewinnen für ihre Fläche; das alte Gesamtfoto bleibt zusätzlich als
+ * Foto-Gruppe erhalten und kann im Belegungstab neu zugeordnet werden. Danach liegen
+ * Bilddaten ausschließlich in Projekt.fotos und werden nicht mehr je Fläche dupliziert.
+ */
+function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
+  const bereitsNeu = roh.fotoModellVersion === 2 && Array.isArray(roh.fotos);
+  if (bereitsNeu) {
+    projekt.fotos = roh.fotos.filter(
+      (f): f is ProjektFoto =>
+        !!f &&
+        typeof f.id === 'string' &&
+        typeof f.dataUrl === 'string' &&
+        Number.isFinite(f.breitePx) &&
+        Number.isFinite(f.hoehePx),
+    );
+    const fotoIds = new Set(projekt.fotos.map((f) => f.id));
+    projekt.flaechen = projekt.flaechen.map((f) => {
+      const rest = { ...f };
+      delete rest.foto;
+      delete rest.gesamtEckenPx;
+      if (rest.fotoZuordnung && !fotoIds.has(rest.fotoZuordnung.fotoId)) {
+        delete rest.fotoZuordnung;
+      }
+      return rest;
+    });
+    delete projekt.gesamtFoto;
+    projekt.fotoModellVersion = 2;
+    return;
+  }
+
+  const fotos: ProjektFoto[] = [];
+  const reserviert = new Set<string>();
+  const eindeutigeId = (basis: string) => {
+    let id = basis;
+    let nr = 2;
+    while (reserviert.has(id)) id = `${basis}-${nr++}`;
+    reserviert.add(id);
+    return id;
+  };
+
+  let gesamtId: string | null = null;
+  if (roh.gesamtFoto) {
+    gesamtId = eindeutigeId('foto-gesamt');
+    fotos.push({
+      id: gesamtId,
+      name: 'Drohnenfoto 1',
+      dataUrl: roh.gesamtFoto.dataUrl,
+      breitePx: roh.gesamtFoto.breitePx,
+      hoehePx: roh.gesamtFoto.hoehePx,
+    });
+  }
+
+  projekt.flaechen = projekt.flaechen.map((f) => {
+    let zuordnung: FotoZuordnung | undefined;
+    if (f.foto) {
+      const id = eindeutigeId(`foto-${f.id}`);
+      fotos.push({
+        id,
+        name: f.name || `Dachfläche ${f.id}`,
+        dataUrl: f.foto.dataUrl,
+        breitePx: f.foto.breitePx,
+        hoehePx: f.foto.hoehePx,
+      });
+      zuordnung = { fotoId: id, traufePx: f.foto.traufePx };
+      if (f.foto.eckenPx) zuordnung.eckenPx = f.foto.eckenPx;
+      if (f.foto.pxProM !== undefined) zuordnung.pxProM = f.foto.pxProM;
+    } else if (gesamtId && f.gesamtEckenPx) {
+      zuordnung = { fotoId: gesamtId, eckenPx: f.gesamtEckenPx, traufePx: null };
+    }
+
+    const rest = { ...f };
+    delete rest.foto;
+    delete rest.gesamtEckenPx;
+    if (zuordnung) rest.fotoZuordnung = zuordnung;
+    if (zuordnung?.eckenPx && rest.markierungFertig === undefined) {
+      rest.markierungFertig = true;
+    }
+    return rest;
+  });
+
+  projekt.fotos = fotos;
+  projekt.fotoModellVersion = 2;
+  delete projekt.gesamtFoto;
+}
+
 /** Katalog-Migration eines geladenen Projekts (Modul-/WR-ids nach Updates veraltet). */
 function migriereProjekt(roh: Projekt): Projekt {
   const projekt: Projekt = { ...neuesProjekt(), ...roh };
+  migriereFotoModell(roh, projekt);
+  const flaechenIds = new Set(projekt.flaechen.map((f) => f.id));
+  projekt.flaechen = projekt.flaechen.map((f) => {
+    const neu = { ...f };
+    if (neu.elternFlaecheId === neu.id || !flaechenIds.has(neu.elternFlaecheId ?? '')) {
+      delete neu.elternFlaecheId;
+    }
+    // Fachliche Invariante: Gauben sind dachparallele Ebenen und dürfen nie in
+    // die aufgeständerte Flachdach-Engine rutschen.
+    if (neu.gaubenTyp) {
+      neu.art = 'dach';
+      delete neu.flachdach;
+    }
+    return neu;
+  });
   if (!MODULES.some((m) => m.id === projekt.modulId)) projekt.modulId = MODULES[0]!.id;
   if (projekt.wrId && !INVERTERS.some((w) => w.id === projekt.wrId)) {
     projekt.wrId = null;
@@ -534,7 +756,9 @@ function migriereProjekt(roh: Projekt): Projekt {
   // Bestehende Foto-Flächen (Umriss schon gesetzt) gelten als fertig markiert,
   // damit sie nach dem Update nicht plötzlich in die Markier-Ansicht springen.
   projekt.flaechen = projekt.flaechen.map((f) =>
-    f.foto?.eckenPx && f.markierungFertig === undefined ? { ...f, markierungFertig: true } : f,
+    f.fotoZuordnung?.eckenPx && f.markierungFertig === undefined
+      ? { ...f, markierungFertig: true }
+      : f,
   );
   // 16.07.2026 (Felder-Umbau): Alt-Schlüssel des Automatismus strippen. Genrih:
   // „es gibt eh keine gespeicherten Belegungen" — Alt-Belegungen werden NICHT
@@ -584,11 +808,20 @@ export function speichereProjekte(db: ProjektDb): void {
         aktivId: db.aktivId,
         projekte: db.projekte.map((e) => ({
           ...e,
-          projekt: {
-            ...e.projekt,
-            gesamtFoto: undefined,
-            flaechen: e.projekt.flaechen.map(({ foto: _foto, ...rest }) => rest),
-          },
+          projekt: (() => {
+            const { gesamtFoto: _gesamt, ...projektOhneAltFoto } = e.projekt;
+            return {
+              ...projektOhneAltFoto,
+              fotos: [],
+              flaechen: e.projekt.flaechen.map((f) => {
+                const rest = { ...f };
+                delete rest.foto;
+                delete rest.fotoZuordnung;
+                delete rest.gesamtEckenPx;
+                return rest;
+              }),
+            };
+          })(),
         })),
       });
     } catch {
@@ -662,13 +895,28 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
     geometrieQuelle: 'manual',
     flaechen: p.flaechen.map((f) => {
       const raster = rasterFuer(f, modul);
+      const gaubenRolle =
+        f.gaubenTyp === 'flachdach'
+          ? 'gaube_flachdach'
+          : f.gaubenTyp === 'satteldach'
+            ? 'gaube_satteldach'
+            : 'hauptflaeche';
       return {
         id: f.id,
+        zone: f.zone ?? '',
+        rolle: gaubenRolle,
+        eltern_flaeche_id: f.elternFlaecheId ?? null,
+        gauben_seite: f.gaubenSeite ?? null,
         // ASCII snake_case (SPEC §13): dach | fassade | flachdach_sued_10 | flachdach_ostwest_10
         montage:
-          artVon(f) === 'flachdach' && f.flachdach
+          f.gaubenTyp === 'flachdach'
+            ? 'gaube_stehfalz_dachparallel'
+            : f.gaubenTyp === 'satteldach'
+              ? 'gaube_dachparallel'
+              : artVon(f) === 'flachdach' && f.flachdach
             ? `flachdach_${f.flachdach.aufstaenderung}_${f.flachdach.winkelDeg}`
             : artVon(f),
+        eindeckung: f.dachfarbe,
         neigungDeg: f.neigungDeg,
         azimutDeg: f.azimutDeg,
         flaecheM2: Math.round(f.breiteM * f.hoeheM * 10) / 10,

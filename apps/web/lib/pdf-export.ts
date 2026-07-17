@@ -1,6 +1,17 @@
 import type { StringPlanResult } from '@pv-belegung/engine';
 import { logoPng } from './logo';
-import { aktiveModule, fmtDe, kwpGesamt, modulById, randVon, rasterFuer, wrById, type Projekt } from './model';
+import {
+  aktiveModule,
+  flaechenTitel,
+  fmtDe,
+  kwpGesamt,
+  modulById,
+  randVon,
+  rasterFuer,
+  wrById,
+  zonenVon,
+  type Projekt,
+} from './model';
 
 /**
  * PDF-Export des Belegungsplans (Hauptexport fürs Vertriebsgespräch, 06.07.2026):
@@ -68,7 +79,7 @@ export async function erzeugeBelegungsPdf(
   projekt: Projekt,
   result: StringPlanResult | null,
   svgVonFlaeche: (flaecheId: string) => SVGSVGElement | null,
-  svgGesamt?: () => SVGSVGElement | null,
+  svgVonFoto?: (fotoId: string) => SVGSVGElement | null,
 ): Promise<void> {
   const { jsPDF } = await import('jspdf');
   const modul = modulById(projekt.modulId);
@@ -83,9 +94,25 @@ export async function erzeugeBelegungsPdf(
     if (svg) bilder.set(f.id, await svgZuJpeg(svg, 1600));
   }
 
-  // Gesamtansicht (alle Flächen auf einem Drohnenfoto), falls vorhanden.
-  const gesamtSvg = svgGesamt?.() ?? null;
-  const gesamtBild = gesamtSvg ? await svgZuJpeg(gesamtSvg, 1600) : null;
+  // Projektfotos mit allen jeweils zugeordneten Flächen, falls vorhanden.
+  const fotoBilder: Array<{
+    id: string;
+    name: string;
+    flaechen: string;
+    dataUrl: string;
+    seitenverhaeltnis: number;
+  }> = [];
+  for (const foto of projekt.fotos) {
+    const svg = svgVonFoto?.(foto.id) ?? null;
+    if (!svg) continue;
+    const bild = await svgZuJpeg(svg, 1600);
+    const flaechen = projekt.flaechen
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => f.fotoZuordnung?.fotoId === foto.id)
+      .map(({ f, i }) => zonenVon(f, i))
+      .join(', ');
+    fotoBilder.push({ id: foto.id, name: foto.name, flaechen, ...bild });
+  }
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const SEITE_B = 210;
@@ -175,7 +202,7 @@ export async function erzeugeBelegungsPdf(
   doc.setFontSize(9);
   doc.setTextColor(110);
   const SPALTEN = [RAND, RAND + 52, RAND + 92, RAND + 124, RAND + 152] as const;
-  doc.text('Dachfläche', SPALTEN[0], y);
+  doc.text('Fläche', SPALTEN[0], y);
   doc.text('Ausrichtung', SPALTEN[1], y);
   doc.text('Neigung', SPALTEN[2], y);
   doc.text('Module', SPALTEN[3], y);
@@ -183,9 +210,9 @@ export async function erzeugeBelegungsPdf(
   y += 5;
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(40);
-  for (const f of projekt.flaechen) {
+  for (const [i, f] of projekt.flaechen.entries()) {
     const n = aktiveModule(f, rasterFuer(f, modul));
-    doc.text(`${f.name} (${fmtDe(f.breiteM, 2)} × ${fmtDe(f.hoeheM, 2)} m)`, SPALTEN[0], y);
+    doc.text(flaechenTitel(f, i), SPALTEN[0], y);
     doc.text(azimutLabel(f.azimutDeg), SPALTEN[1], y);
     doc.text(`${f.neigungDeg}°`, SPALTEN[2], y);
     doc.text(`${n} (${f.ausrichtung})`, SPALTEN[3], y);
@@ -196,66 +223,118 @@ export async function erzeugeBelegungsPdf(
   doc.line(RAND, y, SEITE_B - RAND, y);
   y += 7;
 
-  // Gesamtansicht: bevorzugt das Drohnenfoto mit allen Flächen (falls markiert);
-  // sonst eine Fläche = groß auf Seite 1, mehrere = Übersicht in 2 Spalten.
+  // Belegungsübersicht: bevorzugt die Drohnenfotos mit ihren zugeordneten Flächen;
+  // ohne Foto eine Fläche groß bzw. mehrere Flächen als Kacheln.
   const einzelflaeche = projekt.flaechen.length === 1;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20);
-  doc.text('Gesamtansicht', RAND, y);
+  doc.text('Belegungsübersicht', RAND, y);
   y += 5;
 
-  if (gesamtBild) {
-    // Ein Gesamtfoto vorhanden → groß und zentriert, keine Kachel-Übersicht.
-    let bildB = NUTZ_B;
-    let bildH = bildB * gesamtBild.seitenverhaeltnis;
-    const maxH = SEITE_H - y - 18;
-    if (bildH > maxH) {
-      bildH = maxH;
-      bildB = bildH / gesamtBild.seitenverhaeltnis;
-    }
-    doc.addImage(gesamtBild.dataUrl, 'JPEG', RAND + (NUTZ_B - bildB) / 2, y, bildB, bildH);
-  } else {
-  const spalten = einzelflaeche ? 1 : 2;
-  const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
-  let zeilenHoehe = 0;
-  let x = RAND;
-  let spalte = 0;
-  for (const f of projekt.flaechen) {
-    const bild = bilder.get(f.id);
-    if (!bild) continue;
-    let bildB = zelleB;
-    let bildH = bildB * bild.seitenverhaeltnis;
-    // Einzelfläche darf die ganze Restseite füllen, sonst kompakte Übersicht.
-    const maxH = einzelflaeche ? SEITE_H - y - 18 : 92;
-    if (bildH > maxH) {
-      bildH = maxH;
-      bildB = bildH / bild.seitenverhaeltnis;
-    }
-    if (y + bildH + 10 > SEITE_H - 16 && !einzelflaeche) break; // Seite voll — Details folgen
-    doc.addImage(bild.dataUrl, 'JPEG', x + (einzelflaeche ? (NUTZ_B - bildB) / 2 : 0), y, bildB, bildH);
-    if (!einzelflaeche) {
+  if (fotoBilder.length > 0) {
+    const spalten = fotoBilder.length === 1 ? 1 : 2;
+    const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
+    const bildBereichH = fotoBilder.length === 1 ? Math.min(142, SEITE_H - y - 34) : 70;
+    const kopfH = 12;
+    const kartenH = kopfH + bildBereichH + 4;
+    let spalte = 0;
+    for (const bild of fotoBilder) {
+      if (spalte === 0 && y + kartenH > SEITE_H - 16) {
+        doc.addPage();
+        y = 18;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(20);
+        doc.text('Belegungsübersicht', RAND, y);
+        y += 6;
+      }
+
+      const x = RAND + spalte * (zelleB + 6);
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(214, 220, 228);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(x, y, zelleB, kartenH, 2, 2, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(35, 45, 60);
+      doc.text(bild.name || 'Belegungsfoto', x + 3, y + 4.5);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(90);
-      doc.text(f.name, x, y + bildH + 4);
+      doc.setFontSize(7.5);
+      doc.setTextColor(105, 115, 130);
+      doc.text(
+        bild.flaechen ? `Dachflächen ${bild.flaechen}` : 'Noch keine Fläche markiert',
+        x + 3,
+        y + 8.5,
+      );
+
+      const maxBildB = zelleB - 6;
+      let bildB = maxBildB;
+      let bildH = bildB * bild.seitenverhaeltnis;
+      if (bildH > bildBereichH) {
+        bildH = bildBereichH;
+        bildB = bildH / bild.seitenverhaeltnis;
+      }
+      const bildX = x + (zelleB - bildB) / 2;
+      const bildY = y + kopfH + (bildBereichH - bildH) / 2;
+      doc.addImage(bild.dataUrl, 'JPEG', bildX, bildY, bildB, bildH);
+
+      spalte += 1;
+      if (spalte >= spalten) {
+        spalte = 0;
+        y += kartenH + 6;
+      }
     }
-    zeilenHoehe = Math.max(zeilenHoehe, bildH + 8);
-    spalte += 1;
-    if (spalte >= spalten) {
-      spalte = 0;
-      x = RAND;
-      y += zeilenHoehe;
-      zeilenHoehe = 0;
-    } else {
-      x += zelleB + 6;
+    if (spalte !== 0) y += kartenH + 6;
+  } else {
+    const spalten = einzelflaeche ? 1 : 2;
+    const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
+    let zeilenHoehe = 0;
+    let x = RAND;
+    let spalte = 0;
+    for (const f of projekt.flaechen) {
+      const bild = bilder.get(f.id);
+      if (!bild) continue;
+      let bildB = zelleB;
+      let bildH = bildB * bild.seitenverhaeltnis;
+      // Einzelfläche darf die ganze Restseite füllen, sonst kompakte Übersicht.
+      const maxH = einzelflaeche ? SEITE_H - y - 18 : 92;
+      if (bildH > maxH) {
+        bildH = maxH;
+        bildB = bildH / bild.seitenverhaeltnis;
+      }
+      if (y + bildH + 10 > SEITE_H - 16 && !einzelflaeche) break; // Seite voll — Details folgen
+      doc.addImage(
+        bild.dataUrl,
+        'JPEG',
+        x + (einzelflaeche ? (NUTZ_B - bildB) / 2 : 0),
+        y,
+        bildB,
+        bildH,
+      );
+      if (!einzelflaeche) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(90);
+        doc.text(f.name, x, y + bildH + 4);
+      }
+      zeilenHoehe = Math.max(zeilenHoehe, bildH + 8);
+      spalte += 1;
+      if (spalte >= spalten) {
+        spalte = 0;
+        x = RAND;
+        y += zeilenHoehe;
+        zeilenHoehe = 0;
+      } else {
+        x += zelleB + 6;
+      }
     }
-  }
   }
 
   // ---- Je Fläche eine Detailseite (nur bei mehreren Flächen) ----
   if (!einzelflaeche)
-  for (const f of projekt.flaechen) {
+  for (const [fIndex, f] of projekt.flaechen.entries()) {
     const bild = bilder.get(f.id);
     if (!bild) continue;
     doc.addPage();
@@ -264,7 +343,7 @@ export async function erzeugeBelegungsPdf(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
     doc.setTextColor(20);
-    doc.text(f.name, RAND, dy);
+    doc.text(flaechenTitel(f, fIndex), RAND, dy);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(80);

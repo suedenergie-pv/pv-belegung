@@ -71,9 +71,17 @@ export function HoldButton({
   );
 }
 
-export function Karte({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+export function Karte({
+  children,
+  className = '',
+  id,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  id?: string;
+}) {
   return (
-    <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
+    <section id={id} className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
       {children}
     </section>
   );

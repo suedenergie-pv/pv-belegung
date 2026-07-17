@@ -82,6 +82,32 @@ packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsc
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
 
+## Session-Übergabe 17.07.2026 (11. Session — Codex): Mehrere Belegungsfotos
+
+- Das eigene Tab **„Gesamtansicht" ist entfernt**. Projekt, Dachflächen, Belegung und
+  Export sind die sichtbaren Schritte.
+- `Projekt.fotos: ProjektFoto[]` speichert jedes Bild genau einmal. Eine Fläche verweist
+  über `fotoZuordnung` auf ihr primäres Foto; Ecken, Traufe und Foto-Maßstab liegen in
+  dieser Zuordnung. `dachFotoVon()` baut nur für die vorhandenen Renderer transient die
+  bisherige `DachFoto`-Sicht.
+- Im Belegungsschritt können mehrere Fotos hochgeladen, benannt, ersetzt und gelöscht
+  werden. A/B/C werden pro Foto hinzugefügt oder über den Selektor an der Fläche
+  umgehängt. Mehrere Flächen auf demselben Foto haben unabhängige Perspektiven und
+  Umrisse; die bestehenden Werkzeuge bleiben unverändert.
+- Alte Einzel-Fotos (`Flaeche.foto`) und die alte Gesamtansicht
+  (`Projekt.gesamtFoto`/`gesamtEckenPx`) werden beim Laden einmalig migriert. Die alten
+  optionalen Felder bleiben vorerst nur als Import-Kompatibilität im Typ.
+- PDF-Seite 1 zeigt alle Foto-Gruppen mit ihren jeweils zugeordneten Flächen. Ohne Fotos
+  bleibt die bisherige Draufsicht-Übersicht bestehen.
+- **Gauben umgesetzt (17.07., Nachbesserung):** `gaubenTyp`, `elternFlaecheId`,
+  optional `gaubenSeite`/`gaubenGruppeId`. Flachdachgaube = EINE 5°-Ebene mit
+  Stehfalz und normaler dachparalleler Belegung; niemals `art: 'flachdach'` und
+  niemals PROFINESS-Aufständerung. Satteldachgaube wird per UI als zwei Flächen
+  links/rechts angelegt. Der Gaubenfuß wird auf der Mutterfläche mit dem vorhandenen
+  Hindernis-Werkzeug ausgespart; die Belegung zeigt dafür einen deutlichen Hinweis.
+- PDF-Nachbesserung: kompakte A/B/C-Flächentitel, Foto-Karten mit zugeordneten Zonen
+  sowie sichtbare, ruhige Zonenmarker direkt auf den Belegungsfotos.
+
 ## Session-Übergabe 16.07.2026 (10. Session — Fable): Flachdach + Fassade
 
 `Flaeche.art: 'dach' | 'flachdach' | 'fassade'` (Auswahl in Schritt „Dachflächen").

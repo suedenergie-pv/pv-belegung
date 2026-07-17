@@ -102,9 +102,12 @@ function SchrittChip({
 export function FotoHintergrund({
   flaeche,
   onPatch,
+  fotoVerwalten = true,
 }: {
   flaeche: Flaeche;
   onPatch: (patch: Partial<Flaeche>) => void;
+  /** false: Upload/Ersetzen/Löschen übernimmt die übergeordnete Foto-Gruppe. */
+  fotoVerwalten?: boolean;
 }) {
   const foto = flaeche.foto;
   const [punkte, setPunkte] = useState<Punkt[]>([]);
@@ -291,24 +294,28 @@ export function FotoHintergrund({
 
   return (
     <div className="mb-3">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (!file) return;
-          zurueckAufAnfang();
-          onFoto(await dateiZuFoto(file));
-        }}
-      />
+      {fotoVerwalten && (
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            zurueckAufAnfang();
+            onFoto(await dateiZuFoto(file));
+          }}
+        />
+      )}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={knopfKlasse} onClick={() => inputRef.current?.click()}>
-          <IconFoto />
-          {foto ? 'Anderes Foto' : 'Drohnenfoto als Hintergrund'}
-        </button>
+        {fotoVerwalten && (
+          <button type="button" className={knopfKlasse} onClick={() => inputRef.current?.click()}>
+            <IconFoto />
+            {foto ? 'Anderes Foto' : 'Drohnenfoto als Hintergrund'}
+          </button>
+        )}
         {foto && (
           <>
             {flaeche.markierungFertig && (
@@ -394,16 +401,18 @@ export function FotoHintergrund({
                 {fmtDe(check.vorschlag.hoeheM, 1)} m)
               </button>
             )}
-            <button
-              type="button"
-              className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-red-500 hover:border-red-300"
-              onClick={() => {
-                zurueckAufAnfang();
-                onFoto(undefined);
-              }}
-            >
-              Foto entfernen
-            </button>
+            {fotoVerwalten && (
+              <button
+                type="button"
+                className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-red-500 hover:border-red-300"
+                onClick={() => {
+                  zurueckAufAnfang();
+                  onFoto(undefined);
+                }}
+              >
+                Foto entfernen
+              </button>
+            )}
           </>
         )}
       </div>

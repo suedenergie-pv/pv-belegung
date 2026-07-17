@@ -8,6 +8,7 @@ import {
   rasterFuer,
   zonenVon,
   type GesamtFoto,
+  type ProjektFoto,
   type Projekt,
 } from '../lib/model';
 import { ModulAsset, moduleAufHomographie } from './DachSvg';
@@ -19,6 +20,114 @@ import { ModulAsset, moduleAufHomographie } from './DachSvg';
  */
 
 export const GESAMT_ASSET_ID = 'gesamt-modul';
+export const FOTO_ASSET_ID = 'foto-gruppe-modul';
+
+/**
+ * Alle belegten Flächen, die dem angegebenen Projektfoto zugeordnet sind.
+ * Wird im aktiven Belegungseditor (andere Flächen im Hintergrund) und im
+ * PDF-Export verwendet. Die aktive Fläche kann ausgeblendet werden, weil
+ * DachSvg sie mit ihren interaktiven Overlays selbst rendert.
+ */
+export function fotoFlaechenInhalt({
+  projekt,
+  foto,
+  ausblendenId,
+  beschriftung = true,
+  assetId = FOTO_ASSET_ID,
+}: {
+  projekt: Projekt;
+  foto: ProjektFoto;
+  ausblendenId?: string | null;
+  beschriftung?: boolean;
+  assetId?: string;
+}) {
+  const modul = modulById(projekt.modulId);
+  const px = (v: number) => foto.breitePx * v;
+  return projekt.flaechen.map((f, i) => {
+    const z = f.fotoZuordnung;
+    if (!z?.eckenPx || z.fotoId !== foto.id || f.id === ausblendenId) return null;
+    const h = homographie(rahmenBreiteVon(f), f.hoeheM, z.eckenPx, perspektiveQuelle(f));
+    if (!h) return null;
+    const raster = rasterFuer(f, modul);
+    const mitte = z.eckenPx.reduce<[number, number]>(
+      (a, p) => [a[0] + p[0] / 4, a[1] + p[1] / 4],
+      [0, 0],
+    );
+    return (
+      <g key={f.id} opacity={ausblendenId ? 0.72 : 1}>
+        {beschriftung && (
+          <polygon
+            points={z.eckenPx.map(([x, y]) => `${x},${y}`).join(' ')}
+            fill="rgba(249,115,22,0.025)"
+            stroke="#fb923c"
+            strokeWidth={px(0.003)}
+            strokeLinejoin="round"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
+        {moduleAufHomographie({
+          h,
+          raster,
+          flaeche: f,
+          assetId,
+          fotoBreitePx: foto.breitePx,
+          druck: true,
+        })}
+        {beschriftung && (
+          <g style={{ pointerEvents: 'none' }}>
+            <circle
+              cx={mitte[0]}
+              cy={mitte[1]}
+              r={px(0.024)}
+              fill="#f97316"
+              stroke="#ffffff"
+              strokeWidth={px(0.003)}
+            />
+            <text
+              x={mitte[0]}
+              y={mitte[1]}
+              fontSize={px(0.027)}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#ffffff"
+              fontWeight={700}
+            >
+              {zonenVon(f, i)}
+            </text>
+          </g>
+        )}
+      </g>
+    );
+  });
+}
+
+/** Vollständiges SVG genau einer Foto-Gruppe für PDF und Vorschau. */
+export function ProjektFotoSvg({
+  projekt,
+  foto,
+  beschriftung = false,
+}: {
+  projekt: Projekt;
+  foto: ProjektFoto;
+  /** Für die Belegungsverwaltung: Flächenrahmen und A/B/C einblenden. */
+  beschriftung?: boolean;
+}) {
+  const modul = modulById(projekt.modulId);
+  return (
+    <svg
+      viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
+      xmlns="http://www.w3.org/2000/svg"
+      preserveAspectRatio="xMidYMid meet"
+      className="block h-full w-full"
+    >
+      <defs>
+        <ModulAsset id={FOTO_ASSET_ID} modul={modul} />
+      </defs>
+      <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+      {fotoFlaechenInhalt({ projekt, foto, beschriftung })}
+    </svg>
+  );
+}
 
 /**
  * Die platzierten Flächen (nur die Module) als SVG-Kinder. Kein Umriss-Overlay mehr

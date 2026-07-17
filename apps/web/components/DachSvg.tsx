@@ -1,6 +1,7 @@
 'use client';
 
 import { posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
+import type { ReactNode } from 'react';
 import {
   homographie,
   inverseHomographie,
@@ -363,6 +364,7 @@ export function DachSvg({
   feldVorschau,
   geister,
   pointer,
+  fotoOverlay,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
@@ -385,6 +387,8 @@ export function DachSvg({
   geister?: GeistPosition[];
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
+  /** Weitere Flächen desselben Projektfotos, hinter der aktiven Fläche. */
+  fotoOverlay?: ReactNode;
 }) {
   // B = RAHMENbreite (bei 'schief' > Traufe): viewBox, Klick-Mapping, Homographie-
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
@@ -732,6 +736,7 @@ export function DachSvg({
               <ModulAsset id={assetId} modul={modul} />
             </defs>
             <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+            {fotoOverlay}
             {moduleAufHomographie({
               h,
               raster,
