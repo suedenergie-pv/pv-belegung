@@ -14,8 +14,10 @@ import {
   modulById,
   modulMasse,
   naechsteZone,
+  neueFlaeche,
   neueGaubenFlaeche,
   neueFotoId,
+  patchFlaechenGeometrie,
   projektFotoVon,
   rahmenBreiteVon,
   randVon,
@@ -31,6 +33,7 @@ import {
   type RechteckM,
 } from '../lib/model';
 import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
+import { FlaechenInlineEditor } from './FlaechenInlineEditor';
 import { FotoHintergrund } from './FotoHintergrund';
 import { GaubenEditor, type NeueGaubeAusFoto } from './GaubenEditor';
 import { fotoFlaechenInhalt, ProjektFotoSvg } from './GesamtSvg';
@@ -45,7 +48,7 @@ import {
   IconModulQuer,
   IconUmriss,
 } from './icons';
-import { HoldButton, Karte, KartenTitel, ToggleButton, ZonenBadge } from './ui';
+import { HoldButton, Karte, KartenTitel, ToggleButton } from './ui';
 
 /** Laufende Zeichnung (Umriss oder Hindernis) — immer nur eine Fläche gleichzeitig */
 interface Zeichnung {
@@ -264,6 +267,55 @@ export function SchrittBelegung({
     const neu = fn(projektRef.current);
     projektRef.current = neu;
     onChange(neu);
+  };
+
+  /** Grundmaße ändern den Maßstab, nicht die gesetzten Fotoecken. */
+  const patchGrunddaten = (id: string, patch: Partial<Flaeche>) => {
+    aendereProjekt((p) => ({
+      ...p,
+      flaechen: p.flaechen.map((f) =>
+        f.id === id ? patchFlaechenGeometrie(f, patch) : f,
+      ),
+    }));
+    setAuswahl(null);
+    setDrag(null);
+  };
+
+  const fuegeHauptflaecheHinzu = () => {
+    const p = projektRef.current;
+    const nr = Math.max(
+      0,
+      ...p.flaechen.map((f) => Number.parseInt(f.id.replace(/^p/, ''), 10) || 0),
+    ) + 1;
+    const neu = neueFlaeche(nr, naechsteZone(p.flaechen));
+    aendereProjekt((aktuell) => ({
+      ...aktuell,
+      flaechen: [...aktuell.flaechen, neu],
+    }));
+    window.setTimeout(() => {
+      document.getElementById(`belegung-${neu.id}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 50);
+  };
+
+  const loescheHauptflaeche = (flaeche: Flaeche) => {
+    const hauptflaechen = projektRef.current.flaechen.filter((f) => !f.gaubenTyp);
+    if (hauptflaechen.length <= 1) return;
+    if (!window.confirm(`Dachfläche „${flaeche.name}" mit ihrer Belegung entfernen?`)) return;
+    aendereProjekt((p) => {
+      const ids = new Set(
+        p.flaechen
+          .filter((f) => f.id === flaeche.id || f.elternFlaecheId === flaeche.id)
+          .map((f) => f.id),
+      );
+      return {
+        ...p,
+        flaechen: p.flaechen.filter((f) => !ids.has(f.id)),
+        mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
+      };
+    });
   };
 
   const waehleFotoDatei = (fotoId: string | null) => {
@@ -877,7 +929,14 @@ export function SchrittBelegung({
           <div className="text-sm text-slate-500">
             {gesamt} Module · {modul.name}
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="h-11 rounded-xl border border-akzent/40 bg-white px-4 text-sm font-semibold text-akzent hover:bg-akzent/5"
+              onClick={fuegeHauptflaecheHinzu}
+            >
+              + Dachfläche
+            </button>
             <ToggleButton aktiv={masseZeigen} onClick={() => setMasseZeigen((v) => !v)}>
               <IconMasse />
               {masseZeigen ? 'Maße an' : 'Maße aus'}
@@ -1068,14 +1127,32 @@ export function SchrittBelegung({
 
         const karte = (
           <Karte key={f.id} id={`belegung-${f.id}`}>
+            {!f.gaubenTyp && (
+              <FlaechenInlineEditor
+                projekt={projekt}
+                flaeche={f}
+                index={i}
+                onProjektChange={(neu) => {
+                  projektRef.current = neu;
+                  onChange(neu);
+                  setAuswahl(null);
+                  setDrag(null);
+                }}
+                onPatch={(patch) => patchGrunddaten(f.id, patch)}
+                onLoeschen={
+                  projekt.flaechen.filter((x) => !x.gaubenTyp).length > 1
+                    ? () => loescheHauptflaeche(f)
+                    : undefined
+                }
+              />
+            )}
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              {!f.gaubenTyp && <ZonenBadge label={zonenVon(f, i)} />}
               {f.gaubenTyp && (
                 <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                   Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
                 </span>
               )}
-              <KartenTitel>{f.name}</KartenTitel>
+              {f.gaubenTyp && <KartenTitel>{f.name}</KartenTitel>}
               {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500">
                 Foto
                 <select

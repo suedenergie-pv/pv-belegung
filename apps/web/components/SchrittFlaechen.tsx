@@ -9,6 +9,7 @@ import {
   flachdachSuedRichtung,
   naechsteZone,
   neueFlaeche,
+  patchFlaechenGeometrie,
   randDefaultVon,
   zonenVon,
   type Flaeche,
@@ -55,14 +56,22 @@ function ZahlenFeld({
 export function SchrittFlaechen({
   projekt,
   onChange,
+  nurFlaecheId,
+  eingebettet = false,
+  onFertig,
 }: {
   projekt: Projekt;
   onChange: (p: Projekt) => void;
+  nurFlaecheId?: string;
+  eingebettet?: boolean;
+  onFertig?: (flaecheId: string) => void;
 }) {
   const setFlaeche = (id: string, patch: Partial<Flaeche>) =>
     onChange({
       ...projekt,
-      flaechen: projekt.flaechen.map((f) => (f.id === id ? { ...f, ...patch, inaktiv: [] } : f)),
+      flaechen: projekt.flaechen.map((f) =>
+        f.id === id ? patchFlaechenGeometrie(f, patch) : f,
+      ),
     });
 
   /**
@@ -95,7 +104,9 @@ export function SchrittFlaechen({
     setFlaeche(f.id, patch);
   };
 
-  const hauptflaechen = projekt.flaechen.filter((f) => !f.gaubenTyp);
+  const hauptflaechen = projekt.flaechen.filter(
+    (f) => !f.gaubenTyp && (!nurFlaecheId || f.id === nurFlaecheId),
+  );
 
   const naechsteNr = () =>
     Math.max(0, ...projekt.flaechen.map((f) => Number.parseInt(f.id.slice(1), 10) || 0)) + 1;
@@ -103,38 +114,43 @@ export function SchrittFlaechen({
   return (
     <div className="space-y-4">
       {hauptflaechen.map((f, i) => (
-        <Karte key={f.id}>
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ZonenBadge label={zonenVon(f, i)} />
-              <KartenTitel>{f.name}</KartenTitel>
-            </div>
-            {hauptflaechen.length > 1 && (
-              <button
-                type="button"
-                className="text-sm font-medium text-red-500 hover:text-red-600"
-                onClick={() =>
-                  onChange({
-                    ...projekt,
-                    flaechen: projekt.flaechen.filter(
-                      (x) => x.id !== f.id && x.elternFlaecheId !== f.id,
-                    ),
-                    mppts: projekt.mppts.map((strings) =>
-                      strings.filter(
-                        (s) =>
-                          s.flaecheId !== f.id &&
-                          !projekt.flaechen.some(
-                            (x) => x.id === s.flaecheId && x.elternFlaecheId === f.id,
-                          ),
+        <Karte
+          key={f.id}
+          className={eingebettet ? 'border-0 bg-transparent p-0 shadow-none' : ''}
+        >
+          {!eingebettet && (
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ZonenBadge label={zonenVon(f, i)} />
+                <KartenTitel>{f.name}</KartenTitel>
+              </div>
+              {hauptflaechen.length > 1 && (
+                <button
+                  type="button"
+                  className="text-sm font-medium text-red-500 hover:text-red-600"
+                  onClick={() =>
+                    onChange({
+                      ...projekt,
+                      flaechen: projekt.flaechen.filter(
+                        (x) => x.id !== f.id && x.elternFlaecheId !== f.id,
                       ),
-                    ),
-                  })
-                }
-              >
-                Entfernen
-              </button>
-            )}
-          </div>
+                      mppts: projekt.mppts.map((strings) =>
+                        strings.filter(
+                          (s) =>
+                            s.flaecheId !== f.id &&
+                            !projekt.flaechen.some(
+                              (x) => x.id === s.flaecheId && x.elternFlaecheId === f.id,
+                            ),
+                        ),
+                      ),
+                    })
+                  }
+                >
+                  Entfernen
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="mb-4">
             <span className="mb-1 block text-sm font-medium text-slate-600">Art der Fläche</span>
@@ -481,34 +497,50 @@ export function SchrittFlaechen({
                 gesperrt).
               </p>
             )}
+
+          {eingebettet && onFertig && (
+            <div className="mt-5 flex justify-end border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                className="h-11 rounded-xl bg-akzent px-5 text-sm font-semibold text-white hover:bg-akzent/90"
+                onClick={() => onFertig(f.id)}
+              >
+                Dachfläche übernehmen
+              </button>
+            </div>
+          )}
         </Karte>
       ))}
 
-      <div className="grid gap-2">
-        <button
-          type="button"
-          className="h-12 rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500 hover:border-akzent hover:text-akzent"
-          onClick={() => {
-            const nr = naechsteNr();
-            onChange({
-              ...projekt,
-              flaechen: [
-                ...projekt.flaechen,
-                neueFlaeche(nr, naechsteZone(projekt.flaechen)),
-              ],
-            });
-          }}
-        >
-          + Haupt-Dachfläche
-        </button>
-      </div>
+      {!nurFlaecheId && (
+        <div className="grid gap-2">
+          <button
+            type="button"
+            className="h-12 rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500 hover:border-akzent hover:text-akzent"
+            onClick={() => {
+              const nr = naechsteNr();
+              onChange({
+                ...projekt,
+                flaechen: [
+                  ...projekt.flaechen,
+                  neueFlaeche(nr, naechsteZone(projekt.flaechen)),
+                ],
+              });
+            }}
+          >
+            + Haupt-Dachfläche
+          </button>
+        </div>
+      )}
 
-      <p className="text-xs text-slate-400">
-        Maße bitte als Aufmaß-Werte (wahre Maße) eingeben — die Sparrenlänge NICHT aus der
-        Draufsicht/Luftbild ablesen (Verkürzung!). Im nächsten Schritt können A/B/C gemeinsam
-        einem Drohnenfoto oder auf mehrere Fotos verteilt zugeordnet werden. Gauben werden dort
-        direkt innerhalb ihres Hauptdachs angelegt.
-      </p>
+      {!nurFlaecheId && (
+        <p className="text-xs text-slate-400">
+          Maße bitte als Aufmaß-Werte (wahre Maße) eingeben — die Sparrenlänge NICHT aus der
+          Draufsicht/Luftbild ablesen (Verkürzung!). Im nächsten Schritt können A/B/C gemeinsam
+          einem Drohnenfoto oder auf mehrere Fotos verteilt zugeordnet werden. Gauben werden dort
+          direkt innerhalb ihres Hauptdachs angelegt.
+        </p>
+      )}
     </div>
   );
 }

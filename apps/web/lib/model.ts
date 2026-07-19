@@ -202,8 +202,10 @@ export interface Flaeche {
    * Seitlicher Versatz der First-Mitte gegen die Traufe-Mitte, Meter (+ = nach
    * rechts) — nur bei dachform 'schief'. 0 + firstBreiteM < Traufe = symmetrisches
    * Trapez; firstBreiteM = Traufe = Parallelogramm.
-   */
+  */
   firstVersatzM?: number;
+  /** Grunddaten im kombinierten Dach-/Belegungsschritt einmal bestätigt. */
+  grunddatenFertig?: boolean;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
   /**
@@ -451,6 +453,7 @@ export function neueFlaeche(nr: number, zone?: string): Flaeche {
     azimutDeg: 180,
     dachfarbe: 'anthrazit',
     ausrichtung: 'quer',
+    grunddatenFertig: false,
     // Neue Flächen starten UNBELEGT — der Nutzer zieht seine Felder selbst
     // (oder klickt „Automatisch füllen"). Genrih 16.07.: Automatismus mildern.
     felder: [],
@@ -497,6 +500,7 @@ export function neueGaubenFlaeche(
     neigungDeg: flach ? 5 : 30,
     dachfarbe: flach ? 'grau' : 'anthrazit',
     dachform: 'rechteck',
+    grunddatenFertig: true,
     randM: DEFAULT_RAND_M,
   };
 }
@@ -587,6 +591,39 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
 /** Zentriertes Voll-Feld über der Nutzfläche („Automatisch füllen"). */
 export function vollFeldFuer(f: Flaeche, modul: ModuleType): BelegungsFeldM {
   return vollFeld({ ...felderInput(f, modul), ausrichtung: f.ausrichtung });
+}
+
+/**
+ * Maß-/Formänderung bei feststehenden Fotoecken: metrische Inhalte proportional
+ * mitführen, damit Felder und Markierungen im Foto an derselben Stelle bleiben.
+ */
+export function patchFlaechenGeometrie(f: Flaeche, patch: Partial<Flaeche>): Flaeche {
+  const altBreite = rahmenBreiteVon(f);
+  const altHoehe = f.hoeheM;
+  const neu = { ...f, ...patch, inaktiv: [] };
+  const neuBreite = rahmenBreiteVon(neu);
+  const neuHoehe = neu.hoeheM;
+  const sx = altBreite > 0 && neuBreite > 0 ? neuBreite / altBreite : 1;
+  const sy = altHoehe > 0 && neuHoehe > 0 ? neuHoehe / altHoehe : 1;
+  if (Math.abs(sx - 1) < 1e-9 && Math.abs(sy - 1) < 1e-9) return neu;
+
+  const rechteck = (r: RechteckM): RechteckM => ({
+    xM: r.xM * sx,
+    yM: r.yM * sy,
+    breiteM: r.breiteM * sx,
+    hoeheM: r.hoeheM * sy,
+  });
+  return {
+    ...neu,
+    // Zell-Ausnahmen gehören zum alten Raster und werden bei Maßänderungen verworfen.
+    felder: neu.felder?.map((feld) => ({ ...rechteck(feld), quer: feld.quer })),
+    umrissM: neu.umrissM?.map((p) => [p[0] * sx, p[1] * sy]),
+    hindernisse: neu.hindernisse?.map(rechteck),
+    gaubenAussparungen: neu.gaubenAussparungen?.map((a) => ({
+      ...a,
+      rechteck: rechteck(a.rechteck),
+    })),
+  };
 }
 
 /** Abgeschaltete Modul-Plätze (nur zum Anzeigen im „Module an/aus"-Modus). */
@@ -742,6 +779,17 @@ export interface ProjektEintrag {
 export interface ProjektDb {
   aktivId: string | null;
   projekte: ProjektEintrag[];
+  /** 2 = zusammengeführter Drei-Schritt-Ablauf seit 19.07.2026. */
+  workflowVersion?: 2;
+}
+
+const WORKFLOW_VERSION = 2 as const;
+
+/** Alte Schritte 0/1/2/3 auf Projekt / Dach & Belegung / Export abbilden. */
+function migriereWorkflowSchritt(schritt: number): number {
+  if (schritt <= 0) return 0;
+  if (schritt >= 3) return 2;
+  return 1;
 }
 
 export function neueProjektId(): string {
@@ -904,7 +952,12 @@ function migriereProjekt(roh: Projekt): Projekt {
     ]) {
       delete rest[alt];
     }
-    return { ...rest, felder: f.felder ?? [], inaktiv: [] };
+    return {
+      ...rest,
+      grunddatenFertig: f.grunddatenFertig ?? true,
+      felder: f.felder ?? [],
+      inaktiv: [],
+    };
   });
   return projekt;
 }
@@ -928,7 +981,10 @@ export type SpeicherStatus = 'gespeichert' | 'speicher_voll';
 export function speichereProjekte(db: ProjektDb): SpeicherStatus {
   if (typeof window === 'undefined') return 'gespeichert';
   try {
-    window.localStorage.setItem(PROJEKTE_KEY, JSON.stringify(db));
+    window.localStorage.setItem(
+      PROJEKTE_KEY,
+      JSON.stringify({ ...db, workflowVersion: WORKFLOW_VERSION }),
+    );
     return 'gespeichert';
   } catch {
     // Den letzten vollständigen Stand niemals durch eine Version ohne Fotos
@@ -938,19 +994,28 @@ export function speichereProjekte(db: ProjektDb): SpeicherStatus {
 }
 
 export function ladeProjekte(): ProjektDb {
-  if (typeof window === 'undefined') return { aktivId: null, projekte: [] };
+  if (typeof window === 'undefined') {
+    return { aktivId: null, projekte: [], workflowVersion: WORKFLOW_VERSION };
+  }
   try {
     const roh = window.localStorage.getItem(PROJEKTE_KEY);
     if (roh) {
       const db = JSON.parse(roh) as Partial<ProjektDb>;
       if (Array.isArray(db.projekte)) {
+        const bereitsNeu = db.workflowVersion === WORKFLOW_VERSION;
         const projekte = db.projekte
           .filter((e): e is ProjektEintrag => !!e?.projekt && Array.isArray(e.projekt.flaechen))
-          .map((e) => ({ ...e, projekt: migriereProjekt(e.projekt) }));
+          .map((e) => ({
+            ...e,
+            schritt: bereitsNeu
+              ? Math.max(0, Math.min(2, e.schritt ?? 0))
+              : migriereWorkflowSchritt(e.schritt ?? 0),
+            projekt: migriereProjekt(e.projekt),
+          }));
         const aktivId = projekte.some((e) => e.id === db.aktivId)
           ? db.aktivId!
           : (projekte[0]?.id ?? null);
-        return { aktivId, projekte };
+        return { aktivId, projekte, workflowVersion: WORKFLOW_VERSION };
       }
     }
   } catch {
@@ -962,12 +1027,16 @@ export function ladeProjekte(): ProjektDb {
     const jetzt = Date.now();
     const eintrag: ProjektEintrag = {
       id: neueProjektId(),
-      projekt: alt.projekt,
-      schritt: alt.schritt,
+      projekt: migriereProjekt(alt.projekt),
+      schritt: migriereWorkflowSchritt(alt.schritt),
       erstelltAm: jetzt,
       geaendertAm: jetzt,
     };
-    const db: ProjektDb = { aktivId: eintrag.id, projekte: [eintrag] };
+    const db: ProjektDb = {
+      aktivId: eintrag.id,
+      projekte: [eintrag],
+      workflowVersion: WORKFLOW_VERSION,
+    };
     speichereProjekte(db);
     try {
       window.localStorage.removeItem(STORAGE_KEY); // Alt-Key freigeben (Fotos = groß)
@@ -976,7 +1045,7 @@ export function ladeProjekte(): ProjektDb {
     }
     return db;
   }
-  return { aktivId: null, projekte: [] };
+  return { aktivId: null, projekte: [], workflowVersion: WORKFLOW_VERSION };
 }
 
 /** Neuer, leerer Eintrag (Zeitstempel jetzt). */

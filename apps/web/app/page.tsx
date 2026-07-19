@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
-import { SchrittFlaechen } from '../components/SchrittFlaechen';
 import { SchrittProjekt } from '../components/SchrittProjekt';
 import {
   eintragDatum,
@@ -20,10 +19,14 @@ import {
 // „Stringcheck" ist seit 13.07.2026 ausgeblendet (Genrih: kein Main-Feature, soll
 // im finalen Programm nicht zu sehen sein). Die Rechenlogik (Engine R1–R12,
 // SchrittStrings, pruefeStringplan) bleibt vollständig im Projekt.
-const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Export'] as const;
+const SCHRITTE = ['Projekt', 'Dach & Belegung', 'Export'] as const;
 
 export default function Home() {
-  const [db, setDb] = useState<ProjektDb>({ aktivId: null, projekte: [] });
+  const [db, setDb] = useState<ProjektDb>({
+    aktivId: null,
+    projekte: [],
+    workflowVersion: 2,
+  });
   // localStorage erst nach dem Mount lesen (SSR-Hydration), danach jede Änderung sichern
   const [geladen, setGeladen] = useState(false);
   const [speicherWarnung, setSpeicherWarnung] = useState(false);
@@ -36,7 +39,7 @@ export default function Home() {
         ? geladen
         : (() => {
             const e = neuerEintrag();
-            return { aktivId: e.id, projekte: [e] };
+            return { aktivId: e.id, projekte: [e], workflowVersion: 2 };
           })(),
     );
     setGeladen(true);
@@ -97,7 +100,7 @@ export default function Home() {
 
   const neuesAnlegen = () => {
     const e = neuerEintrag();
-    setDb((d) => ({ aktivId: e.id, projekte: [...d.projekte, e] }));
+    setDb((d) => ({ ...d, aktivId: e.id, projekte: [...d.projekte, e] }));
   };
 
   const dupliziereAktiv = () => {
@@ -113,7 +116,7 @@ export default function Home() {
       erstelltAm: jetzt,
       geaendertAm: jetzt,
     };
-    setDb((d) => ({ aktivId: kopie.id, projekte: [...d.projekte, kopie] }));
+    setDb((d) => ({ ...d, aktivId: kopie.id, projekte: [...d.projekte, kopie] }));
   };
 
   const loescheAktiv = () => {
@@ -121,9 +124,9 @@ export default function Home() {
     if (!window.confirm(`Projekt „${eintragName(aktiv)}" löschen?`)) return;
     setDb((d) => {
       const rest = d.projekte.filter((e) => e.id !== d.aktivId);
-      if (rest.length > 0) return { aktivId: rest[0]!.id, projekte: rest };
+      if (rest.length > 0) return { ...d, aktivId: rest[0]!.id, projekte: rest };
       const e = neuerEintrag(); // nie ohne aktives Projekt dastehen
-      return { aktivId: e.id, projekte: [e] };
+      return { ...d, aktivId: e.id, projekte: [e] };
     });
   };
 
@@ -210,9 +213,8 @@ export default function Home() {
       </nav>
 
       {schritt === 0 && <SchrittProjekt projekt={projekt} onChange={setProjekt} />}
-      {schritt === 1 && <SchrittFlaechen projekt={projekt} onChange={setProjekt} />}
-      {schritt === 2 && <SchrittBelegung projekt={projekt} onChange={setProjekt} />}
-      {schritt === 3 && <SchrittExport projekt={projekt} />}
+      {schritt === 1 && <SchrittBelegung projekt={projekt} onChange={setProjekt} />}
+      {schritt === 2 && <SchrittExport projekt={projekt} />}
 
       <div className="flex justify-between">
         <button

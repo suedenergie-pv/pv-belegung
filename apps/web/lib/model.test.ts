@@ -6,9 +6,11 @@ import {
   flaecheM2,
   flachdachOstRichtung,
   flachdachRichtungsLabel,
+  ladeProjekte,
   modulById,
   neueFlaeche,
   neuesProjekt,
+  patchFlaechenGeometrie,
   speichereProjekte,
   type ProjektDb,
 } from './model';
@@ -43,6 +45,25 @@ describe('Export-Geometrie und Modulausrichtung', () => {
       flaeche.hindernisse[0],
       flaeche.gaubenAussparungen[0]!.rechteck,
     ]);
+  });
+
+  it('führt Felder und Foto-Markierungen bei Maßänderungen proportional mit', () => {
+    const flaeche = neueFlaeche(1, 'A');
+    flaeche.breiteM = 10;
+    flaeche.hoeheM = 5;
+    flaeche.felder = [
+      { xM: 2, yM: 1, breiteM: 4, hoeheM: 2, quer: true, leer: ['alt'] },
+    ];
+    flaeche.umrissM = [[1, 1], [9, 1], [9, 4], [1, 4]];
+    flaeche.hindernisse = [{ xM: 3, yM: 2, breiteM: 1, hoeheM: 1 }];
+
+    const neu = patchFlaechenGeometrie(flaeche, { breiteM: 12, hoeheM: 10 });
+    expect(neu.felder).toEqual([
+      { xM: 2.4, yM: 2, breiteM: 4.8, hoeheM: 4, quer: true },
+    ]);
+    expect(neu.umrissM?.[0]).toEqual([1.2, 2]);
+    expect(neu.hindernisse?.[0]?.xM).toBeCloseTo(3.6);
+    expect(neu.hindernisse?.[0]).toMatchObject({ yM: 4, breiteM: 1.2, hoeheM: 2 });
   });
 
   it('exportiert gemischte Felder getrennt und alle Schlüssel in snake_case', () => {
@@ -154,5 +175,28 @@ describe('Mehrfoto-Sicherheit', () => {
     expect(speichereProjekte(db)).toBe('speicher_voll');
     expect(setItem).toHaveBeenCalledTimes(1);
     expect(aufrufe[0]![1]).toContain('data:image/jpeg;base64,x');
+  });
+
+  it('migriert bestehende Projekte auf den zusammengeführten Drei-Schritt-Ablauf', () => {
+    const projekt = neuesProjekt();
+    delete projekt.flaechen[0]!.grunddatenFertig;
+    const alt: ProjektDb = {
+      aktivId: 'projekt-2',
+      projekte: [0, 1, 2, 3].map((schritt) => ({
+        id: `projekt-${schritt}`,
+        projekt,
+        schritt,
+        erstelltAm: 1,
+        geaendertAm: 1,
+      })),
+    };
+    vi.stubGlobal('window', {
+      localStorage: { getItem: vi.fn(() => JSON.stringify(alt)) },
+    });
+
+    const migriert = ladeProjekte();
+    expect(migriert.workflowVersion).toBe(2);
+    expect(migriert.projekte.map((e) => e.schritt)).toEqual([0, 1, 1, 2]);
+    expect(migriert.projekte[0]!.projekt.flaechen[0]!.grunddatenFertig).toBe(true);
   });
 });

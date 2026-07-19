@@ -334,6 +334,16 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - Jede Dachfläche hat in v1 genau **ein primäres Belegungsfoto**. Die Zuordnung wird im Schritt „Belegung" frei gesetzt und kann später geändert werden. Flächen ohne Foto bleiben in der maßstäblichen Draufsicht bearbeitbar.
 - Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset. Dadurch hat jede Fläche auf demselben Foto ihre eigene Homographie, ihren eigenen Umriss und ihre eigenen Hindernisse.
 - Das frühere eigene UI-Tab „Gesamtansicht" entfällt. Die Foto-Gruppen im Belegungsschritt und im PDF übernehmen diese Aufgabe.
+- Der Vertriebsablauf hat drei Hauptschritte: **Projekt → Dach & Belegung → Export**.
+  Dachflächen-Grunddaten und Belegung liegen bewusst im selben Arbeitsschritt.
+- Jede neue Hauptfläche startet mit geöffneten Grunddaten. Nach Bestätigung bleibt
+  direkt über ihrer Foto-/Draufsicht eine kompakte Zeile sichtbar: Flächenform,
+  Traufe/Breite, Sparrenlänge/Tiefe und – falls nötig – Firstbreite sowie Versatz.
+  Seltene Angaben bleiben unter „Details" eingeklappt (progressive disclosure).
+- Änderungen dieser Maße lassen die vier Fotoecken unverändert: Die Ecken bestimmen
+  die Perspektive, die wahren Maße bestimmen den metrischen Maßstab und damit die
+  sichtbare Modulgröße. Belegungsfelder, manuelle Umrisse und Hindernisse werden beim
+  Ändern proportional mitgeführt, damit ihre Lage im Foto nicht springt.
 - Im Belegungseditor dürfen A/B/C-Rahmen der Orientierung dienen. Im Kunden-PDF zeigt
   die Foto-Übersicht nur Foto und Module — keine Zonen-Kreise und keine orange
   Flächenkontur.
