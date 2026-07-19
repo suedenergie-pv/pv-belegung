@@ -5,6 +5,8 @@ import {
   artVon,
   farbenFuer,
   flachdachPitchDefault,
+  flachdachRichtungsLabel,
+  flachdachSuedRichtung,
   naechsteZone,
   neueFlaeche,
   neueGaubenFlaeche,
@@ -12,6 +14,7 @@ import {
   zonenVon,
   type Flaeche,
   type FlaechenArt,
+  type FlachdachSuedRichtung,
   type GaubenTyp,
   type Projekt,
 } from '../lib/model';
@@ -75,7 +78,11 @@ export function SchrittFlaechen({
     const patch: Partial<Flaeche> = { art, randM: undefined, dachform: 'rechteck' };
     if (art === 'flachdach') {
       patch.neigungDeg = 0;
-      patch.flachdach = f.flachdach ?? { aufstaenderung: 'ostwest', winkelDeg: 10 };
+      patch.flachdach = f.flachdach ?? {
+        aufstaenderung: 'ostwest',
+        winkelDeg: 10,
+        richtungSued: 'unten',
+      };
       patch.dachfarbe = 'bitumen';
     } else {
       patch.flachdach = undefined;
@@ -272,7 +279,9 @@ export function SchrittFlaechen({
                 f.gaubenTyp
                   ? 'Breite der Gaubenfläche'
                   : artVon(f) === 'flachdach'
-                  ? 'Breite (Ost↔West)'
+                  ? flachdachSuedRichtung(f) === 'unten' || flachdachSuedRichtung(f) === 'oben'
+                    ? 'Breite (Ost↔West)'
+                    : 'Breite (Nord↔Süd)'
                   : artVon(f) === 'fassade'
                     ? 'Breite der Fassade'
                     : 'Breite Traufe'
@@ -287,7 +296,9 @@ export function SchrittFlaechen({
                 f.gaubenTyp
                   ? 'Tiefe der Gaubenfläche, wahres Maß'
                   : artVon(f) === 'flachdach'
-                  ? 'Tiefe (Nord↔Süd)'
+                  ? flachdachSuedRichtung(f) === 'unten' || flachdachSuedRichtung(f) === 'oben'
+                    ? 'Tiefe (Nord↔Süd)'
+                    : 'Tiefe (Ost↔West)'
                   : artVon(f) === 'fassade'
                     ? 'Höhe der Fassade'
                     : 'Sparrenlänge, wahres Maß'
@@ -328,7 +339,11 @@ export function SchrittFlaechen({
                     aktiv={f.flachdach!.aufstaenderung === o.a && f.flachdach!.winkelDeg === o.w}
                     onClick={() =>
                       setFlaeche(f.id, {
-                        flachdach: { aufstaenderung: o.a, winkelDeg: o.w },
+                        flachdach: {
+                          aufstaenderung: o.a,
+                          winkelDeg: o.w,
+                          richtungSued: flachdachSuedRichtung(f),
+                        },
                         randM: undefined, // neuer Windlast-Default greift
                       })
                     }
@@ -357,13 +372,48 @@ export function SchrittFlaechen({
                   m
                 </label>
               </div>
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <span className="mb-2 block text-sm font-medium text-slate-600">
+                  Wo liegt Süden in Plan und Foto?
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { wert: 'unten', label: '↓ unten' },
+                      { wert: 'links', label: '← links' },
+                      { wert: 'oben', label: '↑ oben' },
+                      { wert: 'rechts', label: '→ rechts' },
+                    ] as const satisfies ReadonlyArray<{
+                      wert: FlachdachSuedRichtung;
+                      label: string;
+                    }>
+                  ).map((richtung) => (
+                    <ToggleButton
+                      key={richtung.wert}
+                      aktiv={flachdachSuedRichtung(f) === richtung.wert}
+                      onClick={() =>
+                        setFlaeche(f.id, {
+                          flachdach: { ...f.flachdach!, richtungSued: richtung.wert },
+                          // Gelöschte Einzelplätze gehören zum alten Raster und
+                          // dürfen nach einer 90°-Drehung nicht woanders auftauchen.
+                          felder: f.felder?.map((feld) => ({ ...feld, leer: undefined })),
+                        })
+                      }
+                    >
+                      {richtung.label}
+                    </ToggleButton>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm font-semibold text-slate-700">
+                  {flachdachRichtungsLabel(f)}
+                </p>
+              </div>
               <p className="mt-1 text-xs text-slate-400">
                 Systemmaße PROFINESS Flat (Montageanleitung 05/2025): Ost-West Paar-Pitch 2,48 m;
                 Süd Reihen-Pitch 1,80 m (10°) / 1,90 m (15°) — bei anderem Gestell den Pitch
                 anpassen. Module liegen immer quer. Randabstand-Empfehlung {' '}
                 {Math.round(randDefaultVon(f) * 100)} cm (Windlast), in der Belegung änderbar.
-                <strong> Konvention: die Unterkante der Fläche zeigt nach Süden</strong> — beim
-                Foto-Markieren so ausrichten.
+                Die gewählte Himmelsrichtung dreht Raster, Ost-/West-Seiten und Export gemeinsam.
               </p>
             </div>
           )}

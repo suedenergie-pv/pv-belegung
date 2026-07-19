@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   ausrichtungenVon,
+  flaechenAusrichtungsLabel,
   bauePayload,
   dachFotoVon,
   flaechenTitel,
@@ -83,7 +84,7 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
             return (
               <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
                 <dt className="text-slate-500">
-                  {flaechenTitel(f, i)} · {f.neigungDeg}° · Azimut {f.azimutDeg}°
+                  {flaechenTitel(f, i)} · {f.neigungDeg}° · {flaechenAusrichtungsLabel(f)}
                 </dt>
                 <dd className="font-medium">
                   {aktiveModule(f, raster)} Module ({ausrichtungen.bezeichnung}) ·{' '}

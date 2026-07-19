@@ -458,7 +458,11 @@ export function SchrittBelegung({
           return {
             ...feld,
             ...rect,
-            leer: leerVerschoben(feld.leer, zellVersatz.col * sm.colsJeSchrittX, zellVersatz.row),
+            leer: leerVerschoben(
+              feld.leer,
+              zellVersatz.col * sm.colsJeSchrittX,
+              zellVersatz.row * sm.rowsJeSchrittY,
+            ),
           };
         }),
       };

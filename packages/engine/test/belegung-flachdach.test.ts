@@ -47,20 +47,20 @@ describe('Flachdach Ost-West (PROFINESS Flat, 10°)', () => {
     const feld: BelegungsFeldM = { xM: 1, yM: 1, breiteM: 2.48, hoeheM: 1.8, quer: true };
     const r = berechneFelderRaster(dachOW, [feld]);
     expect(r.positionen).toHaveLength(2);
-    const [ost, west] = r.positionen;
-    expect(ost!.seite).toBe('ost');
+    const [west, ost] = r.positionen;
     expect(west!.seite).toBe('west');
-    expect(west!.xM - (ost!.xM + ost!.wM)).toBeCloseTo(0.05, 6); // Firstspalt
+    expect(ost!.seite).toBe('ost');
+    expect(ost!.xM - (west!.xM + west!.wM)).toBeCloseTo(0.05, 6); // Firstspalt
   });
 
   it('keine Modul-Überlappungen, leer-Zellen wirken je Einzelmodul', () => {
     const feld: BelegungsFeldM = {
       xM: 1, yM: 1, breiteM: 4.96, hoeheM: 3.6, quer: true,
-      leer: ['0-1'], // West-Modul des ersten Paars, erste Reihe
+      leer: ['0-0'], // West-Modul des ersten Paars, erste Reihe
     };
     const r = berechneFelderRaster(dachOW, [feld]);
     expect(r.positionen).toHaveLength(7);
-    expect(r.positionen.some((p) => p.row === 0 && p.col === 1)).toBe(false);
+    expect(r.positionen.some((p) => p.row === 0 && p.col === 0)).toBe(false);
     for (let i = 0; i < r.positionen.length; i++) {
       for (let j = i + 1; j < r.positionen.length; j++) {
         const a = r.positionen[i]!;
@@ -77,6 +77,43 @@ describe('Flachdach Ost-West (PROFINESS Flat, 10°)', () => {
     const geister = leerePositionen(dachOW, [feld]);
     expect(geister).toHaveLength(1);
     expect(geister[0]!.seite).toBe('west');
+  });
+
+  it('Kompasswahl dreht das Raster und ordnet Ost/West richtig zu', () => {
+    const feldHorizontal: BelegungsFeldM = {
+      xM: 1,
+      yM: 1,
+      breiteM: 2.48,
+      hoeheM: 1.8,
+      quer: true,
+    };
+    const nachOben = berechneFelderRaster(
+      { ...dachOW, montage: { ...OW, richtungSued: 'oben' } },
+      [feldHorizontal],
+    ).positionen;
+    expect(nachOben.map((p) => p.seite)).toEqual(['ost', 'west']);
+
+    const feldVertikal: BelegungsFeldM = {
+      xM: 1,
+      yM: 1,
+      breiteM: 1.8,
+      hoeheM: 2.48,
+      quer: true,
+    };
+    const nachRechts = berechneFelderRaster(
+      { ...dachOW, montage: { ...OW, richtungSued: 'rechts' } },
+      [feldVertikal],
+    ).positionen;
+    expect(nachRechts.map((p) => p.seite)).toEqual(['ost', 'west']);
+    expect(nachRechts[0]!.yM).toBeLessThan(nachRechts[1]!.yM);
+    expect(nachRechts[0]!.wM).toBeCloseTo(1.762, 6);
+    expect(nachRechts[0]!.hM).toBeCloseTo(TIEFE_10, 4);
+
+    const nachLinks = berechneFelderRaster(
+      { ...dachOW, montage: { ...OW, richtungSued: 'links' } },
+      [feldVertikal],
+    ).positionen;
+    expect(nachLinks.map((p) => p.seite)).toEqual(['west', 'ost']);
   });
 
   it('vollFeld O/W: 12×8-Dach mit 0,60 m Rand → 4 Paare × 4 Reihen = 32 Module', () => {
@@ -110,6 +147,18 @@ describe('Flachdach Süd (PROFINESS Flat, 10°/15°)', () => {
     expect(p.seite).toBeUndefined();
   });
 
+  it('Südrichtung rechts dreht Reihen-Pitch und Modulfußabdruck in die x-Achse', () => {
+    const feld: BelegungsFeldM = { xM: 1, yM: 1, breiteM: 3, hoeheM: 1.8, quer: true };
+    const r = berechneFelderRaster(
+      { ...dachSued, montage: { ...SUED10, richtungSued: 'rechts' } },
+      [feld],
+    );
+    const x = [...new Set(r.positionen.map((p) => p.xM))].sort((a, b) => a - b);
+    expect(x[1]! - x[0]!).toBeCloseTo(1.8, 6);
+    expect(r.positionen[0]!.wM).toBeCloseTo(TIEFE_10, 4);
+    expect(r.positionen[0]!.hM).toBeCloseTo(1.762, 6);
+  });
+
   it('15° baut flacher (cos 15°) und braucht mehr Pitch', () => {
     const sued15: FlachdachMontage = { aufstaenderung: 'sued', winkelDeg: 15, pitchM: 1.9 };
     const feld: BelegungsFeldM = { xM: 1, yM: 1, breiteM: 5.4, hoeheM: 5, quer: true };
@@ -137,6 +186,7 @@ describe('feldSchrittmasse — Einrasten beim Größenziehen', () => {
     expect(sm.pitchXM).toBeCloseTo(1.782, 6);
     expect(sm.pitchYM).toBeCloseTo(1.154, 6);
     expect(sm.colsJeSchrittX).toBe(1);
+    expect(sm.rowsJeSchrittY).toBe(1);
   });
 
   it('Süd: y-Schritt = Gestell-Pitch (nicht Modulmaß!)', () => {
@@ -144,6 +194,7 @@ describe('feldSchrittmasse — Einrasten beim Größenziehen', () => {
     expect(sm.pitchXM).toBeCloseTo(1.782, 6);
     expect(sm.pitchYM).toBeCloseTo(1.8, 6);
     expect(sm.colsJeSchrittX).toBe(1);
+    expect(sm.rowsJeSchrittY).toBe(1);
   });
 
   it('Ost-West: x-Schritt = Paar-Pitch 2,48, ein Schritt = 2 Zell-Spalten', () => {
@@ -151,6 +202,15 @@ describe('feldSchrittmasse — Einrasten beim Größenziehen', () => {
     expect(sm.pitchXM).toBeCloseTo(2.48, 6);
     expect(sm.pitchYM).toBeCloseTo(1.782, 6);
     expect(sm.colsJeSchrittX).toBe(2);
+    expect(sm.rowsJeSchrittY).toBe(1);
+  });
+
+  it('gedrehtes Ost-West: y-Schritt = Paar-Pitch, zwei Zell-Zeilen je Schritt', () => {
+    const sm = feldSchrittmasse({ module: M, montage: { ...OW, richtungSued: 'rechts' } }, true);
+    expect(sm.pitchXM).toBeCloseTo(1.782, 6);
+    expect(sm.pitchYM).toBeCloseTo(2.48, 6);
+    expect(sm.colsJeSchrittX).toBe(1);
+    expect(sm.rowsJeSchrittY).toBe(2);
   });
 
   it('Beweis der Invariante: Feld links um einen Schritt gewachsen → alte O/W-Module stehen exakt', () => {

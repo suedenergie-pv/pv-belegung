@@ -3,6 +3,8 @@ import {
   bauePayload,
   fertigeFotoFlaechen,
   flaecheM2,
+  flachdachOstRichtung,
+  flachdachRichtungsLabel,
   neueFlaeche,
   neuesProjekt,
   speichereProjekte,
@@ -52,6 +54,39 @@ describe('Export-Geometrie und Modulausrichtung', () => {
       ausrichtung: 'gemischt',
       anzahl_hochkant: 1,
       anzahl_quer: 1,
+    });
+  });
+
+  it('exportiert beim Flachdach die gewählte Ost-West-Lage und beide Modulseiten', () => {
+    const projekt = neuesProjekt();
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!,
+      art: 'flachdach',
+      breiteM: 4,
+      hoeheM: 4,
+      randM: 0,
+      neigungDeg: 0,
+      flachdach: {
+        aufstaenderung: 'ostwest',
+        winkelDeg: 10,
+        richtungSued: 'rechts',
+      },
+      felder: [{ xM: 0, yM: 0, breiteM: 4, hoeheM: 4, quer: true }],
+    };
+
+    expect(flachdachOstRichtung(projekt.flaechen[0]!)).toBe('oben');
+    expect(flachdachRichtungsLabel(projekt.flaechen[0]!)).toBe('Ost oben / West unten');
+
+    const payload = bauePayload(projekt, null) as Record<string, unknown>;
+    const flaeche = (payload.flaechen as Array<Record<string, unknown>>)[0]!;
+    expect(flaeche.flachdach_montage).toMatchObject({
+      sued_richtung_im_plan: 'rechts',
+      ost_richtung_im_plan: 'oben',
+    });
+    expect(flaeche.module).toMatchObject({
+      ausrichtung: 'quer',
+      anzahl_ost: 2,
+      anzahl_west: 2,
     });
   });
 });

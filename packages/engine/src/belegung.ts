@@ -556,10 +556,11 @@ export interface BelegungsFeldM {
  * Montageanleitung 05/2025, docs/datenblaetter/PROFINESS-Flat-Montageanleitung-
  * Flachdach_05_2025.pdf; für Modulrahmen 1050–1170 mm, nur QUER liegende Module):
  *
- * - 'sued': alle Module nach Süden gekippt (10° oder 15°). Kipprichtung = Flächen-y
- *   (Konvention: Unterkante der Fläche = Süden). Reihen-Pitch laut Querschnitten:
+ * - 'sued': alle Module nach Süden gekippt (10° oder 15°). Die Kipprichtung folgt
+ *   `richtungSued`. Reihen-Pitch laut Querschnitten:
  *   1,80 m @10° bzw. ~1,90 m @15° (Standard-Südsystem).
- * - 'ostwest': Modul-PAARE, Zeltfirst in Nord-Süd-Richtung, Kipprichtung = Flächen-x.
+ * - 'ostwest': Modul-PAARE, Zeltfirst in Nord-Süd-Richtung; die Achse folgt
+ *   ebenfalls der gewählten Kompasslage.
  *   Paar-Pitch laut Querschnitten exakt 2,48 m (2er-Gestell; 4er = 4,96 m —
  *   Paare stoßen bündig aneinander), Winkel ca. 10°.
  *
@@ -574,6 +575,8 @@ export interface FlachdachMontage {
   pitchM: number;
   /** Spalt am Zeltfirst zwischen den beiden Modulen eines O/W-Paars, Meter (Optik) */
   firstspaltM?: number;
+  /** Wo Süden in der Draufsicht liegt. Default für Altprojekte: unten. */
+  richtungSued?: 'unten' | 'links' | 'oben' | 'rechts';
 }
 
 /** Rahmenbedingungen der Fläche für die Feld-Belegung (ohne Ausrichtung/Optimierer). */
@@ -641,17 +644,31 @@ function feldZellen(
   const { w: laengsM, h: querM } = dimsVon(module, 'quer'); // 1,762 × 1,134
   const tiefe = querM * Math.cos(montage.winkelDeg * GRAD);
   const pitch = Math.max(montage.pitchM, tiefe + 0.01);
+  const richtungSued = montage.richtungSued ?? 'unten';
+  const kipptVertikal = richtungSued === 'unten' || richtungSued === 'oben';
 
   if (montage.aufstaenderung === 'sued') {
-    // Reihen quer zur Kipprichtung (y): erste Reihe braucht nur den Fußabdruck,
-    // jede weitere den vollen Gestell-Pitch (Verschattungs-/Systemabstand).
-    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (laengsM + fugeM)));
-    const rows = feld.hoeheM + EPS >= tiefe
-      ? 1 + Math.floor((feld.hoeheM - tiefe + EPS) / pitch)
-      : 0;
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        zellen.push({ row, col, xM: col * (laengsM + fugeM), yM: row * pitch, wM: laengsM, hM: tiefe, quer: true });
+    // Reihen quer zur gewählten Südrichtung: erste Reihe braucht nur den
+    // Fußabdruck, jede weitere den vollen Gestell-Pitch.
+    if (kipptVertikal) {
+      const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (laengsM + fugeM)));
+      const rows = feld.hoeheM + EPS >= tiefe
+        ? 1 + Math.floor((feld.hoeheM - tiefe + EPS) / pitch)
+        : 0;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          zellen.push({ row, col, xM: col * (laengsM + fugeM), yM: row * pitch, wM: laengsM, hM: tiefe, quer: true });
+        }
+      }
+    } else {
+      const cols = feld.breiteM + EPS >= tiefe
+        ? 1 + Math.floor((feld.breiteM - tiefe + EPS) / pitch)
+        : 0;
+      const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (laengsM + fugeM)));
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          zellen.push({ row, col, xM: col * pitch, yM: row * (laengsM + fugeM), wM: tiefe, hM: laengsM, quer: false });
+        }
       }
     }
     return zellen;
@@ -661,19 +678,36 @@ function feldZellen(
   // West-Modul mit Firstspalt; Paar-Pitch 2,48 m (Paare stoßen bündig aneinander).
   const spalt = montage.firstspaltM ?? 0.05;
   const paarTiefe = 2 * tiefe + spalt;
-  const paare = feld.breiteM + EPS >= paarTiefe
-    ? 1 + Math.floor((feld.breiteM - paarTiefe + EPS) / Math.max(pitch, paarTiefe))
-    : 0;
-  const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (laengsM + fugeM)));
-  for (let row = 0; row < rows; row++) {
+  const paarPitch = Math.max(pitch, paarTiefe);
+  if (kipptVertikal) {
+    const paare = feld.breiteM + EPS >= paarTiefe
+      ? 1 + Math.floor((feld.breiteM - paarTiefe + EPS) / paarPitch)
+      : 0;
+    const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (laengsM + fugeM)));
+    const links: 'ost' | 'west' = richtungSued === 'unten' ? 'west' : 'ost';
+    const rechts: 'ost' | 'west' = links === 'ost' ? 'west' : 'ost';
+    for (let row = 0; row < rows; row++) {
+      for (let paar = 0; paar < paare; paar++) {
+        const x0 = paar * paarPitch;
+        const yM = row * (laengsM + fugeM);
+        zellen.push({ row, col: paar * 2, xM: x0, yM, wM: tiefe, hM: laengsM, quer: false, seite: links });
+        zellen.push({ row, col: paar * 2 + 1, xM: x0 + tiefe + spalt, yM, wM: tiefe, hM: laengsM, quer: false, seite: rechts });
+      }
+    }
+  } else {
+    const paare = feld.hoeheM + EPS >= paarTiefe
+      ? 1 + Math.floor((feld.hoeheM - paarTiefe + EPS) / paarPitch)
+      : 0;
+    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (laengsM + fugeM)));
+    const oben: 'ost' | 'west' = richtungSued === 'rechts' ? 'ost' : 'west';
+    const unten: 'ost' | 'west' = oben === 'ost' ? 'west' : 'ost';
     for (let paar = 0; paar < paare; paar++) {
-      const x0 = paar * Math.max(pitch, paarTiefe);
-      const yM = row * (laengsM + fugeM);
-      // quer: false — physisch liegen die Module quer AUF DEM GESTELL, aber in der
-      // Draufsicht läuft ihre LANGE Kante vertikal (parallel zum Zeltfirst). Das
-      // quer-Flag steuert die Drehung des Render-Assets, und die ist hier „hochkant".
-      zellen.push({ row, col: paar * 2, xM: x0, yM, wM: tiefe, hM: laengsM, quer: false, seite: 'ost' });
-      zellen.push({ row, col: paar * 2 + 1, xM: x0 + tiefe + spalt, yM, wM: tiefe, hM: laengsM, quer: false, seite: 'west' });
+      const y0 = paar * paarPitch;
+      for (let col = 0; col < cols; col++) {
+        const xM = col * (laengsM + fugeM);
+        zellen.push({ row: paar * 2, col, xM, yM: y0, wM: laengsM, hM: tiefe, quer: true, seite: oben });
+        zellen.push({ row: paar * 2 + 1, col, xM, yM: y0 + tiefe + spalt, wM: laengsM, hM: tiefe, quer: true, seite: unten });
+      }
     }
   }
   return zellen;
@@ -689,21 +723,27 @@ function feldZellen(
 export function feldSchrittmasse(
   input: Pick<FelderInput, 'module' | 'fugeM' | 'montage'>,
   quer: boolean,
-): { pitchXM: number; pitchYM: number; colsJeSchrittX: number } {
+): { pitchXM: number; pitchYM: number; colsJeSchrittX: number; rowsJeSchrittY: number } {
   const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
   if (!input.montage) {
     const { w, h } = dimsVon(input.module, quer ? 'quer' : 'hoch');
-    return { pitchXM: w + fugeM, pitchYM: h + fugeM, colsJeSchrittX: 1 };
+    return { pitchXM: w + fugeM, pitchYM: h + fugeM, colsJeSchrittX: 1, rowsJeSchrittY: 1 };
   }
   const { w: laengsM, h: querM } = dimsVon(input.module, 'quer');
   const tiefe = querM * Math.cos(input.montage.winkelDeg * GRAD);
   const pitch = Math.max(input.montage.pitchM, tiefe + 0.01);
+  const kipptVertikal = (input.montage.richtungSued ?? 'unten') === 'unten' ||
+    (input.montage.richtungSued ?? 'unten') === 'oben';
   if (input.montage.aufstaenderung === 'sued') {
-    return { pitchXM: laengsM + fugeM, pitchYM: pitch, colsJeSchrittX: 1 };
+    return kipptVertikal
+      ? { pitchXM: laengsM + fugeM, pitchYM: pitch, colsJeSchrittX: 1, rowsJeSchrittY: 1 }
+      : { pitchXM: pitch, pitchYM: laengsM + fugeM, colsJeSchrittX: 1, rowsJeSchrittY: 1 };
   }
   const spalt = input.montage.firstspaltM ?? 0.05;
   const paarTiefe = 2 * tiefe + spalt;
-  return { pitchXM: Math.max(pitch, paarTiefe), pitchYM: laengsM + fugeM, colsJeSchrittX: 2 };
+  return kipptVertikal
+    ? { pitchXM: Math.max(pitch, paarTiefe), pitchYM: laengsM + fugeM, colsJeSchrittX: 2, rowsJeSchrittY: 1 }
+    : { pitchXM: laengsM + fugeM, pitchYM: Math.max(pitch, paarTiefe), colsJeSchrittX: 1, rowsJeSchrittY: 2 };
 }
 
 /**

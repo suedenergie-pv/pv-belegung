@@ -3,6 +3,9 @@ import { logoPng } from './logo';
 import {
   aktiveModule,
   ausrichtungenVon,
+  flaechenAusrichtungsLabel,
+  flachdachOstRichtung,
+  flachdachSuedRichtung,
   fertigeFotoFlaechen,
   flaecheM2,
   flaechenTitel,
@@ -218,7 +221,12 @@ export async function erzeugeBelegungsPdf(
     const n = aktiveModule(f, raster);
     const ausrichtungen = ausrichtungenVon(f, raster);
     doc.text(flaechenTitel(f, i), SPALTEN[0], y);
-    doc.text(azimutLabel(f.azimutDeg), SPALTEN[1], y);
+    const richtungKurz = f.flachdach
+      ? f.flachdach.aufstaenderung === 'ostwest'
+        ? `O/W: O ${flachdachOstRichtung(f)}`
+        : `Süd ${flachdachSuedRichtung(f)}`
+      : azimutLabel(f.azimutDeg);
+    doc.text(richtungKurz, SPALTEN[1], y);
     doc.text(`${f.neigungDeg}°`, SPALTEN[2], y);
     doc.text(`${n} (${ausrichtungen.bezeichnung})`, SPALTEN[3], y);
     doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SPALTEN[4], y);
@@ -359,7 +367,7 @@ export async function erzeugeBelegungsPdf(
     doc.setFontSize(9);
     // Nur ASCII/WinAnsi-sichere Trennzeichen — "·" rendert in jsPDF-Helvetica als Kästchen
     doc.text(
-      `${azimutLabel(f.azimutDeg)}, Neigung ${f.neigungDeg}°, Fläche ${fmtDe(flaecheM2(f), 1)} m², ` +
+      `${f.flachdach ? flaechenAusrichtungsLabel(f) : azimutLabel(f.azimutDeg)}, Neigung ${f.neigungDeg}°, Fläche ${fmtDe(flaecheM2(f), 1)} m², ` +
         `Randabstand ${fmtDe(randVon(f) * 100, 0)} cm`,
       RAND,
       dy,

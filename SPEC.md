@@ -67,8 +67,19 @@ interface RoofPlane {
   exclusions: Exclusion[];   // Gauben-Footprints, Hindernisse (§4.3, §4.4)
   sharedEdges: SharedEdge[]; // deklarierte Knicke/Grate (§4.2)
   flags: Flag[];             // §10
+  flatRoofMounting?: {
+    system: 'south' | 'east_west';
+    angleDeg: number;
+    pitchM: number;
+    southDirectionInPlan: 'bottom' | 'left' | 'top' | 'right';
+  };
 }
 ```
+
+Bei aufgeständerten Flachdächern ist die Himmelsrichtung Pflicht. Der Nutzer legt
+fest, wo Süden in Draufsicht bzw. Foto liegt; Ost und West werden deterministisch
+daraus abgeleitet. Die Wahl dreht Belegungsraster, Modul-Kippseiten, PDF und Export
+gemeinsam. Altprojekte ohne Angabe behalten die bisherige Konvention „Süden unten“.
 
 **Verkürzungskorrektur (kritisch):** Kommt die Geometrie aus Draufsicht (Luftbild-Trace oder Solar-API-Footprint), MUSS die Kante in Falllinie durch `cos(pitch)` geteilt werden, bevor sie ins `polygon` geschrieben wird. Traufkante (horizontal) bleibt unverändert. Bei 45° Neigung sind sonst ~29 % Sparrenlänge weg → ~40 % zu wenig Module. Kanonische Regel: **im Datenmodell stehen immer wahre Maße**, Verkürzung existiert nur beim Import und beim Draufsicht-Rendering.
 
@@ -393,8 +404,10 @@ Ein Klick erzeugt Ticket in `tickets_projektierung` mit Payload:
   "geometrie_quelle": "solar_api | manual | solar_api_edited",
   "flaechen": [
     { "id": "p1", "neigung_deg": 38, "azimut_deg": 182, "flaeche_m2": 54.2,
+      "flachdach_montage": null,
       "module": { "typ": "jw-hd96n-r2-460", "anzahl": 24, "ausrichtung": "hoch",
-        "anzahl_hochkant": 24, "anzahl_quer": 0 } }
+        "anzahl_hochkant": 24, "anzahl_quer": 0,
+        "anzahl_ost": 0, "anzahl_west": 0 } }
   ],
   "wechselrichter": { "typ": "...", "anzahl": 1 },
   "strings": [

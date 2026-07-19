@@ -43,6 +43,7 @@ export type Dachfarbe = (typeof DACHFARBEN)[number];
 
 /** Art der Fläche (16.07.2026): Schrägdach (Default), Flachdach, Fassade. */
 export type FlaechenArt = 'dach' | 'flachdach' | 'fassade';
+export type FlachdachSuedRichtung = 'unten' | 'links' | 'oben' | 'rechts';
 
 /** Gauben sind eigene Ebenen, aber KEINE aufgeständerten Flachdächer. */
 export type GaubenTyp = 'flachdach' | 'satteldach';
@@ -152,13 +153,19 @@ export interface Flaeche {
    * PROFINESS Flat (Montageanleitung 05/2025 in docs/datenblaetter/):
    * Ost-West 10° mit Paar-Pitch 2,48 m; Süd 10°/15° mit Reihen-Pitch 1,80/1,90 m.
    * pitchM ist editierbar (anderes Gestell/anderer Reihenabstand).
-   * KONVENTION: Unterkante der Fläche = Süden (Süd kippt nach unten,
-   * Ost-West kippt in x-Richtung mit Zeltfirst senkrecht).
+   * richtungSued legt die Kompasslage in Plan und Foto fest. Fehlt sie in einem
+   * Altprojekt, gilt die frühere Konvention „Süden unten“.
    */
-  flachdach?: { aufstaenderung: 'sued' | 'ostwest'; winkelDeg: number; pitchM?: number };
-  /** Traufkante, Meter (Flachdach: Ost-West-Ausdehnung; Fassade: Wandbreite) */
+  flachdach?: {
+    aufstaenderung: 'sued' | 'ostwest';
+    winkelDeg: number;
+    pitchM?: number;
+    /** Lage von Süden in Draufsicht/Foto; daraus folgen Ost und West eindeutig. */
+    richtungSued?: FlachdachSuedRichtung;
+  };
+  /** Traufkante, Meter (Flachdach: waagerechte Planausdehnung; Fassade: Wandbreite) */
   breiteM: number;
-  /** Sparrenlänge (wahres Maß, Aufmaß — SPEC §4.1), Meter (Flachdach: Nord-Süd-Tiefe; Fassade: Wandhöhe) */
+  /** Sparrenlänge (wahres Maß, Aufmaß — SPEC §4.1), Meter (Flachdach: senkrechte Planausdehnung; Fassade: Wandhöhe) */
   hoeheM: number;
   neigungDeg: number;
   azimutDeg: number;
@@ -321,6 +328,39 @@ export function artVon(f: Flaeche): FlaechenArt {
 export function flachdachPitchDefault(aufstaenderung: 'sued' | 'ostwest', winkelDeg: number): number {
   if (aufstaenderung === 'ostwest') return 2.48;
   return winkelDeg >= 15 ? 1.9 : 1.8;
+}
+
+/** Altprojekte behalten ihre bisherige Konvention: Süden liegt unten. */
+export function flachdachSuedRichtung(f: Flaeche): FlachdachSuedRichtung {
+  return f.flachdach?.richtungSued ?? 'unten';
+}
+
+/** Richtung von Osten in der Draufsicht, abgeleitet aus der gewählten Südrichtung. */
+export function flachdachOstRichtung(f: Flaeche): FlachdachSuedRichtung {
+  const ostVonSued: Record<FlachdachSuedRichtung, FlachdachSuedRichtung> = {
+    unten: 'rechts',
+    rechts: 'oben',
+    oben: 'links',
+    links: 'unten',
+  };
+  return ostVonSued[flachdachSuedRichtung(f)];
+}
+
+export function flachdachRichtungsLabel(f: Flaeche): string {
+  const sued = flachdachSuedRichtung(f);
+  if (f.flachdach?.aufstaenderung === 'ostwest') {
+    const ost = flachdachOstRichtung(f);
+    const west: FlachdachSuedRichtung =
+      ost === 'unten' ? 'oben' : ost === 'oben' ? 'unten' : ost === 'links' ? 'rechts' : 'links';
+    return `Ost ${ost} / West ${west}`;
+  }
+  return `Süd ${sued}`;
+}
+
+export function flaechenAusrichtungsLabel(f: Flaeche): string {
+  return artVon(f) === 'flachdach' && f.flachdach
+    ? flachdachRichtungsLabel(f)
+    : `Azimut ${f.azimutDeg}°`;
 }
 
 /**
@@ -495,6 +535,7 @@ export function felderInput(f: Flaeche, modul: ModuleType): FelderInput {
     basis.montage = {
       aufstaenderung: f.flachdach.aufstaenderung,
       winkelDeg: f.flachdach.winkelDeg,
+      richtungSued: flachdachSuedRichtung(f),
       pitchM:
         f.flachdach.pitchM ??
         flachdachPitchDefault(f.flachdach.aufstaenderung, f.flachdach.winkelDeg),
@@ -563,6 +604,9 @@ export function ausrichtungenVon(
       quer: 0,
       bezeichnung: f.ausrichtung === 'quer' ? 'quer' : 'hoch',
     };
+  }
+  if (artVon(f) === 'flachdach') {
+    return { hochkant: 0, quer: positionen.length, bezeichnung: 'quer' };
   }
   const quer = positionen.filter((p) => p.quer).length;
   const hochkant = positionen.length - quer;
@@ -927,6 +971,9 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
     flaechen: p.flaechen.map((f) => {
       const raster = rasterFuer(f, modul);
       const ausrichtungen = ausrichtungenVon(f, raster);
+      const aktivePositionen = raster.positionen.filter(
+        (pos) => !f.inaktiv.includes(`${pos.row}-${pos.col}`),
+      );
       const gaubenRolle =
         f.gaubenTyp === 'flachdach'
           ? 'gaube_flachdach'
@@ -951,6 +998,18 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
         eindeckung: f.dachfarbe,
         neigung_deg: f.neigungDeg,
         azimut_deg: f.azimutDeg,
+        flachdach_montage:
+          artVon(f) === 'flachdach' && f.flachdach
+            ? {
+                aufstaenderung: f.flachdach.aufstaenderung,
+                winkel_deg: f.flachdach.winkelDeg,
+                pitch_m:
+                  f.flachdach.pitchM ??
+                  flachdachPitchDefault(f.flachdach.aufstaenderung, f.flachdach.winkelDeg),
+                sued_richtung_im_plan: flachdachSuedRichtung(f),
+                ost_richtung_im_plan: flachdachOstRichtung(f),
+              }
+            : null,
         flaeche_m2: Math.round(flaecheM2(f) * 10) / 10,
         module: {
           typ: modul.id,
@@ -958,6 +1017,8 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
           ausrichtung: ausrichtungen.bezeichnung,
           anzahl_hochkant: ausrichtungen.hochkant,
           anzahl_quer: ausrichtungen.quer,
+          anzahl_ost: aktivePositionen.filter((pos) => pos.seite === 'ost').length,
+          anzahl_west: aktivePositionen.filter((pos) => pos.seite === 'west').length,
         },
       };
     }),
