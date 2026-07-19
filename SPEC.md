@@ -344,6 +344,9 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
   die Perspektive, die wahren Maße bestimmen den metrischen Maßstab und damit die
   sichtbare Modulgröße. Belegungsfelder, manuelle Umrisse und Hindernisse werden beim
   Ändern proportional mitgeführt, damit ihre Lage im Foto nicht springt.
+- **„Am Foto anpassen"** scrollt das belegte Foto direkt unter die angeheftete
+  Maßzeile. Form und Maße bleiben dort bedienbar, damit die Wirkung ohne
+  Hin-und-her-Scrollen unmittelbar am Ziegelbild geprüft werden kann.
 - Im Belegungseditor dürfen A/B/C-Rahmen der Orientierung dienen. Im Kunden-PDF zeigt
   die Foto-Übersicht nur Foto und Module — keine Zonen-Kreise und keine orange
   Flächenkontur.

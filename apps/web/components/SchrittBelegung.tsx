@@ -219,6 +219,7 @@ export function SchrittBelegung({
   const [zeichnung, setZeichnung] = useState<Zeichnung | null>(null);
   // Maße einblenden — beim Kunden vor Ort abschaltbar (Genrih 07.07.)
   const [masseZeigen, setMasseZeigen] = useState(true);
+  const [fotoFokusId, setFotoFokusId] = useState<string | null>(null);
   // Aktives Werkzeug (exklusiv je Fläche); null = Felder-Werkzeug (Standard)
   const [modus, setModus] = useState<{ art: WerkzeugArt; flaecheId: string } | null>(null);
   // Schrittweite der Pfeil-Bewegung in cm
@@ -279,6 +280,11 @@ export function SchrittBelegung({
     }));
     setAuswahl(null);
     setDrag(null);
+    if (fotoFokusId === id) {
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => scrolleZuFotoMitMassen(id)),
+      );
+    }
   };
 
   const fuegeHauptflaecheHinzu = () => {
@@ -316,6 +322,24 @@ export function SchrittBelegung({
         mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
       };
     });
+  };
+
+  const scrolleZuFotoMitMassen = (flaecheId: string) => {
+    const ziel = document.getElementById(`foto-masse-${flaecheId}`);
+    if (!ziel) return;
+    const massLeiste = document.getElementById(`flaechen-masse-${flaecheId}`);
+    const abstand = (massLeiste?.getBoundingClientRect().height ?? 96) + 12;
+    const top = ziel.getBoundingClientRect().top + window.scrollY - abstand;
+    const reduzierteBewegung = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({
+      top: Math.max(0, top),
+      behavior: reduzierteBewegung ? 'auto' : 'smooth',
+    });
+  };
+
+  const aktiviereFotoFokus = (flaecheId: string) => {
+    setFotoFokusId(flaecheId);
+    window.requestAnimationFrame(() => scrolleZuFotoMitMassen(flaecheId));
   };
 
   const waehleFotoDatei = (fotoId: string | null) => {
@@ -1139,6 +1163,10 @@ export function SchrittBelegung({
                   setDrag(null);
                 }}
                 onPatch={(patch) => patchGrunddaten(f.id, patch)}
+                onFotoPruefen={
+                  foto && belegungZeigen ? () => aktiviereFotoFokus(f.id) : undefined
+                }
+                fotoFokusAktiv={fotoFokusId === f.id}
                 onLoeschen={
                   projekt.flaechen.filter((x) => !x.gaubenTyp).length > 1
                     ? () => loescheHauptflaeche(f)
@@ -1561,58 +1589,60 @@ export function SchrittBelegung({
             )}
 
             {!belegungZeigen ? null : (
-              <DachSvg
-                flaeche={fEff}
-                raster={raster}
-                modul={modul}
-                masse={masseZeigen}
-                felderAnzeige={felder.map((feld, k) => ({
-                  rect: feld,
-                  ausgewaehlt: gewaehlt.includes(k),
-                }))}
-                feldVorschau={vorschauFuer(f)}
-                geister={
-                  modusArt(f) === 'zellen'
-                    ? leerePositionenFuer(fEff, modul).map((p) => ({
-                        key: posKey(p),
-                        xM: p.xM,
-                        yM: p.yM,
-                        wM: p.wM,
-                        hM: p.hM,
-                      }))
-                    : undefined
-                }
-                pointer={
-                  felderWerkzeug
-                    ? {
-                        onDownM: (p) => onDownM(f, p),
-                        onMoveM: (p) =>
-                          setDrag((d) =>
-                            !d || d.flaecheId !== f.id ? d : p ? { ...d, aktuell: p } : null,
-                          ),
-                        onUpM: (p) => onUpM(f, p),
-                      }
-                    : undefined
-                }
-                zeichnen={
-                  zeichneHier
-                    ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
-                    : undefined
-                }
-                onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
-                fotoOverlay={
-                  fotoAsset
-                    ? (clipIdPrefix) =>
-                        fotoFlaechenInhalt({
-                          projekt,
-                          foto: fotoAsset,
-                          ausblendenId: f.id,
-                          assetId: `modul-${f.id}`,
-                          clipIdPrefix,
-                        })
-                    : undefined
-                }
-              />
+              <div id={`foto-masse-${f.id}`}>
+                <DachSvg
+                  flaeche={fEff}
+                  raster={raster}
+                  modul={modul}
+                  masse={masseZeigen}
+                  felderAnzeige={felder.map((feld, k) => ({
+                    rect: feld,
+                    ausgewaehlt: gewaehlt.includes(k),
+                  }))}
+                  feldVorschau={vorschauFuer(f)}
+                  geister={
+                    modusArt(f) === 'zellen'
+                      ? leerePositionenFuer(fEff, modul).map((p) => ({
+                          key: posKey(p),
+                          xM: p.xM,
+                          yM: p.yM,
+                          wM: p.wM,
+                          hM: p.hM,
+                        }))
+                      : undefined
+                  }
+                  pointer={
+                    felderWerkzeug
+                      ? {
+                          onDownM: (p) => onDownM(f, p),
+                          onMoveM: (p) =>
+                            setDrag((d) =>
+                              !d || d.flaecheId !== f.id ? d : p ? { ...d, aktuell: p } : null,
+                            ),
+                          onUpM: (p) => onUpM(f, p),
+                        }
+                      : undefined
+                  }
+                  zeichnen={
+                    zeichneHier
+                      ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
+                      : undefined
+                  }
+                  onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
+                  fotoOverlay={
+                    fotoAsset
+                      ? (clipIdPrefix) =>
+                          fotoFlaechenInhalt({
+                            projekt,
+                            foto: fotoAsset,
+                            ausblendenId: f.id,
+                            assetId: `modul-${f.id}`,
+                            clipIdPrefix,
+                          })
+                      : undefined
+                  }
+                />
+              </div>
             )}
 
             {belegungZeigen && felder.length === 0 && !zeichneHier && (

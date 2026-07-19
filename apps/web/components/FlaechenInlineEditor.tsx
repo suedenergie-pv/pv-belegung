@@ -53,6 +53,8 @@ export function FlaechenInlineEditor({
   index,
   onProjektChange,
   onPatch,
+  onFotoPruefen,
+  fotoFokusAktiv = false,
   onLoeschen,
 }: {
   projekt: Projekt;
@@ -60,6 +62,8 @@ export function FlaechenInlineEditor({
   index: number;
   onProjektChange: (projekt: Projekt) => void;
   onPatch: (patch: Partial<Flaeche>) => void;
+  onFotoPruefen?: () => void;
+  fotoFokusAktiv?: boolean;
   onLoeschen?: () => void;
 }) {
   const [offen, setOffen] = useState(!flaeche.grunddatenFertig);
@@ -96,8 +100,11 @@ export function FlaechenInlineEditor({
   const hoeheLabel = art === 'dach' ? 'Sparren' : art === 'fassade' ? 'Höhe' : 'Tiefe';
 
   return (
-    <div className="mb-4">
-      <div className="sticky top-2 z-20 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+    <>
+      <div
+        id={`flaechen-masse-${flaeche.id}`}
+        className="sticky top-2 z-20 mb-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur"
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div className="mr-1 flex min-w-40 items-center gap-2 self-center">
             <ZonenBadge label={zonenVon(flaeche, index)} />
@@ -154,6 +161,20 @@ export function FlaechenInlineEditor({
           )}
 
           <div className="ml-auto flex gap-2 self-end">
+            {onFotoPruefen && (
+              <button
+                type="button"
+                aria-pressed={fotoFokusAktiv}
+                className={`h-11 rounded-lg border px-4 text-sm font-semibold transition ${
+                  fotoFokusAktiv
+                    ? 'border-akzent bg-akzent text-white'
+                    : 'border-akzent/40 bg-akzent/5 text-akzent hover:bg-akzent/10'
+                }`}
+                onClick={onFotoPruefen}
+              >
+                {fotoFokusAktiv ? 'Foto im Blick' : 'Am Foto anpassen'}
+              </button>
+            )}
             <button
               type="button"
               aria-expanded={offen}
@@ -175,11 +196,12 @@ export function FlaechenInlineEditor({
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Maße ändern die sichtbare Modulgröße sofort; die gesetzten Fotoecken bleiben stehen.
+          {onFotoPruefen && ' „Am Foto anpassen" hält Maßzeile und Foto gleichzeitig sichtbar.'}
         </p>
       </div>
 
       {offen && (
-        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <SchrittFlaechen
             projekt={projekt}
             onChange={onProjektChange}
@@ -192,6 +214,6 @@ export function FlaechenInlineEditor({
           />
         </div>
       )}
-    </div>
+    </>
   );
 }
