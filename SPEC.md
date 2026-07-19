@@ -61,7 +61,7 @@ Katalogdaten (Module, WR, Speicher) und Auslegungstemperaturen sind für Vertrie
 interface RoofPlane {
   id: string;
   polygon: Point2D[];        // 2D-Koordinaten IN der Flächenebene, Meter (wahre Maße, NICHT Draufsicht-verkürzt)
-  pitchDeg: number;          // Neigung, 0–75, Pflicht
+  pitchDeg: number;          // Neigung, 0–75; intern Pflicht, im Foto-Vertriebsflow vorbelegt/unter „Technische Details"
   azimuthDeg: number;        // 0 = Nord, 90 = Ost, 180 = Süd, 270 = West
   source: 'solar_api' | 'manual' | 'solar_api_edited';
   exclusions: Exclusion[];   // Gauben-Footprints, Hindernisse (§4.3, §4.4)
@@ -98,12 +98,13 @@ interface SharedEdge {
 
 Kanten ohne deklarierten Nachbarn werden im Kompositor mit dezenter Linie gerendert — kein Fehler, kein Solver-Eingriff.
 
-### 4.3 Gaube — eigene deklarierte Dachflächen (17.07.2026)
+### 4.3 Gaube — im Elternfoto angelegt, intern eigene Dachflächen (19.07.2026)
 
-Gauben werden vom Nutzer deklariert, niemals automatisch erkannt. Sie sind eigene
-belegbare Ebenen mit eigener Neigung, Ausrichtung, Perspektive, Foto-Zuordnung,
-Belegungsfeldern und Hindernissen. `elternFlaecheId` ordnet sie semantisch einem
-Hauptdach zu; daraus wird keine 3D-Geometrie gelöst.
+Gauben werden vom Nutzer im Foto einer Hauptdachfläche deklariert, niemals automatisch
+erkannt. Der Vertriebsflow zeigt **eine verschachtelte Gaube**; intern bleiben ihre
+belegbaren Seiten eigene Ebenen mit eigener Neigung, Ausrichtung, Perspektive,
+Belegungsfeldern und Hindernissen. `elternFlaecheId` und `gaubenGruppeId` halten diese
+Ebenen zusammen. Daraus wird weiterhin keine 3D-Geometrie gelöst.
 
 ```ts
 interface DormerPlane {
@@ -115,6 +116,10 @@ interface DormerPlane {
   depthM: number;
   pitchDeg: number;
   covering: 'standing_seam' | 'tile' | 'other';
+  measurement: {
+    source: 'survey' | 'tiles' | 'neighbor_roof';
+    quality: 'confirmed' | 'measured' | 'estimated';
+  };
 }
 ```
 
@@ -122,11 +127,24 @@ interface DormerPlane {
   Sie darf ausdrücklich NICHT als `art: 'flachdach'` in die PROFINESS-Aufständerung
   gelangen. Export-Montage: `gaube_stehfalz_dachparallel`.
 - **Satteldachgaube:** zwei eigenständige Ebenen (links/rechts), weil beide Seiten
-  andere Perspektive und Ausrichtung haben können.
-- Der Gaubenfuß wird auf der Elternfläche als Hindernis ausgespart. Solange keine
-  metrische Position der Gaube auf der Elternfläche erfasst wird, führt die UI den
-  Nutzer dafür ausdrücklich zum vorhandenen Hindernis-Werkzeug; es gibt keine
-  unzuverlässige Foto-Heuristik.
+  andere Perspektive und Ausrichtung haben können. Die UI erzeugt beide Seiten in
+  einem gemeinsamen Markierablauf; der Nutzer legt keine „linke/rechte Fläche“ an.
+- **Aufmaß:** Breite und belegbare Länge sind bestätigt.
+- **Ziegel zählen:** quer zur Falllinie `Anzahl × Deckbreite`, in Falllinie
+  `Reihen × sichtbarer Reihenabstand`; beide Richtungen werden getrennt kalibriert.
+- **Stehfalz/Nachbardach:** sichtbare Falze dürfen die Breite verbessern. Fehlen
+  belastbare Referenzen auf der Gaube, wird der lokale Maßstab aus benachbarten
+  Ziegeln übertragen und das Ergebnis ausdrücklich als **geschätzt** gespeichert.
+- Die Homographie der Elternfläche darf nur einen Schätzwert vorbelegen: Die Gaube
+  liegt auf einer anderen Ebene, deshalb kann die Verzerrung allein kein wahres Maß
+  beweisen. Modulgrößen bleiben Katalog-mm × wahrer/geschätzter Flächenmaßstab.
+- Der sichtbare Gaubenumriss wird über die inverse Homographie der Elternfläche in
+  eine konservative rechteckige Aussparung überführt. Diese Aussparung ist mit der
+  `gaubenGruppeId` verknüpft und wird beim Ändern/Löschen automatisch aktualisiert.
+- Normaler Vertriebsablauf: Hauptdach markieren → „+ Gaube“ → Typ wählen → Maße
+  angeben/Ziegel zählen oder Schätzung übernehmen → Gaube im selben Foto markieren →
+  sofortige Modulvorschau. Parent-Auswahl, eigene Foto-Zuordnung, Seitenebenen,
+  Neigung und Azimut der Gaube bleiben im Standardflow verborgen.
 
 ### 4.4 Hindernis (`Exclusion`)
 
@@ -317,7 +335,9 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset. Dadurch hat jede Fläche auf demselben Foto ihre eigene Homographie, ihren eigenen Umriss und ihre eigenen Hindernisse.
 - Das frühere eigene UI-Tab „Gesamtansicht" entfällt. Die Foto-Gruppen im Belegungsschritt und im PDF übernehmen diese Aufgabe.
 - Gauben sind eigene untergeordnete Dachflächen (§4.3). Eine Flachdachgaube mit
-  Stehfalz bleibt dachparallel; eine Satteldachgaube besteht aus zwei Ebenen.
+  Stehfalz bleibt dachparallel; eine Satteldachgaube besteht aus zwei Ebenen. Angelegt
+  und verwaltet werden sie jedoch verschachtelt im Foto ihrer Elternfläche; das Foto
+  und die semantische Elternzuordnung werden automatisch übernommen.
 
 ---
 
@@ -327,6 +347,10 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - Randabstände: Default 0,05 m zu Traufe/First/Ortgang (Genrih 05.07.2026 — 0,30 m war zu konservativ und kostete Modulreihen; Admin-/UI-konfigurierbar je Fläche; Hinweis auf Wind-Randzonen als v2-Thema, v1 = pauschaler Rand)
 - **Flächen-Umriss (06.07.2026):** optionales Polygon je Fläche (`umrissM`, beliebige Eckenzahl, Flächen-Koordinaten in Meter) für Walm/Trapez/L-Form. Das Rechteck Traufe × Sparren bleibt Rahmen + Koordinatensystem; Module müssen komplett im Polygon liegen, Randabstand gilt auch zu jeder Umrisskante (Grat!). Ohne Umriss gilt das Rechteck — Eckenzahl wird nie abgefragt, sie ergibt sich beim Klicken. v1 behält das zentrierte Rechteck-Raster und filtert (kein Packungs-Optimierer).
 - **Hindernisse (06.07.2026):** Rechtecke je Fläche (`hindernisseM`: Kamin, Dachfenster, SAT); Module, die ein Hindernis schneiden, entfallen automatisch (Kantenberührung zählt nicht). Kein CV/ML — Markierung ist manuell (2 Klicks), Rückrechnung Foto→Fläche über die inverse Homographie.
+- **Gauben-Aussparungen (19.07.2026):** gruppenbezogene Rechtecke auf der
+  Elternfläche werden zusätzlich zu manuellen Hindernissen an die Engine übergeben.
+  Die UI erzeugt und entfernt sie gemeinsam mit der Gaube; sie werden nicht als
+  separates manuelles Hindernis behandelt.
 - Manuelles Nacharbeiten: einzelne Module per Klick deaktivieren/aktivieren
 - kWp = Σ aktive Module × Pmax
 

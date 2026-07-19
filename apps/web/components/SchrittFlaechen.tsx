@@ -9,13 +9,11 @@ import {
   flachdachSuedRichtung,
   naechsteZone,
   neueFlaeche,
-  neueGaubenFlaeche,
   randDefaultVon,
   zonenVon,
   type Flaeche,
   type FlaechenArt,
   type FlachdachSuedRichtung,
-  type GaubenTyp,
   type Projekt,
 } from '../lib/model';
 import { IconFormRechteck, IconFormSchief, IconFormTrapez } from './icons';
@@ -99,102 +97,36 @@ export function SchrittFlaechen({
 
   const hauptflaechen = projekt.flaechen.filter((f) => !f.gaubenTyp);
 
-  /** Hauptfläche/Gaube umschalten, ohne Foto-Zuordnung und Belegungsfelder zu verlieren. */
-  const setFlaechenTyp = (f: Flaeche, typ: GaubenTyp | null) => {
-    if (!typ) {
-      setFlaeche(f.id, {
-        name: f.name.startsWith('Dachfläche') ? f.name : `Dachfläche ${f.zone ?? ''}`.trim(),
-        art: 'dach',
-        gaubenTyp: undefined,
-        gaubenSeite: undefined,
-        gaubenGruppeId: undefined,
-        elternFlaecheId: undefined,
-        flachdach: undefined,
-        neigungDeg: 35,
-        dachfarbe: 'anthrazit',
-        randM: undefined,
-      });
-      return;
-    }
-    const flach = typ === 'flachdach';
-    setFlaeche(f.id, {
-      name: flach ? 'Flachdachgaube' : 'Satteldachgaube',
-      art: 'dach',
-      gaubenTyp: typ,
-      gaubenSeite: typ === 'satteldach' ? f.gaubenSeite : undefined,
-      gaubenGruppeId: typ === 'satteldach' ? f.gaubenGruppeId : undefined,
-      elternFlaecheId:
-        f.elternFlaecheId ?? hauptflaechen.find((x) => x.id !== f.id)?.id,
-      flachdach: undefined,
-      neigungDeg: flach ? 5 : 30,
-      dachfarbe: flach ? 'grau' : 'anthrazit',
-      dachform: 'rechteck',
-      randM: undefined,
-    });
-  };
-
   const naechsteNr = () =>
     Math.max(0, ...projekt.flaechen.map((f) => Number.parseInt(f.id.slice(1), 10) || 0)) + 1;
 
-  const fuegeGaubeHinzu = (typ: GaubenTyp) => {
-    const nr = naechsteNr();
-    const elternId = hauptflaechen[0]?.id;
-    if (typ === 'flachdach') {
-      const zone = naechsteZone(projekt.flaechen);
-      onChange({
-        ...projekt,
-        flaechen: [
-          ...projekt.flaechen,
-          neueGaubenFlaeche(nr, zone, 'flachdach', elternId),
-        ],
-      });
-      return;
-    }
-    const gruppeId = `gaube-${Date.now().toString(36)}`;
-    const zoneLinks = naechsteZone(projekt.flaechen);
-    const links = neueGaubenFlaeche(
-      nr,
-      zoneLinks,
-      'satteldach',
-      elternId,
-      'links',
-      gruppeId,
-    );
-    const zoneRechts = naechsteZone([...projekt.flaechen, links]);
-    const rechts = neueGaubenFlaeche(
-      nr + 1,
-      zoneRechts,
-      'satteldach',
-      elternId,
-      'rechts',
-      gruppeId,
-    );
-    onChange({ ...projekt, flaechen: [...projekt.flaechen, links, rechts] });
-  };
-
   return (
     <div className="space-y-4">
-      {projekt.flaechen.map((f, i) => (
+      {hauptflaechen.map((f, i) => (
         <Karte key={f.id}>
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ZonenBadge label={zonenVon(f, i)} />
               <KartenTitel>{f.name}</KartenTitel>
             </div>
-            {projekt.flaechen.length > 1 && (
+            {hauptflaechen.length > 1 && (
               <button
                 type="button"
                 className="text-sm font-medium text-red-500 hover:text-red-600"
                 onClick={() =>
                   onChange({
                     ...projekt,
-                    flaechen: projekt.flaechen
-                      .filter((x) => x.id !== f.id)
-                      .map((x) =>
-                        x.elternFlaecheId === f.id ? { ...x, elternFlaecheId: undefined } : x,
-                      ),
+                    flaechen: projekt.flaechen.filter(
+                      (x) => x.id !== f.id && x.elternFlaecheId !== f.id,
+                    ),
                     mppts: projekt.mppts.map((strings) =>
-                      strings.filter((s) => s.flaecheId !== f.id),
+                      strings.filter(
+                        (s) =>
+                          s.flaecheId !== f.id &&
+                          !projekt.flaechen.some(
+                            (x) => x.id === s.flaecheId && x.elternFlaecheId === f.id,
+                          ),
+                      ),
                     ),
                   })
                 }
@@ -205,60 +137,6 @@ export function SchrittFlaechen({
           </div>
 
           <div className="mb-4">
-            <span className="mb-1 block text-sm font-medium text-slate-600">Flächentyp</span>
-            <div className="flex flex-wrap gap-2">
-              <ToggleButton aktiv={!f.gaubenTyp} onClick={() => setFlaechenTyp(f, null)}>
-                Hauptfläche
-              </ToggleButton>
-              <ToggleButton
-                aktiv={f.gaubenTyp === 'flachdach'}
-                onClick={() => setFlaechenTyp(f, 'flachdach')}
-              >
-                Flachdachgaube · Stehfalz
-              </ToggleButton>
-              <ToggleButton
-                aktiv={f.gaubenTyp === 'satteldach'}
-                onClick={() => setFlaechenTyp(f, 'satteldach')}
-              >
-                Satteldachgauben-Fläche
-              </ToggleButton>
-            </div>
-          </div>
-
-          {f.gaubenTyp && (
-            <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <strong className="text-sm text-sky-900">
-                  {f.gaubenTyp === 'flachdach'
-                    ? 'Dachparallel auf Stehfalz'
-                    : `Eigene geneigte Ebene${f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}`}
-                </strong>
-                <label className="flex items-center gap-2 text-sm text-sky-800">
-                  liegt auf
-                  <select
-                    value={f.elternFlaecheId ?? ''}
-                    onChange={(e) => setFlaeche(f.id, { elternFlaecheId: e.target.value || undefined })}
-                    className="h-9 rounded-lg border border-sky-300 bg-white px-2 text-sm"
-                  >
-                    <option value="">keine Zuordnung</option>
-                    {hauptflaechen
-                      .filter((x) => x.id !== f.id)
-                      .map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.zone ?? '–'} · {x.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </div>
-              <p className="mt-1 text-xs text-sky-700">
-                Diese Gaube wird im Belegungsschritt wie A/B/C separat auf dem Foto markiert und
-                erhält ihre eigene Perspektive, Neigung, Felder und Hindernisse.
-              </p>
-            </div>
-          )}
-
-          {!f.gaubenTyp && <div className="mb-4">
             <span className="mb-1 block text-sm font-medium text-slate-600">Art der Fläche</span>
             <div className="flex flex-wrap gap-2">
               <ToggleButton aktiv={artVon(f) === 'dach'} onClick={() => setArt(f, 'dach')}>
@@ -271,9 +149,9 @@ export function SchrittFlaechen({
                 Fassade
               </ToggleButton>
             </div>
-          </div>}
+          </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <ZahlenFeld
               label={
                 f.gaubenTyp
@@ -308,18 +186,29 @@ export function SchrittFlaechen({
               min={1}
               onChange={(v) => setFlaeche(f.id, { hoeheM: v })}
             />
-            {artVon(f) === 'dach' && (
-              <ZahlenFeld
-                label={f.gaubenTyp ? 'Neigung der Gaubenfläche' : 'Dachneigung'}
-                einheit="°"
-                value={f.neigungDeg}
-                min={0}
-                max={75}
-                step={1}
-                onChange={(v) => setFlaeche(f.id, { neigungDeg: v })}
-              />
-            )}
           </div>
+
+          {artVon(f) === 'dach' && (
+            <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium text-slate-600">
+                Technische Details · Dachneigung {f.neigungDeg}°
+              </summary>
+              <div className="mt-3 max-w-xs">
+                <ZahlenFeld
+                  label="Dachneigung"
+                  einheit="°"
+                  value={f.neigungDeg}
+                  min={0}
+                  max={75}
+                  step={1}
+                  onChange={(v) => setFlaeche(f.id, { neigungDeg: v })}
+                />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Für die perspektivische Foto-Belegung nicht nötig; relevant für Stringcheck und Export.
+              </p>
+            </details>
+          )}
 
           {artVon(f) === 'flachdach' && f.flachdach && (
             <div className="mt-4">
@@ -595,7 +484,7 @@ export function SchrittFlaechen({
         </Karte>
       ))}
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2">
         <button
           type="button"
           className="h-12 rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500 hover:border-akzent hover:text-akzent"
@@ -612,27 +501,13 @@ export function SchrittFlaechen({
         >
           + Haupt-Dachfläche
         </button>
-        <button
-          type="button"
-          className="h-12 rounded-xl border-2 border-dashed border-sky-300 text-sm font-semibold text-sky-700 hover:border-sky-500 hover:bg-sky-50"
-          onClick={() => fuegeGaubeHinzu('flachdach')}
-        >
-          + Flachdachgaube · Stehfalz
-        </button>
-        <button
-          type="button"
-          className="h-12 rounded-xl border-2 border-dashed border-sky-300 text-sm font-semibold text-sky-700 hover:border-sky-500 hover:bg-sky-50"
-          onClick={() => fuegeGaubeHinzu('satteldach')}
-        >
-          + Satteldachgaube · 2 Flächen
-        </button>
       </div>
 
       <p className="text-xs text-slate-400">
         Maße bitte als Aufmaß-Werte (wahre Maße) eingeben — die Sparrenlänge NICHT aus der
         Draufsicht/Luftbild ablesen (Verkürzung!). Im nächsten Schritt können A/B/C gemeinsam
-        einem Drohnenfoto oder auf mehrere Fotos verteilt zugeordnet werden. Gauben sind dabei
-        vollwertige eigene Flächen mit eigener Perspektive und Belegung.
+        einem Drohnenfoto oder auf mehrere Fotos verteilt zugeordnet werden. Gauben werden dort
+        direkt innerhalb ihres Hauptdachs angelegt.
       </p>
     </div>
   );

@@ -13,6 +13,8 @@ import {
   leerePositionenFuer,
   modulById,
   modulMasse,
+  naechsteZone,
+  neueGaubenFlaeche,
   neueFotoId,
   projektFotoVon,
   rahmenBreiteVon,
@@ -30,6 +32,7 @@ import {
 } from '../lib/model';
 import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FotoHintergrund } from './FotoHintergrund';
+import { GaubenEditor, type NeueGaubeAusFoto } from './GaubenEditor';
 import { fotoFlaechenInhalt, ProjektFotoSvg } from './GesamtSvg';
 import {
   IconFeld,
@@ -310,7 +313,7 @@ export function SchrittBelegung({
     aendereProjekt((p) => ({
       ...p,
       flaechen: p.flaechen.map((f) => {
-        if (f.id !== flaecheId) return f;
+        if (f.id !== flaecheId && f.elternFlaecheId !== flaecheId) return f;
         const neu = { ...f };
         delete neu.foto;
         delete neu.gesamtEckenPx;
@@ -364,6 +367,119 @@ export function SchrittBelegung({
       neu.fotoZuordnung = z;
     }
     patchFlaeche(f.id, neu);
+  };
+
+  /** Gaube aus EINEM Parent-Foto-Workflow als interne Kindfläche(n) anlegen. */
+  const erstelleGaube = (eltern: Flaeche, daten: NeueGaubeAusFoto) => {
+    if (!eltern.fotoZuordnung) return;
+    aendereProjekt((p) => {
+      const gruppeId = `gaube-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const nummern = p.flaechen
+        .map((f) => Number.parseInt(f.id.replace(/^p/, ''), 10))
+        .filter(Number.isFinite);
+      let nr = Math.max(0, ...nummern) + 1;
+      const mitZonen = [...p.flaechen];
+      const gemeinsameWerte = {
+        breiteM: daten.breiteM,
+        hoeheM: daten.hoeheM,
+        gaubenMessung: daten.messung,
+        markierungFertig: true,
+        inaktiv: [] as string[],
+      };
+
+      const baueKind = (
+        seite: 'links' | 'rechts' | undefined,
+        eckenPx: NonNullable<Flaeche['fotoZuordnung']>['eckenPx'],
+      ) => {
+        const seitenMass = seite ? daten.seitenMasse?.[seite] : undefined;
+        const zone = naechsteZone(mitZonen);
+        let kind = neueGaubenFlaeche(nr++, zone, daten.typ, eltern.id, seite, gruppeId);
+        kind = {
+          ...kind,
+          ...gemeinsameWerte,
+          ...(seitenMass ? { breiteM: seitenMass.breiteM, hoeheM: seitenMass.hoeheM } : {}),
+          azimutDeg:
+            daten.typ === 'satteldach'
+              ? (eltern.azimutDeg + (seite === 'links' ? 270 : 90)) % 360
+              : eltern.azimutDeg,
+          fotoZuordnung: {
+            fotoId: eltern.fotoZuordnung!.fotoId,
+            traufePx: null,
+            ...(eckenPx ? { eckenPx } : {}),
+          },
+        };
+        // Sofortige Vorschau: ein Feld über die ganze neue Gaubenfläche.
+        kind.felder = [vollFeldFuer(kind, modul)];
+        mitZonen.push(kind);
+      };
+
+      if (daten.typ === 'flachdach') {
+        baueKind(undefined, daten.aussen);
+      } else if (daten.seiten) {
+        baueKind('links', daten.seiten.links);
+        baueKind('rechts', daten.seiten.rechts);
+      }
+
+      return {
+        ...p,
+        flaechen: mitZonen.map((f) =>
+          f.id === eltern.id
+            ? {
+                ...f,
+                gaubenAussparungen: [
+                  ...(f.gaubenAussparungen ?? []),
+                  { gaubenGruppeId: gruppeId, rechteck: daten.aussparung },
+                ],
+                inaktiv: [],
+              }
+            : f,
+        ),
+      };
+    });
+  };
+
+  const loescheGaube = (elternId: string, gruppeId: string) => {
+    if (!window.confirm('Gaube und ihre Modulbelegung entfernen?')) return;
+    aendereProjekt((p) => {
+      const ids = new Set(
+        p.flaechen
+          .filter((f) => (f.gaubenGruppeId ?? f.id) === gruppeId)
+          .map((f) => f.id),
+      );
+      return {
+        ...p,
+        flaechen: p.flaechen
+          .filter((f) => !ids.has(f.id))
+          .map((f) =>
+            f.id === elternId
+              ? {
+                  ...f,
+                  gaubenAussparungen: f.gaubenAussparungen?.filter(
+                    (a) => a.gaubenGruppeId !== gruppeId,
+                  ),
+                  inaktiv: [],
+                }
+              : f,
+          ),
+        mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
+      };
+    });
+  };
+
+  const aendereGaubenMasse = (
+    gruppeId: string,
+    breiteM: number,
+    hoeheM: number,
+    messung: NonNullable<Flaeche['gaubenMessung']>,
+  ) => {
+    aendereProjekt((p) => ({
+      ...p,
+      flaechen: p.flaechen.map((f) => {
+        if ((f.gaubenGruppeId ?? f.id) !== gruppeId || !f.gaubenTyp) return f;
+        const neu = { ...f, breiteM, hoeheM, gaubenMessung: messung, inaktiv: [] };
+        return { ...neu, felder: [vollFeldFuer(neu, modul)] };
+      }),
+    }));
   };
 
   /** Fläche im AKTUELLEN Stand (nicht der gerenderten Closure) — für Wiederhol-Aktionen. */
@@ -810,9 +926,9 @@ export function SchrittBelegung({
           <div className="grid gap-4 lg:grid-cols-2">
             {projekt.fotos.map((foto) => {
               const zugeordnet = projekt.flaechen.filter(
-                (f) => f.fotoZuordnung?.fotoId === foto.id,
+                (f) => !f.gaubenTyp && f.fotoZuordnung?.fotoId === foto.id,
               );
-              const frei = projekt.flaechen.filter((f) => !f.fotoZuordnung);
+              const frei = projekt.flaechen.filter((f) => !f.gaubenTyp && !f.fotoZuordnung);
               return (
                 <section key={foto.id} className="rounded-xl border border-slate-200 p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -915,11 +1031,11 @@ export function SchrittBelegung({
           </div>
         )}
 
-        {projekt.flaechen.some((f) => !f.fotoZuordnung) && projekt.fotos.length > 0 && (
+        {projekt.flaechen.some((f) => !f.gaubenTyp && !f.fotoZuordnung) && projekt.fotos.length > 0 && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Noch nicht zugeordnet:{' '}
             {projekt.flaechen
-              .filter((f) => !f.fotoZuordnung)
+              .filter((f) => !f.gaubenTyp && !f.fotoZuordnung)
               .map((f, i) => zonenVon(f, projekt.flaechen.indexOf(f)))
               .join(', ')}. Diese Flächen bleiben unten als normale Draufsicht bearbeitbar.
           </p>
@@ -950,12 +1066,17 @@ export function SchrittBelegung({
         const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen;
         const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
 
-        return (
+        const karte = (
           <Karte key={f.id} id={`belegung-${f.id}`}>
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              <ZonenBadge label={zonenVon(f, i)} />
+              {!f.gaubenTyp && <ZonenBadge label={zonenVon(f, i)} />}
+              {f.gaubenTyp && (
+                <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                  Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
+                </span>
+              )}
               <KartenTitel>{f.name}</KartenTitel>
-              <label className="flex items-center gap-1.5 text-sm text-slate-500">
+              {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500">
                 Foto
                 <select
                   value={f.fotoZuordnung?.fotoId ?? ''}
@@ -969,7 +1090,7 @@ export function SchrittBelegung({
                     </option>
                   ))}
                 </select>
-              </label>
+              </label>}
               <span className="ml-auto text-sm text-slate-500">
                 {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)}{' '}
                 kWp
@@ -1100,14 +1221,14 @@ export function SchrittBelegung({
               </div>
             </div>
 
-            {gaubenAufFlaeche.length > 0 && (
-              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                <strong>Gaubenfuß aussparen:</strong>{' '}
-                {gaubenAufFlaeche.map((x, k) => zonenVon(x, projekt.flaechen.indexOf(x))).join(', ')}{' '}
-                {gaubenAufFlaeche.length === 1 ? 'liegt' : 'liegen'} auf dieser Hauptfläche.
-                Den verdeckten Bereich hier einmal mit „Hindernis markieren“ aussparen; die
-                Gaubenfläche selbst wird separat belegt.
-              </p>
+            {foto && !f.gaubenTyp && (
+              <GaubenEditor
+                eltern={fMitFoto}
+                gauben={gaubenAufFlaeche}
+                onErstellen={(daten) => erstelleGaube(f, daten)}
+                onLoeschen={(gruppenId) => loescheGaube(f.id, gruppenId)}
+                onMasseAendern={aendereGaubenMasse}
+              />
             )}
 
             {foto && (
@@ -1440,6 +1561,29 @@ export function SchrittBelegung({
               </p>
             )}
           </Karte>
+        );
+        if (!f.gaubenTyp) return karte;
+        const gruppenGeschwister = projekt.flaechen.filter(
+          (x) =>
+            x.gaubenTyp &&
+            (x.gaubenGruppeId ?? x.id) === (f.gaubenGruppeId ?? f.id),
+        );
+        const ersteSeite = gruppenGeschwister[0]?.id === f.id;
+        return (
+          <details
+            key={f.id}
+            className={`rounded-xl border border-sky-200 bg-sky-50/60 p-2 ${
+              ersteSeite ? 'mt-2' : '-mt-3'
+            }`}
+          >
+            <summary className="cursor-pointer px-2 py-1 text-sm font-semibold text-sky-900">
+              {ersteSeite
+                ? `Gaubenbelegung bearbeiten · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
+                : 'Zweite Gaubenseite bearbeiten'}{' '}
+              · {aktiv} {aktiv === 1 ? 'Modul' : 'Module'}
+            </summary>
+            <div className="mt-2">{karte}</div>
+          </details>
         );
       })}
     </div>

@@ -14,6 +14,7 @@ import { modulAssetInner, modulMatrix, modulMatrixDreiecke } from '../lib/modul-
 import {
   DACHFARBEN,
   fmtDe,
+  hindernisseVon,
   perspektiveQuelle,
   rahmenBreiteVon,
   umrissVon,
@@ -410,7 +411,7 @@ export function DachSvg({
   const toggle = zeichnen?.aktiv ? undefined : onToggle;
   const umrissEff = umrissVon(flaeche);
   const umriss = umrissEff && umrissEff.length >= 3 ? umrissEff : null;
-  const hindernisse = flaeche.hindernisse ?? [];
+  const hindernisse = hindernisseVon(flaeche) ?? [];
   const draft = zeichnen?.punkteM ?? [];
 
   /**

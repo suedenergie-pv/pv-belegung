@@ -48,6 +48,25 @@ export type FlachdachSuedRichtung = 'unten' | 'links' | 'oben' | 'rechts';
 /** Gauben sind eigene Ebenen, aber KEINE aufgeständerten Flachdächer. */
 export type GaubenTyp = 'flachdach' | 'satteldach';
 export type GaubenSeite = 'links' | 'rechts';
+export type GaubenMassQuelle = 'aufmass' | 'ziegel' | 'nachbardach';
+export type GaubenMassQualitaet = 'bestaetigt' | 'gemessen' | 'geschaetzt';
+
+/** Herkunft der Maße einer logisch zusammengehörigen Gaube. */
+export interface GaubenMessung {
+  quelle: GaubenMassQuelle;
+  qualitaet: GaubenMassQualitaet;
+  /** Optionale Zählwerte für nachvollziehbare spätere Korrekturen. */
+  ziegelQuer?: number;
+  deckbreiteCm?: number;
+  ziegelReihen?: number;
+  reihenabstandCm?: number;
+}
+
+/** Automatisch mit einer Gaubengruppe verknüpfte Aussparung auf dem Hauptdach. */
+export interface GaubenAussparung {
+  gaubenGruppeId: string;
+  rechteck: RechteckM;
+}
 
 /** Zur Flächen-Art passende Eindeckungen/Oberflächen. */
 export function farbenFuer(art: FlaechenArt): Dachfarbe[] {
@@ -148,6 +167,8 @@ export interface Flaeche {
   /** Bei einer Satteldachgaube werden zwei eigenständige Ebenen angelegt. */
   gaubenSeite?: GaubenSeite;
   gaubenGruppeId?: string;
+  /** Messweg/Verlässlichkeit; bei Satteldachgauben auf beiden Kindflächen identisch. */
+  gaubenMessung?: GaubenMessung;
   /**
    * Flachdach-Aufständerung (nur bei art 'flachdach'). Defaults = System
    * PROFINESS Flat (Montageanleitung 05/2025 in docs/datenblaetter/):
@@ -209,6 +230,8 @@ export interface Flaeche {
   umrissM?: PunktM[];
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
   hindernisse?: RechteckM[];
+  /** Vom Parent-Gaubenflow verwaltete Aussparungen; nicht als manuelle Hindernisse editieren. */
+  gaubenAussparungen?: GaubenAussparung[];
   /**
    * Belegungsfelder (16.07.2026): die vom Nutzer gezogenen Rechtecke, die sich mit
    * Modulen füllen — die EINZIGE Quelle der Belegung. Fehlt/leer = unbelegte Fläche.
@@ -529,7 +552,7 @@ export function felderInput(f: Flaeche, modul: ModuleType): FelderInput {
     module: modul,
     randM: randVon(f),
     umrissM: umrissVon(f),
-    hindernisseM: f.hindernisse,
+    hindernisseM: hindernisseVon(f),
   };
   if (artVon(f) === 'flachdach' && f.flachdach) {
     basis.montage = {
@@ -573,6 +596,15 @@ export function leerePositionenFuer(f: Flaeche, modul: ModuleType) {
 
 export function aktiveModule(f: Flaeche, raster: BelegungRaster): number {
   return raster.positionen.filter((p) => !f.inaktiv.includes(`${p.row}-${p.col}`)).length;
+}
+
+/** Manuelle Hindernisse plus automatisch gekoppelte Gaubenfüße für die Engine. */
+export function hindernisseVon(f: Flaeche): RechteckM[] | undefined {
+  const alle = [
+    ...(f.hindernisse ?? []),
+    ...(f.gaubenAussparungen ?? []).map((a) => a.rechteck),
+  ];
+  return alle.length > 0 ? alle : undefined;
 }
 
 /** Fertig markierte Flächen eines Projektfotos, inklusive stabilem Projektindex. */
@@ -986,6 +1018,17 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
         rolle: gaubenRolle,
         eltern_flaeche_id: f.elternFlaecheId ?? null,
         gauben_seite: f.gaubenSeite ?? null,
+        gauben_gruppe_id: f.gaubenGruppeId ?? null,
+        gauben_aufmass: f.gaubenMessung
+          ? {
+              quelle: f.gaubenMessung.quelle,
+              qualitaet: f.gaubenMessung.qualitaet,
+              ziegel_quer: f.gaubenMessung.ziegelQuer ?? null,
+              deckbreite_cm: f.gaubenMessung.deckbreiteCm ?? null,
+              ziegel_reihen: f.gaubenMessung.ziegelReihen ?? null,
+              reihenabstand_cm: f.gaubenMessung.reihenabstandCm ?? null,
+            }
+          : null,
         // ASCII snake_case (SPEC §13): dach | fassade | flachdach_sued_10 | flachdach_ostwest_10
         montage:
           f.gaubenTyp === 'flachdach'

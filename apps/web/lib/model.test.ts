@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bauePayload,
   fertigeFotoFlaechen,
+  felderInput,
   flaecheM2,
   flachdachOstRichtung,
   flachdachRichtungsLabel,
+  modulById,
   neueFlaeche,
   neuesProjekt,
   speichereProjekte,
@@ -26,6 +28,21 @@ describe('Export-Geometrie und Modulausrichtung', () => {
       umrissM: [[0, 0], [4, 0], [4, 3], [0, 3]] as [number, number][],
     };
     expect(flaecheM2(polygon)).toBe(12);
+  });
+
+  it('übergibt manuelle Hindernisse und gekoppelte Gaubenfüße gemeinsam an die Engine', () => {
+    const flaeche = neueFlaeche(1, 'A');
+    flaeche.hindernisse = [{ xM: 1, yM: 1, breiteM: 1, hoeheM: 1 }];
+    flaeche.gaubenAussparungen = [
+      {
+        gaubenGruppeId: 'gaube-1',
+        rechteck: { xM: 3, yM: 2, breiteM: 2, hoeheM: 1.5 },
+      },
+    ];
+    expect(felderInput(flaeche, modulById('jw-hd96n-r2-460')).hindernisseM).toEqual([
+      flaeche.hindernisse[0],
+      flaeche.gaubenAussparungen[0]!.rechteck,
+    ]);
   });
 
   it('exportiert gemischte Felder getrennt und alle Schlüssel in snake_case', () => {
