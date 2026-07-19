@@ -78,3 +78,17 @@ Katalogeintrag, Kompatibilitätsmatrix WR↔BYD offen.
 
 - ~~Speicher-Zuordnung Sungrow~~ ✅ 05.07.2026: Sungrow SH → **SBR** (bestätigt).
   Aktive Speicher-IDs: ecoflow-powerocean-lfp, sungrow-sbr, sigenstor-bat.
+
+## Zurückgestellt: Stringcheck (19.07.2026)
+
+Der Stringcheck ist in der aktuellen Vertriebsoberfläche ausgeblendet und hat vorerst
+keine Priorität. Vor einer späteren Reaktivierung müssen diese beiden Punkte erledigt
+und mit Tests abgesichert werden:
+
+- **Flachdach Ost-West:** Die Belegung kennt die einzelnen Ost-/West-Module, der
+  Stringcheck übergibt die gesamte Fläche bisher aber als eine Ebene mit 0° Neigung
+  und nur einem Azimut. Ost und West müssen im elektrischen Modell getrennte Ebenen
+  beziehungsweise eine eindeutige Seitenzuordnung erhalten, damit R9 korrekt prüft.
+- **PDF/Modulzuordnung:** Ein elektrisch gültiger String darf im PDF nicht als
+  „bestanden“ erscheinen, wenn mehr Module verstringt als tatsächlich belegt sind.
+  Die Zuordnungsfehler aus `zuordnungsHinweise()` müssen in Ampel und PDF einfließen.
