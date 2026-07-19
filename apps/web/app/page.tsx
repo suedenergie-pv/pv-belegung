@@ -26,6 +26,7 @@ export default function Home() {
   const [db, setDb] = useState<ProjektDb>({ aktivId: null, projekte: [] });
   // localStorage erst nach dem Mount lesen (SSR-Hydration), danach jede Änderung sichern
   const [geladen, setGeladen] = useState(false);
+  const [speicherWarnung, setSpeicherWarnung] = useState(false);
 
   useEffect(() => {
     const geladen = ladeProjekte();
@@ -53,7 +54,9 @@ export default function Home() {
   dbRef.current = db;
   useEffect(() => {
     if (!geladen) return;
-    const t = setTimeout(() => speichereProjekte(dbRef.current), 400);
+    const t = setTimeout(() => {
+      setSpeicherWarnung(speichereProjekte(dbRef.current) !== 'gespeichert');
+    }, 400);
     return () => clearTimeout(t);
   }, [geladen, db]);
 
@@ -175,6 +178,17 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      {speicherWarnung && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          <strong>Projekt noch nicht gespeichert:</strong> Der Browser-Speicher ist voll. Der
+          letzte vollständig gespeicherte Stand bleibt erhalten. Bitte ein nicht benötigtes Foto
+          entfernen und danach eine kleine Änderung vornehmen, damit erneut gespeichert wird.
+        </div>
+      )}
 
       <nav className="flex flex-wrap items-center gap-2" aria-label="Schritte">
         {SCHRITTE.map((name, i) => (

@@ -34,18 +34,26 @@ export function fotoFlaechenInhalt({
   ausblendenId,
   beschriftung = true,
   assetId = FOTO_ASSET_ID,
+  nurFertige = false,
 }: {
   projekt: Projekt;
   foto: ProjektFoto;
   ausblendenId?: string | null;
   beschriftung?: boolean;
   assetId?: string;
+  /** PDF: nur vollständig abgeschlossene Foto-Markierungen ausgeben. */
+  nurFertige?: boolean;
 }) {
   const modul = modulById(projekt.modulId);
   const px = (v: number) => foto.breitePx * v;
   return projekt.flaechen.map((f, i) => {
     const z = f.fotoZuordnung;
-    if (!z?.eckenPx || z.fotoId !== foto.id || f.id === ausblendenId) return null;
+    if (
+      !z?.eckenPx ||
+      z.fotoId !== foto.id ||
+      f.id === ausblendenId ||
+      (nurFertige && !f.markierungFertig)
+    ) return null;
     const h = homographie(rahmenBreiteVon(f), f.hoeheM, z.eckenPx, perspektiveQuelle(f));
     if (!h) return null;
     const raster = rasterFuer(f, modul);
@@ -106,11 +114,14 @@ export function ProjektFotoSvg({
   projekt,
   foto,
   beschriftung = false,
+  nurFertige = false,
 }: {
   projekt: Projekt;
   foto: ProjektFoto;
   /** Für die Belegungsverwaltung: Flächenrahmen und A/B/C einblenden. */
   beschriftung?: boolean;
+  /** Für den PDF-Export: keine noch laufenden Markierungen rendern. */
+  nurFertige?: boolean;
 }) {
   const modul = modulById(projekt.modulId);
   return (
@@ -124,7 +135,7 @@ export function ProjektFotoSvg({
         <ModulAsset id={FOTO_ASSET_ID} modul={modul} />
       </defs>
       <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-      {fotoFlaechenInhalt({ projekt, foto, beschriftung })}
+      {fotoFlaechenInhalt({ projekt, foto, beschriftung, nurFertige })}
     </svg>
   );
 }

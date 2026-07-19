@@ -534,6 +534,58 @@ export function aktiveModule(f: Flaeche, raster: BelegungRaster): number {
   return raster.positionen.filter((p) => !f.inaktiv.includes(`${p.row}-${p.col}`)).length;
 }
 
+/** Fertig markierte Flächen eines Projektfotos, inklusive stabilem Projektindex. */
+export function fertigeFotoFlaechen(
+  p: Projekt,
+  fotoId: string,
+): Array<{ f: Flaeche; i: number }> {
+  return p.flaechen
+    .map((f, i) => ({ f, i }))
+    .filter(
+      ({ f }) =>
+        f.fotoZuordnung?.fotoId === fotoId &&
+        !!f.fotoZuordnung.eckenPx &&
+        !!f.markierungFertig,
+    );
+}
+
+/** Tatsächliche Ausrichtungsverteilung der aktiven Module einer Fläche. */
+export function ausrichtungenVon(
+  f: Flaeche,
+  raster: BelegungRaster,
+): { hochkant: number; quer: number; bezeichnung: 'hoch' | 'quer' | 'gemischt' } {
+  const positionen = raster.positionen.filter(
+    (p) => !f.inaktiv.includes(`${p.row}-${p.col}`),
+  );
+  if (positionen.length === 0) {
+    return {
+      hochkant: 0,
+      quer: 0,
+      bezeichnung: f.ausrichtung === 'quer' ? 'quer' : 'hoch',
+    };
+  }
+  const quer = positionen.filter((p) => p.quer).length;
+  const hochkant = positionen.length - quer;
+  return {
+    hochkant,
+    quer,
+    bezeichnung: hochkant > 0 && quer > 0 ? 'gemischt' : quer > 0 ? 'quer' : 'hoch',
+  };
+}
+
+/** Wahre Fläche des wirksamen Dachpolygons in m² (Rechteck als Fallback). */
+export function flaecheM2(f: Flaeche): number {
+  const polygon = umrissVon(f);
+  if (!polygon || polygon.length < 3) return f.breiteM * f.hoeheM;
+  let doppelteFlaeche = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]!;
+    const b = polygon[(i + 1) % polygon.length]!;
+    doppelteFlaeche += a[0] * b[1] - b[0] * a[1];
+  }
+  return Math.abs(doppelteFlaeche) / 2;
+}
+
 /** kWp = Σ aktive Module × Pmax (SPEC §9) */
 export function kwpGesamt(p: Projekt): number {
   const modul = modulById(p.modulId);
@@ -795,38 +847,17 @@ function ladeAltStand(): { projekt: Projekt; schritt: number } | null {
   }
 }
 
-export function speichereProjekte(db: ProjektDb): void {
-  if (typeof window === 'undefined') return;
-  const schreibe = (d: ProjektDb) =>
-    window.localStorage.setItem(PROJEKTE_KEY, JSON.stringify(d));
+export type SpeicherStatus = 'gespeichert' | 'speicher_voll';
+
+export function speichereProjekte(db: ProjektDb): SpeicherStatus {
+  if (typeof window === 'undefined') return 'gespeichert';
   try {
-    schreibe(db);
+    window.localStorage.setItem(PROJEKTE_KEY, JSON.stringify(db));
+    return 'gespeichert';
   } catch {
-    // Speicher voll (Fotos sind Data-URLs!) — Notnagel: ohne Fotos sichern
-    try {
-      schreibe({
-        aktivId: db.aktivId,
-        projekte: db.projekte.map((e) => ({
-          ...e,
-          projekt: (() => {
-            const { gesamtFoto: _gesamt, ...projektOhneAltFoto } = e.projekt;
-            return {
-              ...projektOhneAltFoto,
-              fotos: [],
-              flaechen: e.projekt.flaechen.map((f) => {
-                const rest = { ...f };
-                delete rest.foto;
-                delete rest.fotoZuordnung;
-                delete rest.gesamtEckenPx;
-                return rest;
-              }),
-            };
-          })(),
-        })),
-      });
-    } catch {
-      // localStorage nicht verfügbar — Stand bleibt flüchtig
-    }
+    // Den letzten vollständigen Stand niemals durch eine Version ohne Fotos
+    // überschreiben. Die UI warnt, bis ein kompletter Speichervorgang gelingt.
+    return 'speicher_voll';
   }
 }
 
@@ -892,9 +923,10 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
     tool: 'belegungsplaner',
     version: '1.0',
     projekt: { adresse: p.adresse, kunde: p.kunde, erfasser: p.erfasser ?? '' },
-    geometrieQuelle: 'manual',
+    geometrie_quelle: 'manual',
     flaechen: p.flaechen.map((f) => {
       const raster = rasterFuer(f, modul);
+      const ausrichtungen = ausrichtungenVon(f, raster);
       const gaubenRolle =
         f.gaubenTyp === 'flachdach'
           ? 'gaube_flachdach'
@@ -917,10 +949,16 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
             ? `flachdach_${f.flachdach.aufstaenderung}_${f.flachdach.winkelDeg}`
             : artVon(f),
         eindeckung: f.dachfarbe,
-        neigungDeg: f.neigungDeg,
-        azimutDeg: f.azimutDeg,
-        flaecheM2: Math.round(f.breiteM * f.hoeheM * 10) / 10,
-        module: { typ: modul.id, anzahl: aktiveModule(f, raster), ausrichtung: f.ausrichtung },
+        neigung_deg: f.neigungDeg,
+        azimut_deg: f.azimutDeg,
+        flaeche_m2: Math.round(flaecheM2(f) * 10) / 10,
+        module: {
+          typ: modul.id,
+          anzahl: aktiveModule(f, raster),
+          ausrichtung: ausrichtungen.bezeichnung,
+          anzahl_hochkant: ausrichtungen.hochkant,
+          anzahl_quer: ausrichtungen.quer,
+        },
       };
     }),
     wechselrichter: p.wrId ? { typ: p.wrId, anzahl: 1 } : null,
@@ -929,15 +967,15 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
           mppt: s.mpptIndex,
           flaeche: stringFlaeche.get(s.id) ?? '',
           module: s.moduleCount,
-          vocColdV: Math.round(s.vocColdV * 10) / 10,
-          vmpHotV: Math.round(s.vmpHotV * 10) / 10,
+          voc_cold_v: Math.round(s.vocColdV * 10) / 10,
+          vmp_hot_v: Math.round(s.vmpHotV * 10) / 10,
         }))
       : [],
     kwp: Math.round(kwpGesamt(p) * 100) / 100,
-    regelPruefung: result ? { bestanden: result.valid, regeln: result.regeln } : null,
+    regel_pruefung: result ? { bestanden: result.valid, regeln: result.regeln } : null,
     flags: [],
     eskaliert: false,
-    renderPngUrl: '',
+    render_png_url: '',
     hinweis:
       'Vorplanung Vertrieb — keine Fachplanung. Finale Auslegung durch Projektleitung (PV*SOL).',
   };

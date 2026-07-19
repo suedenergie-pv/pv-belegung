@@ -2,6 +2,9 @@ import type { StringPlanResult } from '@pv-belegung/engine';
 import { logoPng } from './logo';
 import {
   aktiveModule,
+  ausrichtungenVon,
+  fertigeFotoFlaechen,
+  flaecheM2,
   flaechenTitel,
   fmtDe,
   kwpGesamt,
@@ -103,12 +106,12 @@ export async function erzeugeBelegungsPdf(
     seitenverhaeltnis: number;
   }> = [];
   for (const foto of projekt.fotos) {
+    const zugeordneteFlaechen = fertigeFotoFlaechen(projekt, foto.id);
+    if (zugeordneteFlaechen.length === 0) continue;
     const svg = svgVonFoto?.(foto.id) ?? null;
     if (!svg) continue;
     const bild = await svgZuJpeg(svg, 1600);
-    const flaechen = projekt.flaechen
-      .map((f, i) => ({ f, i }))
-      .filter(({ f }) => f.fotoZuordnung?.fotoId === foto.id)
+    const flaechen = zugeordneteFlaechen
       .map(({ f, i }) => zonenVon(f, i))
       .join(', ');
     fotoBilder.push({ id: foto.id, name: foto.name, flaechen, ...bild });
@@ -211,11 +214,13 @@ export async function erzeugeBelegungsPdf(
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(40);
   for (const [i, f] of projekt.flaechen.entries()) {
-    const n = aktiveModule(f, rasterFuer(f, modul));
+    const raster = rasterFuer(f, modul);
+    const n = aktiveModule(f, raster);
+    const ausrichtungen = ausrichtungenVon(f, raster);
     doc.text(flaechenTitel(f, i), SPALTEN[0], y);
     doc.text(azimutLabel(f.azimutDeg), SPALTEN[1], y);
     doc.text(`${f.neigungDeg}°`, SPALTEN[2], y);
-    doc.text(`${n} (${f.ausrichtung})`, SPALTEN[3], y);
+    doc.text(`${n} (${ausrichtungen.bezeichnung})`, SPALTEN[3], y);
     doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SPALTEN[4], y);
     y += 5;
   }
@@ -339,7 +344,9 @@ export async function erzeugeBelegungsPdf(
     if (!bild) continue;
     doc.addPage();
     let dy = RAND + 4;
-    const n = aktiveModule(f, rasterFuer(f, modul));
+    const raster = rasterFuer(f, modul);
+    const n = aktiveModule(f, raster);
+    const ausrichtungen = ausrichtungenVon(f, raster);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
     doc.setTextColor(20);
@@ -352,13 +359,19 @@ export async function erzeugeBelegungsPdf(
     doc.setFontSize(9);
     // Nur ASCII/WinAnsi-sichere Trennzeichen — "·" rendert in jsPDF-Helvetica als Kästchen
     doc.text(
-      `${azimutLabel(f.azimutDeg)}, Neigung ${f.neigungDeg}°, Traufe ${fmtDe(f.breiteM, 2)} m × ` +
-        `Sparren ${fmtDe(f.hoeheM, 2)} m, Randabstand ${fmtDe(randVon(f) * 100, 0)} cm`,
+      `${azimutLabel(f.azimutDeg)}, Neigung ${f.neigungDeg}°, Fläche ${fmtDe(flaecheM2(f), 1)} m², ` +
+        `Randabstand ${fmtDe(randVon(f) * 100, 0)} cm`,
       RAND,
       dy,
     );
     dy += 5;
-    doc.text(`${n} × ${modul.name} (${f.ausrichtung === 'quer' ? 'quer' : 'hochkant'} verlegt)`, RAND, dy);
+    const lageText =
+      ausrichtungen.bezeichnung === 'gemischt'
+        ? `${ausrichtungen.hochkant} hochkant, ${ausrichtungen.quer} quer`
+        : ausrichtungen.bezeichnung === 'quer'
+          ? 'quer verlegt'
+          : 'hochkant verlegt';
+    doc.text(`${n} × ${modul.name} (${lageText})`, RAND, dy);
     dy += 6;
     let bildB = NUTZ_B;
     let bildH = bildB * bild.seitenverhaeltnis;

@@ -47,7 +47,7 @@ WR-Spalten bleiben leer, bis der WR-Katalog (SPEC §6) befüllt ist — dann pro
 
 ### Gruppe D — Aiko A480-MAH54Mw × gleicher WR
 
-NEU 04.07. abends (beide Aiko-Varianten im Einsatz, SPEC §5.1): Fälle D1–D9 analog Gruppe A. Kurzschluss-Anforderung 17,98 A pro String.
+NEU 04.07. abends (beide Aiko-Varianten im Einsatz, SPEC §5.1): Fälle D1–D9 analog Gruppe A. Kurzschluss-Anforderung 14,38 A pro String.
 
 ### Gruppe C — Grenzfall-Sammlung (nach A/B/D, mit realen Projekten)
 

@@ -390,19 +390,20 @@ Ein Klick erzeugt Ticket in `tickets_projektierung` mit Payload:
   "tool": "belegungsplaner",
   "version": "1.0",
   "projekt": { "adresse": "...", "kunde": "...", "erfasser": "user_id" },
-  "geometrieQuelle": "solar_api | manual | solar_api_edited",
+  "geometrie_quelle": "solar_api | manual | solar_api_edited",
   "flaechen": [
-    { "id": "p1", "neigungDeg": 38, "azimutDeg": 182, "flaecheM2": 54.2,
-      "module": { "typ": "jw-hd108n-r3-460", "anzahl": 24, "ausrichtung": "hoch" } }
+    { "id": "p1", "neigung_deg": 38, "azimut_deg": 182, "flaeche_m2": 54.2,
+      "module": { "typ": "jw-hd96n-r2-460", "anzahl": 24, "ausrichtung": "hoch",
+        "anzahl_hochkant": 24, "anzahl_quer": 0 } }
   ],
   "wechselrichter": { "typ": "...", "anzahl": 1 },
   "strings": [
-    { "mppt": 1, "flaeche": "p1", "module": 12, "vocColdV": 0, "vmpHotV": 0 }
+    { "mppt": 1, "flaeche": "p1", "module": 12, "voc_cold_v": 0, "vmp_hot_v": 0 }
   ],
   "kwp": 11.04,
-  "regelPruefung": { "bestanden": true, "regeln": { "R1": "ok", "...": "..." } },
+  "regel_pruefung": { "bestanden": true, "regeln": { "R1": "ok", "...": "..." } },
   "flags": [], "eskaliert": false,
-  "renderPngUrl": "..."
+  "render_png_url": "..."
 }
 ```
 

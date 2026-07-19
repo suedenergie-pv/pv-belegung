@@ -3,9 +3,11 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
+  ausrichtungenVon,
   bauePayload,
   dachFotoVon,
   flaechenTitel,
+  flaecheM2,
   fmtDe,
   kwpGesamt,
   modulById,
@@ -77,14 +79,15 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
           </div>
           {projekt.flaechen.map((f, i) => {
             const raster = rasterFuer(f, modul);
+            const ausrichtungen = ausrichtungenVon(f, raster);
             return (
               <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
                 <dt className="text-slate-500">
                   {flaechenTitel(f, i)} · {f.neigungDeg}° · Azimut {f.azimutDeg}°
                 </dt>
                 <dd className="font-medium">
-                  {aktiveModule(f, raster)} Module ({f.ausrichtung}) ·{' '}
-                  {fmtDe(f.breiteM * f.hoeheM, 1)} m²
+                  {aktiveModule(f, raster)} Module ({ausrichtungen.bezeichnung}) ·{' '}
+                  {fmtDe(flaecheM2(f), 1)} m²
                 </dd>
               </div>
             );
@@ -199,7 +202,7 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         })}
         {projekt.fotos.map((foto) => (
           <div key={foto.id} data-foto={foto.id} style={{ width: 1400 }}>
-            <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />
+            <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung nurFertige />
           </div>
         ))}
       </div>
