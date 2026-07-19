@@ -13,7 +13,7 @@ import {
   umrissAusKlicks,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { DACHFARBEN, fmtDe, perspektiveQuelle, rahmenBreiteVon, type DachFoto, type Flaeche } from '../lib/model';
+import { artVon, DACHFARBEN, fmtDe, perspektiveQuelle, rahmenBreiteVon, type DachFoto, type Flaeche } from '../lib/model';
 import { IconFoto } from './icons';
 
 /**
@@ -110,6 +110,11 @@ export function FotoHintergrund({
   fotoVerwalten?: boolean;
 }) {
   const foto = flaeche.foto;
+  const flaechenArt = artVon(flaeche);
+  const istSchraegdach = flaechenArt === 'dach';
+  const istFlachdach = flaechenArt === 'flachdach';
+  const kantenName = istSchraegdach ? 'Traufe' : istFlachdach ? 'Referenzkante' : 'Unterkante';
+  const flaechenName = istSchraegdach ? 'Dach' : istFlachdach ? 'Flachdach' : 'Fassade';
   const [punkte, setPunkte] = useState<Punkt[]>([]);
   const [modus, setModus] = useState<Modus>('first');
   const [anzahlZiegel, setAnzahlZiegel] = useState(10);
@@ -145,7 +150,15 @@ export function FotoHintergrund({
   const hom = foto?.eckenPx ? homographie(rahmenB, H, foto.eckenPx, quelle) : null;
   const check =
     foto?.eckenPx != null
-      ? belegungsCheck(foto.eckenPx, B, H, flaeche.neigungDeg, foto.pxProM, erwFirstAnteil)
+      ? belegungsCheck(
+          foto.eckenPx,
+          B,
+          H,
+          flaeche.neigungDeg,
+          foto.pxProM,
+          erwFirstAnteil,
+          flaechenArt,
+        )
       : null;
 
   // Fadenkreuz-Vorschau nur in den Punkt-Setz-Modi
@@ -336,7 +349,7 @@ export function FotoHintergrund({
               <button
                 type="button"
                 className={knopfKlasse}
-                title="Ausrichtung neu: First-/Trauflinie ziehen, dann die 4 Ecken (Umriss & Hindernisse bleiben nicht)"
+                title={`Ausrichtung neu: ${istSchraegdach ? 'First-/Trauflinie' : `${kantenName} als Referenz`} setzen, dann die 4 Ecken`}
                 onClick={() => {
                   const { eckenPx: _e, ...rest } = foto;
                   onPatch({
@@ -350,17 +363,17 @@ export function FotoHintergrund({
                   setModus('first');
                 }}
               >
-                Ausrichtung neu (First + 4 Ecken)
+                Ausrichtung neu ({istSchraegdach ? 'First' : kantenName} + 4 Ecken)
               </button>
             )}
             {foto.eckenPx && (
               <button
                 type="button"
                 className={knopfKlasse}
-                title="Falls die falsche Kante als Traufe angenommen wurde: Zuordnung weiterdrehen"
+                title={`Falls die falsche Kante als ${kantenName} angenommen wurde: Zuordnung weiterdrehen`}
                 onClick={() => onFoto({ ...foto, eckenPx: traufeWechseln(foto.eckenPx!) })}
               >
-                ↻ Traufe wechseln
+                ↻ {kantenName} wechseln
               </button>
             )}
             {modus === 'perspektive' && foto.eckenPx && (
@@ -386,7 +399,7 @@ export function FotoHintergrund({
                   onFoto(rest);
                 }}
               >
-                Ziegel-Maßstab löschen ({fmtDe(foto.pxProM, 1)} px/m)
+                {istSchraegdach ? 'Ziegel-Maßstab' : 'Foto-Maßstab'} löschen ({fmtDe(foto.pxProM, 1)} px/m)
               </button>
             )}
             {check?.vorschlag && (
@@ -478,12 +491,14 @@ export function FotoHintergrund({
             />
             {modus === 'first' && (
               <button type="button" className={knopfKlasse} onClick={() => wechsleModus('perspektive')}>
-                ➡ Überspringen (Traufe ist unten)
+                ➡ Überspringen ({kantenName} ist unten)
               </button>
             )}
-            <button type="button" className={modusKnopfKlasse(modus === 'ziegel')} onClick={() => wechsleModus('ziegel')}>
-              Ziegel zählen (Maßstab)
-            </button>
+            {istSchraegdach && (
+              <button type="button" className={modusKnopfKlasse(modus === 'ziegel')} onClick={() => wechsleModus('ziegel')}>
+                Ziegel zählen (Maßstab)
+              </button>
+            )}
 
             {(modus === 'perspektive' || modus === 'first') && (
               <button
@@ -515,7 +530,7 @@ export function FotoHintergrund({
                 </button>
               </>
             )}
-            {modus === 'ziegel' && (
+            {modus === 'ziegel' && istSchraegdach && (
               <>
                 <label className="flex items-center gap-1.5 text-sm text-slate-600">
                   <input
@@ -558,18 +573,27 @@ export function FotoHintergrund({
                   onPatch({ markierungFertig: true });
                 }}
               >
-                ✓ Dach belegen →
+                ✓ {flaechenName} belegen →
               </button>
             )}
           </div>
 
           {modus === 'first' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Trauflinie (2 Klicks entlang der Traufe/Dachrinne):</strong> die{' '}
-              <strong>unterste waagerechte Dachkante</strong> anklicken. Damit weiß das Programm, wo
-              unten ist — die 4 Ecken danach sind dann in <strong>beliebiger Reihenfolge</strong>
-              {' '}klickbar (behebt schief/verdrehte Belegungen). Simples Dach mit Traufe unten im
-              Bild? <strong>„Überspringen"</strong> genügt.
+              {istSchraegdach ? (
+                <>
+                  <strong>Trauflinie (2 Klicks entlang der Traufe/Dachrinne):</strong> die{' '}
+                  <strong>unterste waagerechte Dachkante</strong> anklicken. Damit weiß das Programm,
+                  wo unten ist — die 4 Ecken danach sind in <strong>beliebiger Reihenfolge</strong>{' '}
+                  klickbar. Traufe bereits unten im Bild? <strong>„Überspringen“</strong> genügt.
+                </>
+              ) : (
+                <>
+                  <strong>{kantenName} festlegen:</strong> mit 2 Klicks eine gut erkennbare Kante
+                  markieren. Sie bestimmt nur, wie die Fläche im Foto gedreht ist. Liegt diese Kante
+                  bereits unten im Bild? <strong>„Überspringen“</strong> genügt.
+                </>
+              )}
             </p>
           ) : modus === 'perspektive' ? (
             parametrisch ? (
@@ -588,27 +612,38 @@ export function FotoHintergrund({
               </p>
             ) : (
               <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-                <strong>Perspektive – 4 Ecken:</strong> die 4 Ecken des Dach-<strong>Rechtecks</strong>{' '}
-                anklicken (Traufe + First), <strong>Reihenfolge egal</strong>. Liegt eine Ecke in der
-                Luft (z. B. über der Terrasse), am <strong>Fadenkreuz</strong> ausrichten — es zeigt
-                die X/Y-Linie durch den Mauszeiger. <strong>Ecke nicht genau getroffen? Einfach
-                mit der Maus draufziehen.</strong> Sitzt die Belegung verdreht: <strong>↻ Traufe
-                wechseln</strong>. Tipp: Bei Walm/Trapez in Schritt „Dachflächen" die Form{' '}
-                <strong>Trapez</strong> wählen — dann einfach die echten Ecken klicken.
+                {istSchraegdach ? (
+                  <>
+                    <strong>Perspektive – 4 Ecken:</strong> die 4 Ecken des
+                    Dach-<strong>Rechtecks</strong> anklicken (Traufe + First),{' '}
+                    <strong>Reihenfolge egal</strong>. Liegt eine Ecke in der Luft, am{' '}
+                    <strong>Fadenkreuz</strong> ausrichten. Sitzt die Belegung verdreht:{' '}
+                    <strong>↻ Traufe wechseln</strong>.
+                  </>
+                ) : (
+                  <>
+                    <strong>Perspektive – 4 Ecken:</strong> die vier äußeren Ecken der{' '}
+                    {istFlachdach ? 'Flachdachfläche' : 'Fassade'} anklicken,{' '}
+                    <strong>Reihenfolge egal</strong>. Das Fadenkreuz hilft bei verdeckten oder
+                    schwer sichtbaren Ecken. Sitzt die Belegung verdreht:{' '}
+                    <strong>↻ {kantenName} wechseln</strong>.
+                  </>
+                )}
               </p>
             )
           ) : modus === 'umriss' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Umriss zeichnen:</strong> den echten Rand der Dachfläche der Reihe nach
+              <strong>Umriss zeichnen:</strong> den echten Rand der Fläche der Reihe nach
               anklicken (Fadenkreuz hilft beim Zielen). Schließen: ersten Punkt oder „Umriss fertig".{' '}
-              <strong>Rechteckiges Dach → einfach „Dach belegen"</strong> (Umriss = das Rechteck).{' '}
-              <em>Warum zwei Schritte? Die 4 Ecken sagen dem Tool, WIE das Dach im Foto liegt — der
+              <strong>Rechteckige Fläche → einfach „{flaechenName} belegen"</strong>.{' '}
+              <em>Warum zwei Schritte? Die 4 Ecken sagen dem Tool, WIE die Fläche im Foto liegt — der
               Umriss sagt ihm die FORM.</em>
             </p>
           ) : modus === 'hindernis' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Hindernis markieren:</strong> Kamin, Dachfenster, SAT usw. mit{' '}
-              <strong>2 Klicks</strong> einrahmen — solange das Dach noch leer ist. Diese Flächen
+              <strong>Hindernis markieren:</strong>{' '}
+              {istSchraegdach ? 'Kamin, Dachfenster oder SAT' : istFlachdach ? 'Lichtkuppel, Lüfter oder Technik' : 'Fenster, Türen oder Anbauten'} mit{' '}
+              <strong>2 Klicks</strong> einrahmen — solange die Fläche noch leer ist. Diese Bereiche
               bleiben frei. Mehrere möglich.
             </p>
           ) : (
@@ -817,13 +852,13 @@ export function FotoHintergrund({
           <p className="mt-1 text-xs text-slate-500">
             {modus === 'first'
               ? punkte.length === 0
-                ? 'Anfang der First-/Trauflinie anklicken (waagerechte Dachkante).'
+                ? `Anfang der ${istSchraegdach ? 'First-/Trauflinie' : kantenName} anklicken.`
                 : 'Ende der Linie anklicken.'
               : modus === 'perspektive'
-              ? `Ecke ${punkte.length + 1} von 4 anklicken (Dach-Rechteck).`
+              ? `Ecke ${punkte.length + 1} von 4 anklicken (${flaechenName}).`
               : modus === 'umriss'
                 ? punkte.length < 3
-                  ? `Ecke ${punkte.length + 1} anklicken (mind. 3) — oder „Dach belegen" für ein Rechteck.`
+                  ? `Ecke ${punkte.length + 1} anklicken (mind. 3) — oder „${flaechenName} belegen“ für ein Rechteck.`
                   : 'Weitere Ecken — oder ersten Punkt / „Umriss fertig" zum Schließen.'
                 : modus === 'hindernis'
                   ? punkte.length === 0

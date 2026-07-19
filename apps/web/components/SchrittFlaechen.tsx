@@ -161,10 +161,23 @@ export function SchrittFlaechen({
               <ToggleButton aktiv={artVon(f) === 'flachdach'} onClick={() => setArt(f, 'flachdach')}>
                 Flachdach (aufgeständert)
               </ToggleButton>
-              <ToggleButton aktiv={artVon(f) === 'fassade'} onClick={() => setArt(f, 'fassade')}>
-                Fassade
-              </ToggleButton>
+              {artVon(f) === 'fassade' && (
+                <button
+                  type="button"
+                  disabled
+                  aria-pressed="true"
+                  className="h-11 rounded-xl border border-akzent bg-akzent px-4 text-sm font-semibold text-white opacity-80"
+                >
+                  Fassade · bestehend
+                </button>
+              )}
             </div>
+            {artVon(f) === 'fassade' && (
+              <p className="mt-2 text-xs text-slate-500">
+                Diese Bestandsfläche bleibt bearbeitbar. Neue Fassaden folgen später als eigener,
+                dafür ausgelegter Ablauf.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

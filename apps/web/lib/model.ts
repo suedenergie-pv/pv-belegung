@@ -66,6 +66,12 @@ export interface GaubenMessung {
 export interface GaubenAussparung {
   gaubenGruppeId: string;
   rechteck: RechteckM;
+  /**
+   * Sichtbarer Außenumriss im gemeinsamen Foto. Damit kann die gekoppelte
+   * Aussparung neu berechnet werden, wenn die Perspektive des Mutterdachs
+   * korrigiert wird. Fehlt bei Altprojekten und nach einem Fotoaustausch.
+   */
+  fotoEckenPx?: Ecken;
 }
 
 /** Zur Flächen-Art passende Eindeckungen/Oberflächen. */

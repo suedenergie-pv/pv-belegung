@@ -9,6 +9,7 @@ import {
   perspektiveQuelle,
   rahmenBreiteVon,
   type Flaeche,
+  type GaubenAussparung,
   type RechteckM,
 } from './model';
 
@@ -73,16 +74,34 @@ export function gaubenAussparungAusFoto(
   };
 }
 
+/**
+ * Gekoppelte Gauben-Aussparungen nach einer Perspektivkorrektur des Mutterdachs
+ * neu berechnen. Altprojekte ohne gespeicherten Foto-Umriss bleiben unverändert.
+ */
+export function aktualisiereGaubenAussparungen(
+  eltern: Flaeche,
+  aussparungen: readonly GaubenAussparung[] | undefined,
+): GaubenAussparung[] | undefined {
+  if (!aussparungen) return undefined;
+  return aussparungen.map((a) => {
+    if (!a.fotoEckenPx) return a;
+    const rechteck = gaubenAussparungAusFoto(eltern, a.fotoEckenPx);
+    return rechteck ? { ...a, rechteck } : a;
+  });
+}
+
 const mittelX = (punkte: readonly Punkt[]) =>
   punkte.reduce((summe, p) => summe + p[0], 0) / punkte.length;
 
 /**
  * Äußerer Vierpunkt-Umriss + Firstlinie in zwei sichtbare Gaubenseiten teilen.
- * Die Seitenbezeichnung folgt dem Foto (links/rechts), nicht einem 3D-Modell.
+ * Mit Mutterdach folgt links/rechts dessen Traufenachse; das bleibt auch bei
+ * einem gedrehten Foto stabil. Ohne Mutterdach gilt der alte Foto-X-Fallback.
  */
 export function satteldachSeitenEcken(
   aussen: Ecken,
   first: readonly [Punkt, Punkt],
+  eltern?: Flaeche,
 ): { links: Ecken; rechts: Ecken } | null {
   const [r0, r1] = first;
   const dx = r1[0] - r0[0];
@@ -96,7 +115,15 @@ export function satteldachSeitenEcken(
   const gruppeB = [nachSeite[2]!.punkt, nachSeite[3]!.punkt] as [Punkt, Punkt];
   const eckenA = sortiereEcken([gruppeA[0], gruppeA[1], r0, r1]);
   const eckenB = sortiereEcken([gruppeB[0], gruppeB[1], r0, r1]);
-  return mittelX(gruppeA) <= mittelX(gruppeB)
+  // Nicht nach der globalen Foto-X-Achse ordnen: Ein Drohnenfoto kann beliebig
+  // gedreht sein. Mit Mutterdach werden die Seiten in dessen metrischer X-Achse
+  // (Traufe links → rechts) einsortiert; nur Altaufrufe nutzen den Foto-Fallback.
+  const gruppeAM = eltern ? gaubenPunkteAufElternflaeche(eltern, gruppeA) : null;
+  const gruppeBM = eltern ? gaubenPunkteAufElternflaeche(eltern, gruppeB) : null;
+  const aLinksVonB = gruppeAM && gruppeBM
+    ? mittelX(gruppeAM) <= mittelX(gruppeBM)
+    : mittelX(gruppeA) <= mittelX(gruppeB);
+  return aLinksVonB
     ? { links: eckenA, rechts: eckenB }
     : { links: eckenB, rechts: eckenA };
 }

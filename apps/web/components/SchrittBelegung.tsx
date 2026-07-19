@@ -35,7 +35,12 @@ import {
 import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FlaechenInlineEditor } from './FlaechenInlineEditor';
 import { FotoHintergrund } from './FotoHintergrund';
-import { GaubenEditor, type NeueGaubeAusFoto } from './GaubenEditor';
+import { aktualisiereGaubenAussparungen } from '../lib/gauben-geometrie';
+import {
+  GaubenEditor,
+  type AktualisierteGaubenMarkierung,
+  type NeueGaubeAusFoto,
+} from './GaubenEditor';
 import { fotoFlaechenInhalt, ProjektFotoSvg } from './GesamtSvg';
 import {
   IconFeld,
@@ -365,6 +370,12 @@ export function SchrittBelegung({
                   ...f,
                   fotoZuordnung: { fotoId: zielId, traufePx: null },
                   markierungFertig: false,
+                  // Der metrische Sicherheits-Ausschnitt bleibt erhalten. Seine
+                  // alten Pixelpunkte gehören aber zum ersetzten Bild und dürfen
+                  // erst nach „Markierung neu“ wieder gekoppelt werden.
+                  gaubenAussparungen: f.gaubenAussparungen?.map(
+                    ({ fotoEckenPx: _altePixel, ...a }) => a,
+                  ),
                 }
               : f,
           ),
@@ -400,6 +411,11 @@ export function SchrittBelegung({
           delete neu.fotoZuordnung;
           delete neu.markierungFertig;
         }
+        if (neu.gaubenAussparungen) {
+          neu.gaubenAussparungen = neu.gaubenAussparungen.map(
+            ({ fotoEckenPx: _altePixel, ...a }) => a,
+          );
+        }
         return neu;
       }),
     }));
@@ -432,17 +448,34 @@ export function SchrittBelegung({
   /** FotoHintergrund arbeitet weiter mit DachFoto; hier zurück ins neue Modell übersetzen. */
   const patchFotoFlaeche = (f: Flaeche, patch: Partial<Flaeche>) => {
     const { foto, ...rest } = patch;
-    const neu: Partial<Flaeche> = { ...rest };
-    if (foto && f.fotoZuordnung) {
-      const z: FotoZuordnung = {
-        fotoId: f.fotoZuordnung.fotoId,
-        traufePx: foto.traufePx,
+    aendereProjekt((p) => {
+      const aktuell = p.flaechen.find((x) => x.id === f.id);
+      if (!aktuell) return p;
+      const neu: Partial<Flaeche> = { ...rest };
+      if (foto && aktuell.fotoZuordnung) {
+        const z: FotoZuordnung = {
+          fotoId: aktuell.fotoZuordnung.fotoId,
+          traufePx: foto.traufePx,
+        };
+        if (foto.eckenPx) z.eckenPx = foto.eckenPx;
+        if (foto.pxProM !== undefined) z.pxProM = foto.pxProM;
+        neu.fotoZuordnung = z;
+
+        // Gauben-Pixel bleiben im gemeinsamen Foto fest. Wird nur die
+        // Perspektive des Mutterdachs korrigiert, folgt die metrische Aussparung
+        // automatisch, statt als unsichtbares altes Loch liegenzubleiben.
+        if (!aktuell.gaubenTyp && foto.eckenPx) {
+          neu.gaubenAussparungen = aktualisiereGaubenAussparungen(
+            { ...aktuell, ...rest, foto },
+            aktuell.gaubenAussparungen,
+          );
+        }
+      }
+      return {
+        ...p,
+        flaechen: p.flaechen.map((x) => (x.id === aktuell.id ? { ...x, ...neu } : x)),
       };
-      if (foto.eckenPx) z.eckenPx = foto.eckenPx;
-      if (foto.pxProM !== undefined) z.pxProM = foto.pxProM;
-      neu.fotoZuordnung = z;
-    }
-    patchFlaeche(f.id, neu);
+    });
   };
 
   /** Gaube aus EINEM Parent-Foto-Workflow als interne Kindfläche(n) anlegen. */
@@ -504,7 +537,11 @@ export function SchrittBelegung({
                 ...f,
                 gaubenAussparungen: [
                   ...(f.gaubenAussparungen ?? []),
-                  { gaubenGruppeId: gruppeId, rechteck: daten.aussparung },
+                  {
+                    gaubenGruppeId: gruppeId,
+                    rechteck: daten.aussparung,
+                    fotoEckenPx: daten.aussen,
+                  },
                 ],
                 inaktiv: [],
               }
@@ -542,8 +579,51 @@ export function SchrittBelegung({
     });
   };
 
+  const aendereGaubenMarkierung = (
+    elternId: string,
+    gruppeId: string,
+    markierung: AktualisierteGaubenMarkierung,
+  ) => {
+    aendereProjekt((p) => {
+      const eltern = p.flaechen.find((f) => f.id === elternId);
+      const fotoId = eltern?.fotoZuordnung?.fotoId;
+      return {
+        ...p,
+        flaechen: p.flaechen.map((f) => {
+          if (f.id === elternId) {
+            return {
+              ...f,
+              gaubenAussparungen: f.gaubenAussparungen?.map((a) =>
+                a.gaubenGruppeId === gruppeId
+                  ? {
+                      ...a,
+                      rechteck: markierung.aussparung,
+                      fotoEckenPx: markierung.aussen,
+                    }
+                  : a,
+              ),
+              inaktiv: [],
+            };
+          }
+          if ((f.gaubenGruppeId ?? f.id) !== gruppeId || !f.gaubenTyp) return f;
+          const eckenPx =
+            f.gaubenTyp === 'satteldach' && f.gaubenSeite
+              ? markierung.seiten?.[f.gaubenSeite]
+              : markierung.aussen;
+          if (!eckenPx || !fotoId) return { ...f, markierungFertig: false };
+          return {
+            ...f,
+            fotoZuordnung: { fotoId, traufePx: null, eckenPx },
+            markierungFertig: true,
+          };
+        }),
+      };
+    });
+  };
+
   const aendereGaubenMasse = (
     gruppeId: string,
+    flaecheId: string,
     breiteM: number,
     hoeheM: number,
     messung: NonNullable<Flaeche['gaubenMessung']>,
@@ -552,8 +632,10 @@ export function SchrittBelegung({
       ...p,
       flaechen: p.flaechen.map((f) => {
         if ((f.gaubenGruppeId ?? f.id) !== gruppeId || !f.gaubenTyp) return f;
-        const neu = { ...f, breiteM, hoeheM, gaubenMessung: messung, inaktiv: [] };
-        return { ...neu, felder: [vollFeldFuer(neu, modul)] };
+        // Messquelle gilt für die ganze Gaube; das konkrete Seitenmaß wird nur
+        // an der gewählten Dachseite geändert.
+        if (f.id !== flaecheId) return { ...f, gaubenMessung: messung };
+        return patchFlaechenGeometrie(f, { breiteM, hoeheM, gaubenMessung: messung });
       }),
     }));
   };
@@ -1333,6 +1415,9 @@ export function SchrittBelegung({
                 onErstellen={(daten) => erstelleGaube(f, daten)}
                 onLoeschen={(gruppenId) => loescheGaube(f.id, gruppenId)}
                 onMasseAendern={aendereGaubenMasse}
+                onMarkierungAendern={(gruppenId, markierung) =>
+                  aendereGaubenMarkierung(f.id, gruppenId, markierung)
+                }
               />
             )}
 

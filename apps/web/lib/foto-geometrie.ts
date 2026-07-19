@@ -372,6 +372,7 @@ export function belegungsCheck(
   pxProM: number | undefined,
   /** Erwartetes First/Traufe-Verhältnis (Trapez: firstBreiteM/breiteM, sonst 1). */
   erwarteterFirstAnteil = 1,
+  flaechenArt: 'dach' | 'flachdach' | 'fassade' = 'dach',
 ): BelegungsCheck {
   const meldungen: string[] = [];
   if (!eckenPlausibel(ecken)) {
@@ -392,7 +393,12 @@ export function belegungsCheck(
 
   if (pxProM !== undefined && pxProM > 0) {
     const breiteFoto = traufePx / pxProM;
-    const cosN = Math.cos((neigungDeg * Math.PI) / 180) || 1;
+    // Die Neigungskorrektur gilt nur für die verkürzte Draufsicht eines Dachs.
+    // Eine Fassade wird frontal in ihrer eigenen Ebene markiert; cos(90°) würde
+    // die Höhe sonst praktisch durch null teilen.
+    const cosN = flaechenArt === 'fassade'
+      ? 1
+      : Math.cos((neigungDeg * Math.PI) / 180) || 1;
     const seitePx = (laenge(ecken[0], ecken[3]) + laenge(ecken[1], ecken[2])) / 2;
     const hoeheFoto = seitePx / pxProM / cosN;
     vorschlag = {
@@ -404,23 +410,25 @@ export function belegungsCheck(
     if (abwB > 0.1) {
       status = 'warnung';
       meldungen.push(
-        `Traufe im Foto ≈ ${vorschlag.breiteM.toLocaleString('de-DE')} m, eingegeben ${breiteM.toLocaleString('de-DE')} m (${Math.round(abwB * 100)} % Abweichung).`,
+        `${flaechenArt === 'dach' ? 'Traufe' : 'Breite'} im Foto ≈ ${vorschlag.breiteM.toLocaleString('de-DE')} m, eingegeben ${breiteM.toLocaleString('de-DE')} m (${Math.round(abwB * 100)} % Abweichung).`,
       );
     }
     if (abwH > 0.15) {
       status = 'warnung';
       meldungen.push(
-        `Sparrenlänge laut Foto grob ≈ ${vorschlag.hoeheM.toLocaleString('de-DE')} m, eingegeben ${hoeheM.toLocaleString('de-DE')} m.`,
+        `${flaechenArt === 'dach' ? 'Sparrenlänge' : flaechenArt === 'fassade' ? 'Höhe' : 'Tiefe'} laut Foto grob ≈ ${vorschlag.hoeheM.toLocaleString('de-DE')} m, eingegeben ${hoeheM.toLocaleString('de-DE')} m.`,
       );
     }
     if (meldungen.length === 0) {
       meldungen.push(
-        `Maße plausibel: Traufe im Foto ≈ ${vorschlag.breiteM.toLocaleString('de-DE')} m ↔ eingegeben ${breiteM.toLocaleString('de-DE')} m.`,
+        `Maße plausibel: ${flaechenArt === 'dach' ? 'Traufe' : 'Breite'} im Foto ≈ ${vorschlag.breiteM.toLocaleString('de-DE')} m ↔ eingegeben ${breiteM.toLocaleString('de-DE')} m.`,
       );
     }
   } else {
     meldungen.push(
-      'Kein Ziegel-Maßstab gesetzt — Maße können nicht gegen das Foto geprüft werden („Ziegel zählen“ liefert den Check).',
+      flaechenArt === 'dach'
+        ? 'Kein Ziegel-Maßstab gesetzt — Maße können nicht gegen das Foto geprüft werden („Ziegel zählen“ liefert den Check).'
+        : 'Kein zusätzlicher Foto-Maßstab gesetzt — die eingegebenen Maße werden nicht gegen das Foto geprüft.',
     );
   }
 
@@ -430,7 +438,11 @@ export function belegungsCheck(
   // das ist normale Perspektive, kein Kippen. Bei Trapez/Schief ist ein
   // abweichendes Verhältnis erst recht erwartet. Ground Truth bleibt der Blick:
   // laufen die Module parallel zu den Ziegellinien, stimmt die Markierung.
-  if (erwarteterFirstAnteil >= 0.98 && (perspektive < 0.8 || perspektive > 1.25)) {
+  if (
+    flaechenArt === 'dach' &&
+    erwarteterFirstAnteil >= 0.98 &&
+    (perspektive < 0.8 || perspektive > 1.25)
+  ) {
     meldungen.push(
       `Foto ist schräg aufgenommen (First/Traufe im Bild ${Math.round(perspektive * 100)} %) — ` +
         'die Platzierung ist perspektivisch korrekt, die Höhen-Schätzung aus dem Foto aber nur grob. Aufmaß geht vor.',

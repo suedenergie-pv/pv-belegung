@@ -29,6 +29,12 @@ export interface NeueGaubeAusFoto {
   aussparung: RechteckM;
 }
 
+export interface AktualisierteGaubenMarkierung {
+  aussen: Ecken;
+  seiten?: { links: Ecken; rechts: Ecken };
+  aussparung: RechteckM;
+}
+
 function GaubenMassEditor({
   flaeche,
   onSpeichern,
@@ -131,6 +137,7 @@ export function GaubenEditor({
   onErstellen,
   onLoeschen,
   onMasseAendern,
+  onMarkierungAendern,
 }: {
   eltern: Flaeche;
   gauben: Flaeche[];
@@ -138,9 +145,14 @@ export function GaubenEditor({
   onLoeschen: (gruppenId: string) => void;
   onMasseAendern: (
     gruppenId: string,
+    flaecheId: string,
     breiteM: number,
     hoeheM: number,
     messung: GaubenMessung,
+  ) => void;
+  onMarkierungAendern: (
+    gruppenId: string,
+    markierung: AktualisierteGaubenMarkierung,
   ) => void;
 }) {
   const foto = eltern.foto;
@@ -155,6 +167,7 @@ export function GaubenEditor({
   const [reihenabstandCm, setReihenabstandCm] = useState(34);
   const [markieren, setMarkieren] = useState(false);
   const [punkte, setPunkte] = useState<Punkt[]>([]);
+  const [bearbeiteId, setBearbeiteId] = useState<string | null>(null);
 
   const gruppen = useMemo(() => {
     const map = new Map<string, Flaeche[]>();
@@ -175,7 +188,7 @@ export function GaubenEditor({
   const schaetzung = aussen ? gaubenMasseAusElternfoto(eltern, aussen) : null;
   const seiten =
     typ === 'satteldach' && aussen && punkte.length >= 6
-      ? satteldachSeitenEcken(aussen, [punkte[4]!, punkte[5]!])
+      ? satteldachSeitenEcken(aussen, [punkte[4]!, punkte[5]!], eltern)
       : undefined;
   const seitenSchaetzung =
     seiten && punkte.length >= 6
@@ -195,10 +208,20 @@ export function GaubenEditor({
     setOffen(false);
     setMarkieren(false);
     setPunkte([]);
+    setBearbeiteId(null);
   };
 
   const starten = () => {
     setPunkte([]);
+    setMarkieren(true);
+  };
+
+  const markierungNeu = (gruppenId: string, flaechen: Flaeche[]) => {
+    setTyp(flaechen[0]?.gaubenTyp ?? 'flachdach');
+    setQuelle(flaechen[0]?.gaubenMessung?.quelle ?? 'aufmass');
+    setBearbeiteId(gruppenId);
+    setPunkte([]);
+    setOffen(true);
     setMarkieren(true);
   };
 
@@ -207,6 +230,16 @@ export function GaubenEditor({
     const aussparung = gaubenAussparungAusFoto(eltern, aussen);
     if (!aussparung) return;
     if (typ === 'satteldach' && !seiten) return;
+
+    if (bearbeiteId) {
+      onMarkierungAendern(bearbeiteId, {
+        aussen,
+        ...(seiten ? { seiten } : {}),
+        aussparung,
+      });
+      reset();
+      return;
+    }
 
     const masse =
       quelle === 'ziegel'
@@ -283,16 +316,40 @@ export function GaubenEditor({
                   </span>
                   <button
                     type="button"
-                    className="ml-auto h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
+                    className="ml-auto h-9 rounded-lg border border-sky-300 px-3 text-xs font-medium text-sky-800 hover:bg-sky-50"
+                    onClick={() => markierungNeu(id, flaechen)}
+                  >
+                    Markierung neu
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
                     onClick={() => onLoeschen(id)}
                   >
                     Entfernen
                   </button>
                 </div>
-                <GaubenMassEditor
-                  flaeche={erste}
-                  onSpeichern={(b, h, messung) => onMasseAendern(id, b, h, messung)}
-                />
+                {!flaechen.every((f) => f.fotoZuordnung?.eckenPx) && (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+                    Die Gaube ist dem Foto noch zugeordnet, muss nach dem Fotoaustausch aber neu
+                    markiert werden. Maße und bisherige Belegung bleiben erhalten.
+                  </p>
+                )}
+                {flaechen.map((gaubenFlaeche) => (
+                  <div key={gaubenFlaeche.id}>
+                    {flaechen.length > 1 && (
+                      <p className="mt-2 text-xs font-semibold text-slate-600">
+                        Dachseite {gaubenFlaeche.gaubenSeite === 'links' ? 'links' : 'rechts'}
+                      </p>
+                    )}
+                    <GaubenMassEditor
+                      flaeche={gaubenFlaeche}
+                      onSpeichern={(b, h, messung) =>
+                        onMasseAendern(id, gaubenFlaeche.id, b, h, messung)
+                      }
+                    />
+                  </div>
+                ))}
               </div>
             );
           })}
@@ -427,12 +484,32 @@ export function GaubenEditor({
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" className="h-11 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-40" disabled={punkte.length < erwartet || (quelle === 'nachbardach' && !sichtbareSchaetzung)} onClick={erstellen}>
-                  Gaube anlegen
+                <button
+                  type="button"
+                  className="h-11 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
+                  disabled={
+                    punkte.length < erwartet ||
+                    (!bearbeiteId && quelle === 'nachbardach' && !sichtbareSchaetzung)
+                  }
+                  onClick={erstellen}
+                >
+                  {bearbeiteId ? 'Markierung übernehmen' : 'Gaube anlegen'}
                 </button>
                 <button type="button" className={sekundar} disabled={punkte.length === 0} onClick={() => setPunkte(punkte.slice(0, -1))}>Punkt zurück</button>
-                <button type="button" className={sekundar} onClick={() => { setMarkieren(false); setPunkte([]); }}>Maße ändern</button>
-                <button type="button" className={sekundar} onClick={reset}>Abbrechen</button>
+                <button
+                  type="button"
+                  className={sekundar}
+                  onClick={() => {
+                    if (bearbeiteId) reset();
+                    else {
+                      setMarkieren(false);
+                      setPunkte([]);
+                    }
+                  }}
+                >
+                  {bearbeiteId ? 'Abbrechen' : 'Maße ändern'}
+                </button>
+                {!bearbeiteId && <button type="button" className={sekundar} onClick={reset}>Abbrechen</button>}
               </div>
             </>
           )}
