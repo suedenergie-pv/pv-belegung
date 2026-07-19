@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { dateiZuBild } from '../lib/bild';
 import {
   hindernisAusKlicks,
@@ -31,6 +31,7 @@ export function SchrittGesamt({
   projekt: Projekt;
   onChange: (p: Projekt) => void;
 }) {
+  const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   const modul = modulById(projekt.modulId);
   const foto = projekt.gesamtFoto;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -393,7 +394,12 @@ export function SchrittGesamt({
                 {/* Platzierte Flächen (geteilt mit dem PDF-Export, GesamtSvg). Nur WÄHREND
                     des aktiven Zeichnens wird die bearbeitete Fläche ausgeblendet (leeres Dach
                     zum Zeichnen); sonst bleiben die Module sichtbar — keine Skizzenlinien. */}
-                {gesamtFlaechenInhalt({ projekt, foto, ausblendenId: zeichnetGerade ? platziereId : undefined })}
+                {gesamtFlaechenInhalt({
+                  projekt,
+                  foto,
+                  ausblendenId: zeichnetGerade ? platziereId : undefined,
+                  clipIdPrefix: `${svgInstanzId}-editor`,
+                })}
 
                 {/* Beim Hindernis-Zeichnen die bereits gesetzten Hindernisse (rot) zeigen —
                     kein oranger Umriss (der Umriss ist an den Modulen/an der Zeichenvorschau

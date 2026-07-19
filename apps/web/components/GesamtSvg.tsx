@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { homographie } from '../lib/foto-geometrie';
 import {
   modulById,
@@ -35,6 +36,7 @@ export function fotoFlaechenInhalt({
   beschriftung = true,
   assetId = FOTO_ASSET_ID,
   nurFertige = false,
+  clipIdPrefix,
 }: {
   projekt: Projekt;
   foto: ProjektFoto;
@@ -43,6 +45,8 @@ export function fotoFlaechenInhalt({
   assetId?: string;
   /** PDF: nur vollständig abgeschlossene Foto-Markierungen ausgeben. */
   nurFertige?: boolean;
+  /** Pro umgebender SVG-Instanz eindeutig (SVG-Clip-IDs gelten dokumentweit). */
+  clipIdPrefix: string;
 }) {
   const modul = modulById(projekt.modulId);
   const px = (v: number) => foto.breitePx * v;
@@ -80,6 +84,7 @@ export function fotoFlaechenInhalt({
           assetId,
           fotoBreitePx: foto.breitePx,
           druck: true,
+          clipIdPrefix: `${clipIdPrefix}-${f.id}`,
         })}
         {beschriftung && (
           <g style={{ pointerEvents: 'none' }}>
@@ -124,6 +129,7 @@ export function ProjektFotoSvg({
   nurFertige?: boolean;
 }) {
   const modul = modulById(projekt.modulId);
+  const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   return (
     <svg
       viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
@@ -135,7 +141,13 @@ export function ProjektFotoSvg({
         <ModulAsset id={FOTO_ASSET_ID} modul={modul} />
       </defs>
       <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-      {fotoFlaechenInhalt({ projekt, foto, beschriftung, nurFertige })}
+      {fotoFlaechenInhalt({
+        projekt,
+        foto,
+        beschriftung,
+        nurFertige,
+        clipIdPrefix: `${svgInstanzId}-foto`,
+      })}
     </svg>
   );
 }
@@ -150,6 +162,7 @@ export function gesamtFlaechenInhalt({
   foto,
   ausblendenId,
   beschriftung = true,
+  clipIdPrefix,
 }: {
   projekt: Projekt;
   foto: GesamtFoto;
@@ -157,6 +170,8 @@ export function gesamtFlaechenInhalt({
   ausblendenId?: string | null;
   /** A/B/C-Buchstabe je Fläche einblenden (App: ja, PDF: nein). */
   beschriftung?: boolean;
+  /** Pro umgebender SVG-Instanz eindeutig (SVG-Clip-IDs gelten dokumentweit). */
+  clipIdPrefix: string;
 }) {
   const modul = modulById(projekt.modulId);
   const px = (v: number) => foto.breitePx * v;
@@ -178,6 +193,7 @@ export function gesamtFlaechenInhalt({
           assetId: GESAMT_ASSET_ID,
           fotoBreitePx: foto.breitePx,
           druck: true,
+          clipIdPrefix: `${clipIdPrefix}-${f.id}`,
         })}
         {beschriftung && (
           <text
@@ -204,6 +220,7 @@ export function gesamtFlaechenInhalt({
 /** Vollständiges Gesamt-SVG (für Offscreen-Rasterung im PDF). */
 export function GesamtSvg({ projekt, foto }: { projekt: Projekt; foto: GesamtFoto }) {
   const modul = modulById(projekt.modulId);
+  const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   return (
     <svg
       viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
@@ -214,7 +231,12 @@ export function GesamtSvg({ projekt, foto }: { projekt: Projekt; foto: GesamtFot
         <ModulAsset id={GESAMT_ASSET_ID} modul={modul} />
       </defs>
       <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-      {gesamtFlaechenInhalt({ projekt, foto, beschriftung: false })}
+      {gesamtFlaechenInhalt({
+        projekt,
+        foto,
+        beschriftung: false,
+        clipIdPrefix: `${svgInstanzId}-gesamt`,
+      })}
     </svg>
   );
 }

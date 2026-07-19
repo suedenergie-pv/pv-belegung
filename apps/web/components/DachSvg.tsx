@@ -1,7 +1,7 @@
 'use client';
 
 import { posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
-import type { ReactNode } from 'react';
+import React, { useId, type ReactNode } from 'react';
 import {
   homographie,
   inverseHomographie,
@@ -267,6 +267,7 @@ export function moduleAufHomographie({
   druck,
   toggle,
   hervorheben,
+  clipIdPrefix,
 }: {
   h: Homographie;
   raster: BelegungRaster;
@@ -277,6 +278,11 @@ export function moduleAufHomographie({
   toggle?: (key: string) => void;
   /** Diese Module (keys aus posKey) umranden. */
   hervorheben?: Hervorheben;
+  /**
+   * Pro SVG-Instanz eindeutig. SVG-IDs gelten dokumentweit; ohne Präfix können
+   * Vorschau und Editor gegenseitig ihre Dreiecks-Clips verwenden.
+   */
+  clipIdPrefix: string;
 }) {
   const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
     [x, y],
@@ -307,7 +313,7 @@ export function moduleAufHomographie({
       >
         {dreiecke.map((dr, di) => {
           // ':' aus dem posKey raus — in url(#…)-Referenzen ist es ein Sonderzeichen
-          const cid = `clip-${flaeche.id}-${key.replace(':', '-')}-${di}`;
+          const cid = `clip-${clipIdPrefix}-${flaeche.id}-${key}-${di}`.replace(/[^a-zA-Z0-9_-]/g, '-');
           return (
             <g key={di}>
               <clipPath id={cid} clipPathUnits="userSpaceOnUse">
@@ -388,8 +394,11 @@ export function DachSvg({
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
   /** Weitere Flächen desselben Projektfotos, hinter der aktiven Fläche. */
-  fotoOverlay?: ReactNode;
+  fotoOverlay?: (clipIdPrefix: string) => ReactNode;
 }) {
+  // Dasselbe Dach kann gleichzeitig in Foto-Vorschau, Editor und PDF-Vorschau
+  // vorkommen. Reacts useId trennt die dokumentweit geltenden SVG-Clip-IDs.
+  const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   // B = RAHMENbreite (bei 'schief' > Traufe): viewBox, Klick-Mapping, Homographie-
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
   const B = rahmenBreiteVon(flaeche);
@@ -736,7 +745,7 @@ export function DachSvg({
               <ModulAsset id={assetId} modul={modul} />
             </defs>
             <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-            {fotoOverlay}
+            {fotoOverlay?.(`${svgInstanzId}-overlay`)}
             {moduleAufHomographie({
               h,
               raster,
@@ -746,6 +755,7 @@ export function DachSvg({
               druck,
               toggle,
               hervorheben,
+              clipIdPrefix: `${svgInstanzId}-aktiv`,
             })}
             {/* Abgeschaltete Module (Geister) — klickbar zum einzelnen Zurückholen */}
             {!druck &&

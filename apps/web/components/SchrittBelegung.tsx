@@ -1404,12 +1404,14 @@ export function SchrittBelegung({
                 onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
                 fotoOverlay={
                   fotoAsset
-                    ? fotoFlaechenInhalt({
-                        projekt,
-                        foto: fotoAsset,
-                        ausblendenId: f.id,
-                        assetId: `modul-${f.id}`,
-                      })
+                    ? (clipIdPrefix) =>
+                        fotoFlaechenInhalt({
+                          projekt,
+                          foto: fotoAsset,
+                          ausblendenId: f.id,
+                          assetId: `modul-${f.id}`,
+                          clipIdPrefix,
+                        })
                     : undefined
                 }
               />
