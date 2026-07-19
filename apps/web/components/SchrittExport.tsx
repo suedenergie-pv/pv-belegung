@@ -203,7 +203,7 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         })}
         {projekt.fotos.map((foto) => (
           <div key={foto.id} data-foto={foto.id} style={{ width: 1400 }}>
-            <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung nurFertige />
+            <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />
           </div>
         ))}
       </div>

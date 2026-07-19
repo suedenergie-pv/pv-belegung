@@ -334,6 +334,9 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - Jede Dachfläche hat in v1 genau **ein primäres Belegungsfoto**. Die Zuordnung wird im Schritt „Belegung" frei gesetzt und kann später geändert werden. Flächen ohne Foto bleiben in der maßstäblichen Draufsicht bearbeitbar.
 - Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset. Dadurch hat jede Fläche auf demselben Foto ihre eigene Homographie, ihren eigenen Umriss und ihre eigenen Hindernisse.
 - Das frühere eigene UI-Tab „Gesamtansicht" entfällt. Die Foto-Gruppen im Belegungsschritt und im PDF übernehmen diese Aufgabe.
+- Im Belegungseditor dürfen A/B/C-Rahmen der Orientierung dienen. Im Kunden-PDF zeigt
+  die Foto-Übersicht nur Foto und Module — keine Zonen-Kreise und keine orange
+  Flächenkontur.
 - Gauben sind eigene untergeordnete Dachflächen (§4.3). Eine Flachdachgaube mit
   Stehfalz bleibt dachparallel; eine Satteldachgaube besteht aus zwei Ebenen. Angelegt
   und verwaltet werden sie jedoch verschachtelt im Foto ihrer Elternfläche; das Foto
