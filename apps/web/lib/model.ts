@@ -312,10 +312,10 @@ export function rahmenBreiteVon(f: Flaeche): number {
  * Dach-Ecken; die Homographie muss die passende Quellform (Trapez bzw. Parallelogramm/
  * schiefes Trapez) in Rahmen-Koordinaten liefern, sonst wird ein Rechteck in die Form
  * gestreckt und alles verzerrt. Reihenfolge Traufe l/r, First r/l — wie die geklickten
- * Ecken. Rechteck oder manuell gezeichneter Umriss → undefined (Rechteck-Perspektive).
+ * Ecken. Ein später gezeichneter Umriss darf diese Quelle nicht ändern: `umrissM`
+ * ist nur die Belegungsmaske innerhalb desselben stabilen Koordinatensystems.
  */
 export function perspektiveQuelle(f: Flaeche): Ecken | undefined {
-  if (f.umrissM && f.umrissM.length >= 3) return undefined;
   if (f.dachform === 'schief') {
     const e = schraegGeoVon(f).ecken;
     return [
