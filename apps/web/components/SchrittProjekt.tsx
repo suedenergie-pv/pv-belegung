@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { MODULES } from '@pv-belegung/engine';
 import { fmtDe, type Projekt } from '../lib/model';
 import { Feld, inputKlasse, Karte, KartenTitel } from './ui';

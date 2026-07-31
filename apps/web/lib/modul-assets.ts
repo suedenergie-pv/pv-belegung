@@ -245,6 +245,7 @@ export function modulMatrixNetz(
   spalten = 6,
   zeilen = 10,
 ): { matrix: string; clip: string }[] {
+  if (!Number.isInteger(spalten) || !Number.isInteger(zeilen) || spalten < 1 || zeilen < 1) return [];
   const ziel = quer
     ? viereckProjektor(TL, BL, BR, TR)
     : viereckProjektor(TL, TR, BR, BL);

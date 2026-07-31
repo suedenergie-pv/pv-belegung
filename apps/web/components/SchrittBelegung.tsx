@@ -108,7 +108,7 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
  * `zellVersatz` sagt, um wie viele Spalten/Reihen sich die Zell-Nummerierung dabei
  * verschoben hat — die abgeschalteten Zellen (`leer`) müssen entsprechend mitwandern.
  */
-function feldMitGriff(
+export function feldMitGriff(
   feld: BelegungsFeldM,
   griff: GriffId,
   dx: number,
@@ -146,7 +146,7 @@ function feldMitGriff(
 }
 
 /** `leer`-Zellen um (dCol,dRow) umnummerieren; was aus dem Feld fällt, entfällt. */
-function leerVerschoben(
+export function leerVerschoben(
   leer: readonly string[] | undefined,
   dCol: number,
   dRow: number,
@@ -164,7 +164,7 @@ function leerVerschoben(
 }
 
 /** Normalisiertes Rechteck aus zwei gezogenen Ecken. */
-function rechteckAus(a: PunktM, b: PunktM): RechteckM {
+export function rechteckAus(a: PunktM, b: PunktM): RechteckM {
   return {
     xM: Math.min(a[0], b[0]),
     yM: Math.min(a[1], b[1]),
@@ -173,7 +173,7 @@ function rechteckAus(a: PunktM, b: PunktM): RechteckM {
   };
 }
 
-function punktInRechteck(p: PunktM, r: RechteckM): boolean {
+export function punktInRechteck(p: PunktM, r: RechteckM): boolean {
   return p[0] >= r.xM && p[0] <= r.xM + r.breiteM && p[1] >= r.yM && p[1] <= r.yM + r.hoeheM;
 }
 
@@ -198,6 +198,7 @@ function WerkzeugKnopf({
     <button
       type="button"
       disabled={disabled}
+      aria-pressed={aktiv}
       title={title}
       onClick={onClick}
       className={`touch-target inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${

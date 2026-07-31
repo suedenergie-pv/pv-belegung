@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittProjekt } from '../components/SchrittProjekt';

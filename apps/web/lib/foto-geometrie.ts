@@ -41,6 +41,14 @@ type M3 = [number, number, number, number, number, number, number, number, numbe
 /** Öffentlicher Alias für eine Homographie-Matrix (Rückgabe von `homographie`). */
 export type Homographie = M3;
 
+function determinant(m: M3): number {
+  return (
+    m[0] * (m[4] * m[8] - m[5] * m[7]) -
+    m[1] * (m[3] * m[8] - m[5] * m[6]) +
+    m[2] * (m[3] * m[7] - m[4] * m[6])
+  );
+}
+
 function adjugat(m: M3): M3 {
   return [
     m[4] * m[8] - m[5] * m[7],
@@ -100,12 +108,19 @@ export function homographie(
     [breiteM, 0],
     [0, 0],
   ];
-  const h = mult(basisZu(ecken), adjugat(basisZu(src)));
-  return h.every((n) => Number.isFinite(n)) ? h : null;
+  const zielBasis = basisZu(ecken);
+  const quellBasis = basisZu(src);
+  // Kollineare oder zusammengefallene Punkte ergeben formal teils noch endliche
+  // Koeffizienten, aber keine invertierbare Projektion. Solche Markierungen müssen
+  // als ungültig zurückgewiesen werden, statt später NaN-Koordinaten zu rendern.
+  if (Math.abs(determinant(zielBasis)) < 1e-9 || Math.abs(determinant(quellBasis)) < 1e-9) return null;
+  const h = mult(zielBasis, adjugat(quellBasis));
+  return h.every((n) => Number.isFinite(n)) && Math.abs(determinant(h)) >= 1e-9 ? h : null;
 }
 
 export function projiziere(h: M3, [x, y]: Punkt): Punkt {
   const w = h[6] * x + h[7] * y + h[8];
+  if (!Number.isFinite(w) || Math.abs(w) < 1e-12) return [Number.NaN, Number.NaN];
   return [(h[0] * x + h[1] * y + h[2]) / w, (h[3] * x + h[4] * y + h[5]) / w];
 }
 
@@ -247,11 +262,15 @@ export function hindernisAusKlicks(
   const [ax, ay] = projiziere(hinv, p1);
   const [bx, by] = projiziere(hinv, p2);
   const cl = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+  const axClamped = cl(ax, breiteM);
+  const ayClamped = cl(ay, hoeheM);
+  const bxClamped = cl(bx, breiteM);
+  const byClamped = cl(by, hoeheM);
   const rect: RechteckM = {
-    xM: cl(Math.min(ax, bx), breiteM),
-    yM: cl(Math.min(ay, by), hoeheM),
-    breiteM: Math.abs(bx - ax),
-    hoeheM: Math.abs(by - ay),
+    xM: Math.min(axClamped, bxClamped),
+    yM: Math.min(ayClamped, byClamped),
+    breiteM: Math.abs(bxClamped - axClamped),
+    hoeheM: Math.abs(byClamped - ayClamped),
   };
   return rect.breiteM > 0.05 && rect.hoeheM > 0.05 ? rect : null;
 }

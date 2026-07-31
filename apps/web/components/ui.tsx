@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useEffect, useRef } from 'react';
 
 /** Kleine gemeinsame Bausteine im hellen Dashboard-CI (weiße Karten, große Touch-Targets). */
