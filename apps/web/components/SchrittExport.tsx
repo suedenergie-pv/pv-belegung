@@ -23,7 +23,13 @@ import { DachSvg } from './DachSvg';
 import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
-export function SchrittExport({ projekt }: { projekt: Projekt }) {
+export function SchrittExport({
+  projekt,
+  onChange,
+}: {
+  projekt: Projekt;
+  onChange: (projekt: Projekt) => void;
+}) {
   const modul = modulById(projekt.modulId);
   const result = useMemo(() => pruefeStringplan(projekt), [projekt]);
   const zuordnung = zuordnungsHinweise(projekt);
@@ -164,11 +170,20 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
           </div>
         </div>
         {exportGesperrt && (
-          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            JSON-Export gesperrt: Der hinterlegte Stringplan ist ungültig (SPEC §7) oder es sind
-            mehr Module verstringt als belegt. (Wechselrichter/Strings stammen aus einer früheren
-            Planung — der Stringcheck-Schritt ist ausgeblendet.) Das PDF oben bleibt verfügbar.
-          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="min-w-60 flex-1">
+              JSON-Export gesperrt: Der hinterlegte Stringplan ist ungültig oder enthält mehr
+              Module als aktuell belegt. Der Stringcheck ist ausgeblendet; das PDF bleibt
+              verfügbar.
+            </p>
+            <button
+              type="button"
+              className="touch-target rounded-lg border border-red-300 bg-white px-3 py-2 font-semibold text-red-700 hover:bg-red-100"
+              onClick={() => onChange({ ...projekt, wrId: null, mppts: [] })}
+            >
+              Alten Stringplan entfernen
+            </button>
+          </div>
         )}
         <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
           {json}

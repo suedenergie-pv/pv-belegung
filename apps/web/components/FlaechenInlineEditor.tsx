@@ -19,11 +19,13 @@ function KompaktZahl({
   value,
   onChange,
   min,
+  max,
 }: {
   label: string;
   value: number;
   onChange: (wert: number) => void;
   min?: number;
+  max?: number;
 }) {
   return (
     <label className="min-w-0">
@@ -33,11 +35,16 @@ function KompaktZahl({
           type="number"
           inputMode="decimal"
           min={min}
+          max={max}
           step={0.1}
           value={Number.isFinite(value) ? value : ''}
           onChange={(e) => {
             const wert = Number.parseFloat(e.target.value);
-            if (Number.isFinite(wert) && (min === undefined || wert >= min)) onChange(wert);
+            if (
+              Number.isFinite(wert) &&
+              (min === undefined || wert >= min) &&
+              (max === undefined || wert <= max)
+            ) onChange(wert);
           }}
           className={inputKlasse}
         />
@@ -71,6 +78,11 @@ export function FlaechenInlineEditor({
   const form = flaeche.dachform ?? 'rechteck';
 
   const setForm = (dachform: Dachform) => {
+    if (
+      dachform !== form &&
+      flaeche.umrissM &&
+      !window.confirm('Die Dachform ändern? Der manuell gezeichnete Umriss wird entfernt.')
+    ) return;
     if (dachform === 'rechteck') {
       onPatch({
         dachform,
@@ -116,7 +128,12 @@ export function FlaechenInlineEditor({
             </div>
           </div>
 
-          {art !== 'flachdach' && (
+          {offen ? (
+            <span className="self-center text-sm text-slate-500">
+              {form === 'rechteck' ? 'Rechteck' : form === 'trapez' ? 'Trapez / Walm' : 'Schief'} ·{' '}
+              {flaeche.breiteM} × {flaeche.hoeheM} m
+            </span>
+          ) : art !== 'flachdach' && (
             <label>
               <span className="mb-1 block text-xs font-medium text-slate-500">Form</span>
               <select
@@ -132,32 +149,37 @@ export function FlaechenInlineEditor({
             </label>
           )}
 
-          <KompaktZahl
-            label={breiteLabel}
-            value={flaeche.breiteM}
-            min={1}
-            onChange={(breiteM) => onPatch({ breiteM })}
-          />
-          <KompaktZahl
-            label={hoeheLabel}
-            value={flaeche.hoeheM}
-            min={1}
-            onChange={(hoeheM) => onPatch({ hoeheM })}
-          />
-          {(form === 'trapez' || form === 'schief') && art !== 'flachdach' && (
-            <KompaktZahl
-              label="First"
-              value={flaeche.firstBreiteM ?? flaeche.breiteM}
-              min={0}
-              onChange={(firstBreiteM) => onPatch({ firstBreiteM })}
-            />
-          )}
-          {form === 'schief' && art !== 'flachdach' && (
-            <KompaktZahl
-              label="Versatz"
-              value={flaeche.firstVersatzM ?? 0}
-              onChange={(firstVersatzM) => onPatch({ firstVersatzM })}
-            />
+          {!offen && (
+            <>
+              <KompaktZahl
+                label={breiteLabel}
+                value={flaeche.breiteM}
+                min={1}
+                onChange={(breiteM) => onPatch({ breiteM })}
+              />
+              <KompaktZahl
+                label={hoeheLabel}
+                value={flaeche.hoeheM}
+                min={1}
+                onChange={(hoeheM) => onPatch({ hoeheM })}
+              />
+              {(form === 'trapez' || form === 'schief') && art !== 'flachdach' && (
+                <KompaktZahl
+                  label="First"
+                  value={flaeche.firstBreiteM ?? flaeche.breiteM}
+                  min={0}
+                  max={flaeche.breiteM}
+                  onChange={(firstBreiteM) => onPatch({ firstBreiteM })}
+                />
+              )}
+              {form === 'schief' && art !== 'flachdach' && (
+                <KompaktZahl
+                  label="Versatz"
+                  value={flaeche.firstVersatzM ?? 0}
+                  onChange={(firstVersatzM) => onPatch({ firstVersatzM })}
+                />
+              )}
+            </>
           )}
 
           <div className="ml-auto flex gap-2 self-end">

@@ -74,6 +74,17 @@ export function SchrittFlaechen({
       ),
     });
 
+  const formAendern = (f: Flaeche, patch: Partial<Flaeche>) => {
+    const altForm = f.dachform ?? 'rechteck';
+    const neuForm = patch.dachform ?? altForm;
+    if (neuForm === altForm) return;
+    if (
+      f.umrissM &&
+      !window.confirm('Die Dachform ändern? Der manuell gezeichnete Umriss wird entfernt.')
+    ) return;
+    setFlaeche(f.id, patch);
+  };
+
   /**
    * Flächen-Art wechseln (16.07.2026): setzt die zur Art passenden Defaults —
    * Neigung (Fassade fest 90°, Flachdach 0°), Oberfläche, Randabstand (Flachdach
@@ -349,7 +360,7 @@ export function SchrittFlaechen({
               <ToggleButton
                 aktiv={(f.dachform ?? 'rechteck') === 'rechteck'}
                 onClick={() =>
-                  setFlaeche(f.id, {
+                  formAendern(f, {
                     dachform: 'rechteck',
                     firstBreiteM: undefined,
                     firstVersatzM: undefined,
@@ -363,7 +374,7 @@ export function SchrittFlaechen({
               <ToggleButton
                 aktiv={f.dachform === 'trapez'}
                 onClick={() =>
-                  setFlaeche(f.id, {
+                  formAendern(f, {
                     dachform: 'trapez',
                     firstBreiteM: f.firstBreiteM ?? Math.round(f.breiteM * 0.6 * 10) / 10,
                     firstVersatzM: undefined,
@@ -377,7 +388,7 @@ export function SchrittFlaechen({
               <ToggleButton
                 aktiv={f.dachform === 'schief'}
                 onClick={() =>
-                  setFlaeche(f.id, {
+                  formAendern(f, {
                     dachform: 'schief',
                     firstBreiteM: f.firstBreiteM ?? f.breiteM,
                     firstVersatzM: f.firstVersatzM ?? 1,
@@ -398,9 +409,14 @@ export function SchrittFlaechen({
                     max={f.breiteM}
                     step={0.1}
                     value={Number.isFinite(f.firstBreiteM as number) ? (f.firstBreiteM as number) : ''}
-                    onChange={(e) =>
-                      setFlaeche(f.id, { firstBreiteM: Number.parseFloat(e.target.value) })
-                    }
+                    onChange={(e) => {
+                      const wert = Number.parseFloat(e.target.value);
+                      if (Number.isFinite(wert)) {
+                        setFlaeche(f.id, {
+                          firstBreiteM: Math.max(0, Math.min(f.breiteM, wert)),
+                        });
+                      }
+                    }}
                     className="h-10 w-20 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
                   />
                   m

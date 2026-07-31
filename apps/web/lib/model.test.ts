@@ -11,6 +11,7 @@ import {
   neueFlaeche,
   neuesProjekt,
   patchFlaechenGeometrie,
+  perspektiveQuelle,
   speichereProjekte,
   type ProjektDb,
 } from './model';
@@ -59,11 +60,27 @@ describe('Export-Geometrie und Modulausrichtung', () => {
 
     const neu = patchFlaechenGeometrie(flaeche, { breiteM: 12, hoeheM: 10 });
     expect(neu.felder).toEqual([
-      { xM: 2.4, yM: 2, breiteM: 4.8, hoeheM: 4, quer: true },
+      { xM: 2.4, yM: 2, breiteM: 4.8, hoeheM: 4, quer: true, leer: ['alt'] },
     ]);
     expect(neu.umrissM?.[0]).toEqual([1.2, 2]);
     expect(neu.hindernisse?.[0]?.xM).toBeCloseTo(3.6);
     expect(neu.hindernisse?.[0]).toMatchObject({ yM: 4, breiteM: 1.2, hoeheM: 2 });
+  });
+
+  it('klemmt die Firstbreite für Engine und Foto-Perspektive konsistent', () => {
+    const flaeche = {
+      ...neueFlaeche(1, 'A'),
+      dachform: 'trapez' as const,
+      breiteM: 10,
+      hoeheM: 6,
+      firstBreiteM: 14,
+    };
+    expect(perspektiveQuelle(flaeche)).toEqual([
+      [0, 6],
+      [10, 6],
+      [10, 0],
+      [0, 0],
+    ]);
   });
 
   it('exportiert gemischte Felder getrennt und alle Schlüssel in snake_case', () => {

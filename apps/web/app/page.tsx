@@ -130,17 +130,23 @@ export default function Home() {
     });
   };
 
-  const flaechenOk = projekt.flaechen.every(
-    (f) =>
+  const flaechenOk = projekt.flaechen.every((f) => {
+    const firstBreite =
+      f.firstBreiteM ??
+      (f.dachform === 'trapez' ? f.breiteM * 0.6 : f.breiteM);
+    return (
       Number.isFinite(f.breiteM) &&
       f.breiteM > 0 &&
       Number.isFinite(f.hoeheM) &&
       f.hoeheM > 0 &&
       Number.isFinite(f.neigungDeg) &&
       f.neigungDeg >= 0 &&
+      ((f.dachform !== 'trapez' && f.dachform !== 'schief') ||
+        (Number.isFinite(firstBreite) && firstBreite >= 0 && firstBreite <= f.breiteM)) &&
       // 90° = Fassade (16.07.2026); Schrägdächer bleiben praktisch bei ≤ 75°
-      f.neigungDeg <= 90,
-  );
+      f.neigungDeg <= 90
+    );
+  });
   const weiterErlaubt = schritt !== 1 || flaechenOk;
 
   const knopf =
@@ -149,8 +155,11 @@ export default function Home() {
   return (
     <div className="space-y-5 pb-10">
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <label className="text-sm font-medium text-slate-500">Projekt</label>
+        <label htmlFor="projekt-auswahl" className="text-sm font-medium text-slate-500">
+          Projekt
+        </label>
         <select
+          id="projekt-auswahl"
           value={db.aktivId ?? ''}
           onChange={(e) => setDb((d) => ({ ...d, aktivId: e.target.value }))}
           className="h-11 max-w-[22rem] flex-1 rounded-full border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
@@ -194,27 +203,33 @@ export default function Home() {
       )}
 
       <nav className="flex flex-wrap items-center gap-2" aria-label="Schritte">
-        {SCHRITTE.map((name, i) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => (i < schritt || (i <= schritt + 1 && weiterErlaubt)) && setSchritt(i)}
-            className={`h-11 rounded-full px-4 text-sm font-medium transition ${
-              i === schritt
-                ? 'bg-akzent text-white'
-                : i < schritt
-                  ? 'bg-white text-slate-700 shadow-sm'
-                  : 'bg-slate-100 text-slate-400'
-            }`}
-          >
-            {i + 1}. {name}
-          </button>
-        ))}
+        {SCHRITTE.map((name, i) => {
+          const erreichbar =
+            i === schritt || i < schritt || (i === schritt + 1 && weiterErlaubt);
+          return (
+            <button
+              key={name}
+              type="button"
+              disabled={!erreichbar}
+              aria-current={i === schritt ? 'step' : undefined}
+              onClick={() => erreichbar && setSchritt(i)}
+              className={`h-11 rounded-full px-4 text-sm font-medium transition ${
+                i === schritt
+                  ? 'bg-akzent text-white'
+                  : erreichbar
+                    ? 'bg-white text-slate-700 shadow-sm'
+                    : 'cursor-not-allowed bg-slate-100 text-slate-400'
+              }`}
+            >
+              {i + 1}. {name}
+            </button>
+          );
+        })}
       </nav>
 
-      {schritt === 0 && <SchrittProjekt projekt={projekt} onChange={setProjekt} />}
-      {schritt === 1 && <SchrittBelegung projekt={projekt} onChange={setProjekt} />}
-      {schritt === 2 && <SchrittExport projekt={projekt} />}
+      {schritt === 0 && <SchrittProjekt key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
+      {schritt === 1 && <SchrittBelegung key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
+      {schritt === 2 && <SchrittExport key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
 
       <div className="flex justify-between">
         <button

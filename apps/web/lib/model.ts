@@ -328,7 +328,7 @@ export function perspektiveQuelle(f: Flaeche): Ecken | undefined {
   if (f.dachform === 'trapez') {
     const B = f.breiteM;
     const H = f.hoeheM;
-    const fb = Math.max(f.firstBreiteM ?? B * 0.6, B * 0.05);
+    const fb = Math.max(B * 0.05, Math.min(f.firstBreiteM ?? B * 0.6, B));
     const inset = (B - fb) / 2;
     return [[0, H], [B, H], [B - inset, 0], [inset, 0]];
   }
@@ -621,8 +621,9 @@ export function patchFlaechenGeometrie(f: Flaeche, patch: Partial<Flaeche>): Fla
   });
   return {
     ...neu,
-    // Zell-Ausnahmen gehören zum alten Raster und werden bei Maßänderungen verworfen.
-    felder: neu.felder?.map((feld) => ({ ...rechteck(feld), quer: feld.quer })),
+    // `leer` ist feldlokal (row-col) und bleibt deshalb beim proportionalen
+    // Verschieben/Skalieren des Feldes erhalten.
+    felder: neu.felder?.map((feld) => ({ ...feld, ...rechteck(feld) })),
     umrissM: neu.umrissM?.map((p) => [p[0] * sx, p[1] * sy]),
     hindernisse: neu.hindernisse?.map(rechteck),
     gaubenAussparungen: neu.gaubenAussparungen?.map((a) => ({
