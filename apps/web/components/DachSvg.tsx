@@ -311,7 +311,13 @@ export function moduleAufHomographie({
     const TR = projiziere(h, [p.xM + mB, p.yM]);
     const BR = projiziere(h, [p.xM + mB, p.yM + mH]);
     const BL = projiziere(h, [p.xM, p.yM + mH]);
-    const [visTL, visTR, visBR, visBL] = regularisiereModulViereck(TL, TR, BR, BL);
+    // Gauben sind laut Datenmodell eigenständige Ebenen. Ihre vier Fotoecken
+    // beschreiben bewusst die starke Neigung der Gaubenfläche; dort muss die
+    // exakte projektive Form erhalten bleiben. Nur normale Dachflächen bekommen
+    // den Schutz gegen den trapezförmigen Gummizug aus frei markierten Umrissen.
+    const [visTL, visTR, visBR, visBL] = flaeche.gaubenTyp
+      ? [TL, TR, BR, BL]
+      : regularisiereModulViereck(TL, TR, BR, BL);
     const dreiecke = modulMatrixDreiecke(visTL, visTR, visBR, visBL, p.quer);
     return (
       <g
