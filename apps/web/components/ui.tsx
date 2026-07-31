@@ -44,6 +44,7 @@ export function HoldButton({
       type="button"
       disabled={disabled}
       title={title}
+      aria-label={title}
       className={className}
       style={{ touchAction: 'none' }}
       onPointerDown={(e) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { belegungsCheck, type Ecken } from './foto-geometrie';
+import { belegungsCheck, verschiebeFotoPunkt, type Ecken } from './foto-geometrie';
 
 const quadrat: Ecken = [
   [0, 100],
@@ -22,5 +22,12 @@ describe('Belegungs-Check für unterschiedliche Flächenarten', () => {
     expect(check.meldungen.join(' ')).toContain('Breite im Foto');
     expect(check.meldungen.join(' ')).toContain('Tiefe laut Foto');
     expect(check.meldungen.join(' ')).not.toContain('Traufe');
+  });
+});
+
+describe('Tablet-Fadenkreuz', () => {
+  it('bewegt relativ und klemmt sicher an allen Fotorändern', () => {
+    expect(verschiebeFotoPunkt([50, 40], 15, -10, 100, 80)).toEqual([65, 30]);
+    expect(verschiebeFotoPunkt([5, 75], -20, 30, 100, 80)).toEqual([0, 80]);
   });
 });

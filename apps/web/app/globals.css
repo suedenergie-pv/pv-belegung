@@ -5,3 +5,12 @@
 body {
   @apply bg-grund text-slate-900 antialiased;
 }
+
+/* Tablet-/Touch-Bedienung: PC-Abmessungen bleiben unverändert; nur der primäre
+   Grobzeiger bekommt die empfohlenen 44-px-Ziele. */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

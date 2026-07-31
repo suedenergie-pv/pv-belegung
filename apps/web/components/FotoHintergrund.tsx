@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { dateiZuBild } from '../lib/bild';
 import {
   belegungsCheck,
@@ -11,6 +11,7 @@ import {
   sortiereEcken,
   traufeWechseln,
   umrissAusKlicks,
+  verschiebeFotoPunkt,
   type Punkt,
 } from '../lib/foto-geometrie';
 import { artVon, DACHFARBEN, fmtDe, perspektiveQuelle, rahmenBreiteVon, type DachFoto, type Flaeche } from '../lib/model';
@@ -47,10 +48,10 @@ type Modus = 'first' | 'perspektive' | 'umriss' | 'hindernis' | 'ziegel';
 type Griff = { art: 'punkt' | 'ecke' | 'first'; i: number };
 
 const knopfKlasse =
-  'inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
+  'touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
 
 function modusKnopfKlasse(aktiv: boolean): string {
-  return `h-9 rounded-lg border px-3 text-sm font-medium ${
+  return `touch-target h-9 rounded-lg border px-3 text-sm font-medium ${
     aktiv ? 'border-akzent bg-akzent text-white' : 'border-slate-300 bg-white text-slate-700'
   }`;
 }
@@ -83,7 +84,7 @@ function SchrittChip({
       disabled={gesperrt}
       title={titel}
       onClick={onClick}
-      className={`h-9 rounded-lg border px-3 text-sm font-medium ${
+      className={`touch-target h-9 rounded-lg border px-3 text-sm font-medium ${
         aktiv
           ? 'border-akzent bg-akzent text-white'
           : gesperrt
@@ -103,11 +104,14 @@ export function FotoHintergrund({
   flaeche,
   onPatch,
   fotoVerwalten = true,
+  zustandsKey,
 }: {
   flaeche: Flaeche;
   onPatch: (patch: Partial<Flaeche>) => void;
   /** false: Upload/Ersetzen/Löschen übernimmt die übergeordnete Foto-Gruppe. */
   fotoVerwalten?: boolean;
+  /** Wechselt das übergeordnete Foto-Asset, werden alle flüchtigen Werkzeuge zurückgesetzt. */
+  zustandsKey?: string;
 }) {
   const foto = flaeche.foto;
   const flaechenArt = artVon(flaeche);
@@ -128,7 +132,37 @@ export function FotoHintergrund({
   const [greift, setGreift] = useState(false); // nur für den Cursor
   // Startete der Maus-Druck auf einem Griff? Dann den folgenden Klick NICHT als „neuen Punkt" werten.
   const aufHandle = useRef(false);
+  const [touchGeraet, setTouchGeraet] = useState(false);
+  const [fadenkreuzAktiv, setFadenkreuzAktiv] = useState(false);
+  const [touchCursorPx, setTouchCursorPx] = useState<Punkt | null>(null);
+  const [touchGriff, setTouchGriff] = useState<Griff | null>(null);
+  const touchSwipeRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(pointer: coarse)');
+    const aktualisieren = () => setTouchGeraet(media.matches);
+    aktualisieren();
+    media.addEventListener?.('change', aktualisieren);
+    return () => media.removeEventListener?.('change', aktualisieren);
+  }, []);
+
+  // Beim Ersetzen/Wechseln des Bild-Assets darf kein Entwurf oder Werkzeugmodus
+  // des vorigen Fotos weiterlaufen. Bestehende Ecken führen direkt zu Hindernissen.
+  useEffect(() => {
+    setPunkte([]);
+    setFirstLinie(null);
+    setMausPx(null);
+    setFadenkreuzAktiv(false);
+    setTouchCursorPx(null);
+    setTouchGriff(null);
+    touchSwipeRef.current = null;
+    setModus(foto?.eckenPx ? 'hindernis' : 'first');
+  }, [foto?.dataUrl, zustandsKey]);
 
   const B = flaeche.breiteM; // Traufe (Referenzstrecke für den Maß-Check)
   const rahmenB = rahmenBreiteVon(flaeche); // Rahmen (Homographie/Umriss/Hindernis)
@@ -168,6 +202,7 @@ export function FotoHintergrund({
   const wechsleModus = (m: Modus) => {
     setModus(m);
     setPunkte([]);
+    setTouchGriff(null);
   };
 
   const perspektiveAbschliessen = (pts: Punkt[]) => {
@@ -243,14 +278,9 @@ export function FotoHintergrund({
     }
   };
 
-  const klick = (e: React.MouseEvent<SVGSVGElement>) => {
-    // Kam der Klick vom Loslassen eines Griffs? Dann keinen neuen Punkt setzen.
-    if (aufHandle.current) {
-      aufHandle.current = false;
-      return;
-    }
-    const k = svgKoord(e);
-    if (!k || !foto) return;
+  /** Eine Foto-Koordinate verarbeiten — gemeinsame Wahrheit für Maus und Tablet. */
+  const verarbeitePunkt = (k: Punkt) => {
+    if (!foto) return;
     const [x, y] = k;
 
     if (modus === 'first') {
@@ -296,6 +326,47 @@ export function FotoHintergrund({
     setPunkte([...punkte, [x, y]]);
   };
 
+  const klick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (fadenkreuzAktiv) return;
+    // Kam der Klick vom Loslassen eines Griffs? Dann keinen neuen Punkt setzen.
+    if (aufHandle.current) {
+      aufHandle.current = false;
+      return;
+    }
+    const k = svgKoord(e);
+    if (k) verarbeitePunkt(k);
+  };
+
+  const starteFadenkreuz = () => {
+    if (!foto) return;
+    const ersterGriff = handles()[0];
+    const letzterPunkt = punkte[punkte.length - 1];
+    setTouchCursorPx(
+      ersterGriff
+        ? [ersterGriff.x, ersterGriff.y]
+        : letzterPunkt
+          ? [letzterPunkt[0], letzterPunkt[1]]
+          : [foto.breitePx / 2, foto.hoehePx / 2],
+    );
+    setTouchGriff(null);
+    setFadenkreuzAktiv(true);
+  };
+
+  const fadenkreuzAktion = () => {
+    if (!touchCursorPx) return;
+    if (touchGriff) {
+      setzeHandle(touchGriff, touchCursorPx);
+      setTouchGriff(null);
+      return;
+    }
+    const griff = naheHandle(touchCursorPx);
+    if (griff) {
+      setTouchGriff(griff.z);
+      return;
+    }
+    verarbeitePunkt(touchCursorPx);
+  };
+
   const zurueckAufAnfang = () => {
     setPunkte([]);
     setFirstLinie(null);
@@ -304,6 +375,8 @@ export function FotoHintergrund({
 
   const px = (v: number) => (foto ? foto.breitePx * v : 0);
   const letzter = punkte[punkte.length - 1];
+  const kreuzPx = fadenkreuzAktiv ? touchCursorPx : mausPx;
+  const griffAmKreuz = touchCursorPx ? naheHandle(touchCursorPx) : undefined;
 
   return (
     <div className="mb-3">
@@ -450,6 +523,28 @@ export function FotoHintergrund({
       {foto && inMarkierung && (
         <div className="mt-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
+            {touchGeraet && (
+              <button
+                type="button"
+                aria-pressed={fadenkreuzAktiv}
+                className={
+                  fadenkreuzAktiv
+                    ? 'touch-target rounded-lg border border-sky-700 bg-sky-700 px-3 text-sm font-semibold text-white'
+                    : 'touch-target rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-semibold text-sky-800'
+                }
+                onClick={() => {
+                  if (fadenkreuzAktiv) {
+                    setFadenkreuzAktiv(false);
+                    setTouchGriff(null);
+                    touchSwipeRef.current = null;
+                  } else {
+                    starteFadenkreuz();
+                  }
+                }}
+              >
+                {fadenkreuzAktiv ? 'Fadenkreuz beenden' : 'Fadenkreuz bedienen'}
+              </button>
+            )}
             {/* Schrittanzeige ①–④: immer sichtbar, ✓ = erledigt, grau = noch gesperrt */}
             <SchrittChip
               nr="①"
@@ -578,6 +673,35 @@ export function FotoHintergrund({
             )}
           </div>
 
+          {fadenkreuzAktiv && touchCursorPx && (
+            <div className="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              <span className="min-w-52 flex-1">
+                Auf dem Foto wischen verschiebt nur das Fadenkreuz.
+                {touchGriff
+                  ? ' Die gewählte Ecke wird erst beim Ablegen gespeichert.'
+                  : griffAmKreuz
+                    ? ' Das Fadenkreuz liegt auf einem verschiebbaren Punkt.'
+                    : ' Mit „Punkt setzen“ wird ein Mausklick an dieser Stelle ausgeführt.'}
+              </span>
+              <button
+                type="button"
+                className="touch-target rounded-lg bg-sky-700 px-4 text-sm font-semibold text-white active:bg-sky-800"
+                onClick={fadenkreuzAktion}
+              >
+                {touchGriff ? 'Ecke hier ablegen' : griffAmKreuz ? 'Ecke greifen' : 'Punkt setzen'}
+              </button>
+              {touchGriff && (
+                <button
+                  type="button"
+                  className={knopfKlasse}
+                  onClick={() => setTouchGriff(null)}
+                >
+                  Greifen abbrechen
+                </button>
+              )}
+            </div>
+          )}
+
           {modus === 'first' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
               {istSchraegdach ? (
@@ -666,8 +790,10 @@ export function FotoHintergrund({
               viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
               className={`block h-full w-full ${greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
               preserveAspectRatio="xMidYMid meet"
+              style={{ touchAction: fadenkreuzAktiv ? 'none' : undefined }}
               onClick={klick}
               onMouseDown={(e) => {
+                if (fadenkreuzAktiv) return;
                 const k = svgKoord(e);
                 const h = k ? naheHandle(k) : undefined;
                 aufHandle.current = !!h;
@@ -678,18 +804,70 @@ export function FotoHintergrund({
                 }
               }}
               onMouseMove={(e) => {
+                if (fadenkreuzAktiv) return;
                 const k = svgKoord(e);
                 setMausPx(k);
                 if (ziehtRef.current && k) setzeHandle(ziehtRef.current, k);
               }}
               onMouseUp={() => {
+                if (fadenkreuzAktiv) return;
                 ziehtRef.current = null;
                 setGreift(false);
               }}
               onMouseLeave={() => {
+                if (fadenkreuzAktiv) return;
                 setMausPx(null);
                 ziehtRef.current = null;
                 setGreift(false);
+              }}
+              onPointerDown={(e) => {
+                if (!fadenkreuzAktiv || e.pointerType === 'mouse') return;
+                e.preventDefault();
+                touchSwipeRef.current = {
+                  pointerId: e.pointerId,
+                  clientX: e.clientX,
+                  clientY: e.clientY,
+                };
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // Window-/Browser-Geste darf den Fadenkreuzzustand nicht zerstören.
+                }
+              }}
+              onPointerMove={(e) => {
+                const swipe = touchSwipeRef.current;
+                if (
+                  !fadenkreuzAktiv ||
+                  !swipe ||
+                  swipe.pointerId !== e.pointerId
+                ) return;
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                const dx = ((e.clientX - swipe.clientX) / rect.width) * foto.breitePx;
+                const dy = ((e.clientY - swipe.clientY) / rect.height) * foto.hoehePx;
+                setTouchCursorPx((aktuell) =>
+                  aktuell
+                    ? verschiebeFotoPunkt(
+                        aktuell,
+                        dx,
+                        dy,
+                        foto.breitePx,
+                        foto.hoehePx,
+                      )
+                    : aktuell,
+                );
+                touchSwipeRef.current = {
+                  pointerId: e.pointerId,
+                  clientX: e.clientX,
+                  clientY: e.clientY,
+                };
+              }}
+              onPointerUp={(e) => {
+                if (touchSwipeRef.current?.pointerId === e.pointerId) touchSwipeRef.current = null;
+              }}
+              onPointerCancel={(e) => {
+                if (touchSwipeRef.current?.pointerId === e.pointerId) touchSwipeRef.current = null;
               }}
             >
               <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
@@ -766,28 +944,28 @@ export function FotoHintergrund({
 
               {/* Fadenkreuz am Mauszeiger — kräftig, mit weißem Halo + Zielring (auf
                   jedem Fotohintergrund gut sichtbar) */}
-              {zeigtKreuz && mausPx && (
+              {zeigtKreuz && kreuzPx && (
                 <g style={{ pointerEvents: 'none' }}>
                   <g stroke="#ffffff" strokeOpacity={0.85} strokeWidth={px(0.0045)} fill="none">
-                    <line x1={0} y1={mausPx[1]} x2={foto.breitePx} y2={mausPx[1]} />
-                    <line x1={mausPx[0]} y1={0} x2={mausPx[0]} y2={foto.hoehePx} />
-                    <circle cx={mausPx[0]} cy={mausPx[1]} r={px(0.013)} />
+                    <line x1={0} y1={kreuzPx[1]} x2={foto.breitePx} y2={kreuzPx[1]} />
+                    <line x1={kreuzPx[0]} y1={0} x2={kreuzPx[0]} y2={foto.hoehePx} />
+                    <circle cx={kreuzPx[0]} cy={kreuzPx[1]} r={px(0.013)} />
                   </g>
                   <g stroke="#0284c7" strokeOpacity={0.95} strokeWidth={px(0.002)} fill="none">
-                    <line x1={0} y1={mausPx[1]} x2={foto.breitePx} y2={mausPx[1]} />
-                    <line x1={mausPx[0]} y1={0} x2={mausPx[0]} y2={foto.hoehePx} />
-                    <circle cx={mausPx[0]} cy={mausPx[1]} r={px(0.013)} />
+                    <line x1={0} y1={kreuzPx[1]} x2={foto.breitePx} y2={kreuzPx[1]} />
+                    <line x1={kreuzPx[0]} y1={0} x2={kreuzPx[0]} y2={foto.hoehePx} />
+                    <circle cx={kreuzPx[0]} cy={kreuzPx[1]} r={px(0.013)} />
                   </g>
                 </g>
               )}
 
               {/* Vorschaulinie: letzter Punkt → Mauszeiger */}
-              {(modus === 'first' || modus === 'perspektive' || modus === 'umriss') && letzter && mausPx && (
+              {(modus === 'first' || modus === 'perspektive' || modus === 'umriss') && letzter && kreuzPx && (
                 <line
                   x1={letzter[0]}
                   y1={letzter[1]}
-                  x2={mausPx[0]}
-                  y2={mausPx[1]}
+                  x2={kreuzPx[0]}
+                  y2={kreuzPx[1]}
                   stroke="#f97316"
                   strokeOpacity={0.7}
                   strokeWidth={px(0.0022)}

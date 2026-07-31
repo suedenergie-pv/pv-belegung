@@ -18,6 +18,20 @@ import type { PunktM, RechteckM } from '@pv-belegung/engine';
 
 export type Punkt = [number, number];
 
+/** Relatives Tablet-Fadenkreuz bewegen und sicher im Foto halten. */
+export function verschiebeFotoPunkt(
+  [x, y]: Punkt,
+  dx: number,
+  dy: number,
+  breitePx: number,
+  hoehePx: number,
+): Punkt {
+  return [
+    Math.max(0, Math.min(breitePx, x + dx)),
+    Math.max(0, Math.min(hoehePx, y + dy)),
+  ];
+}
+
 /** Ecken der Dachfläche im Foto. Reihenfolge: Traufe links, Traufe rechts, First rechts, First links. */
 export type Ecken = [Punkt, Punkt, Punkt, Punkt];
 

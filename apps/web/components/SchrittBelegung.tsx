@@ -200,7 +200,7 @@ function WerkzeugKnopf({
       disabled={disabled}
       title={title}
       onClick={onClick}
-      className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
+      className={`touch-target inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
         disabled
           ? 'cursor-not-allowed text-slate-300'
           : aktiv
@@ -947,6 +947,16 @@ export function SchrittBelegung({
     const quer = ausrichtung === 'quer';
     const indices = auswahlVon(f);
     const betroffen = (i: number) => indices.length === 0 || indices.includes(i);
+    const geloeschteModule = felderVon(f).reduce(
+      (sum, feld, i) => sum + (betroffen(i) && feld.quer !== quer ? (feld.leer?.length ?? 0) : 0),
+      0,
+    );
+    if (
+      geloeschteModule > 0 &&
+      !window.confirm(
+        `Ausrichtung ändern? ${geloeschteModule} einzeln abgeschaltete Module werden dabei wieder eingeschaltet.`,
+      )
+    ) return;
     patchFlaeche(f.id, {
       ausrichtung,
       felder: felderVon(f).map((feld, i) =>
@@ -989,9 +999,9 @@ export function SchrittBelegung({
   };
 
   const pfeilKlasse =
-    'h-9 w-9 rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-700 hover:border-akzent active:bg-akzent active:text-white disabled:opacity-40';
+    'touch-target h-9 w-9 rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-700 hover:border-akzent active:bg-akzent active:text-white disabled:opacity-40';
   const aktionKlasse =
-    'inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-40';
+    'touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-40';
 
   const klickM = (f: Flaeche, p: PunktM) => {
     if (!zeichnung || zeichnung.flaecheId !== f.id) return;
@@ -1074,7 +1084,7 @@ export function SchrittBelegung({
           </div>
           <button
             type="button"
-            className="ml-auto inline-flex h-10 items-center gap-2 rounded-lg bg-akzent px-4 text-sm font-semibold text-white hover:bg-akzent/90"
+            className="touch-target ml-auto inline-flex h-10 items-center gap-2 rounded-lg bg-akzent px-4 text-sm font-semibold text-white hover:bg-akzent/90"
             onClick={() => waehleFotoDatei(null)}
           >
             <IconFoto />
@@ -1268,7 +1278,7 @@ export function SchrittBelegung({
                 <select
                   value={f.fotoZuordnung?.fotoId ?? ''}
                   onChange={(e) => setzeFotoZuordnung(f.id, e.target.value || null)}
-                  className="h-9 max-w-48 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
+                  className="touch-target h-9 max-w-48 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
                 >
                   <option value="">keins · Draufsicht</option>
                   {projekt.fotos.map((x) => (
@@ -1399,7 +1409,7 @@ export function SchrittBelegung({
                     type="button"
                     title={d.name}
                     onClick={() => patchFlaeche(f.id, { dachfarbe: d.id })}
-                    className={`h-9 w-9 rounded-lg border-2 ${
+                    className={`touch-target h-9 w-9 rounded-lg border-2 ${
                       f.dachfarbe === d.id ? 'border-akzent' : 'border-white shadow'
                     }`}
                     style={{ backgroundColor: d.fill }}
@@ -1425,6 +1435,7 @@ export function SchrittBelegung({
               <FotoHintergrund
                 flaeche={fMitFoto}
                 fotoVerwalten={false}
+                zustandsKey={`${f.id}:${fotoAsset?.id ?? 'legacy'}`}
                 onPatch={(patch) => patchFotoFlaeche(f, patch)}
               />
             )}
