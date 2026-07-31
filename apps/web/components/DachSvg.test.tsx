@@ -61,19 +61,12 @@ describe('DachSvg', () => {
       <DachSvg flaeche={flaeche} raster={raster} modul={modul} />,
     );
 
-    // Bei einer echten Vierpunkt-Projektion ist mindestens ein Modul-Clip kein
-    // Parallelogramm. Würde die Hauptdach-Glättung hier wieder greifen, wären
-    // die Diagonalmittelpunkte identisch.
-    const clips = [...html.matchAll(/<polygon points="([^"]+)"/g)].map((m) =>
+    // Gauben verwenden ein feines 6×10-Netz statt der zwei großen Dreiecke,
+    // die in starker Perspektive einen sichtbaren Knick erzeugen.
+    const clips = [...html.matchAll(/<clipPath[^>]*><polygon points="([^"]+)"/g)].map((m) =>
       m[1]!.split(' ').map((paar) => paar.split(',').map(Number)),
     );
-    expect(clips.length).toBeGreaterThanOrEqual(2);
-    const [tl, tr, br] = clips[0]!;
-    const bl = clips[1]![2]!;
-    const diagonalenFehler = Math.hypot(
-      tl![0]! + br![0]! - tr![0]! - bl[0]!,
-      tl![1]! + br![1]! - tr![1]! - bl[1]!,
-    );
-    expect(diagonalenFehler).toBeGreaterThan(0.01);
+    expect(clips).toHaveLength(raster.positionen.length * 6 * 10 * 2);
+    expect(clips.every((punkte) => punkte.length === 3)).toBe(true);
   });
 });

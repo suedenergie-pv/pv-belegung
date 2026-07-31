@@ -199,3 +199,76 @@ export function modulMatrixDreiecke(
     { matrix: affine3(aTL, aBR, aBL, cTL, cBR, cBL), clip: poly(cTL, cBR, cBL) },
   ];
 }
+
+/** Projektive Abbildung eines normierten Rechtecks auf ein beliebiges Viereck. */
+function viereckProjektor(TL: P, TR: P, BR: P, BL: P): (u: number, v: number) => P {
+  const dx1 = TR[0] - BR[0];
+  const dx2 = BL[0] - BR[0];
+  const dx3 = TL[0] - TR[0] + BR[0] - BL[0];
+  const dy1 = TR[1] - BR[1];
+  const dy2 = BL[1] - BR[1];
+  const dy3 = TL[1] - TR[1] + BR[1] - BL[1];
+  let g = 0;
+  let h = 0;
+  if (Math.abs(dx3) + Math.abs(dy3) > 1e-9) {
+    const det = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(det) > 1e-9) {
+      g = (dx3 * dy2 - dx2 * dy3) / det;
+      h = (dx1 * dy3 - dx3 * dy1) / det;
+    }
+  }
+  const a = TR[0] - TL[0] + g * TR[0];
+  const b = BL[0] - TL[0] + h * BL[0];
+  const c = TL[0];
+  const d = TR[1] - TL[1] + g * TR[1];
+  const e = BL[1] - TL[1] + h * BL[1];
+  const f = TL[1];
+  return (u, v) => {
+    const w = g * u + h * v + 1;
+    return [(a * u + b * v + c) / w, (d * u + e * v + f) / w];
+  };
+}
+
+/**
+ * Feinmaschige Perspektivabbildung für stark geneigte Gauben. Anders als die
+ * alte Teilung in nur zwei große Dreiecke knicken Zelllinien und Rahmen damit
+ * nicht sichtbar an einer einzigen Moduldiagonale. Das Netz bleibt auf Gauben
+ * beschränkt, damit normale große Dachbelegungen nicht unnötig viele SVG-Knoten
+ * erzeugen.
+ */
+export function modulMatrixNetz(
+  TL: P,
+  TR: P,
+  BR: P,
+  BL: P,
+  quer: boolean,
+  spalten = 6,
+  zeilen = 10,
+): { matrix: string; clip: string }[] {
+  const ziel = quer
+    ? viereckProjektor(TL, BL, BR, TR)
+    : viereckProjektor(TL, TR, BR, BL);
+  const poly = (p: P, q: P, r: P) => `${p[0]},${p[1]} ${q[0]},${q[1]} ${r[0]},${r[1]}`;
+  const teile: { matrix: string; clip: string }[] = [];
+  for (let row = 0; row < zeilen; row += 1) {
+    for (let col = 0; col < spalten; col += 1) {
+      const x0 = (col / spalten) * MODUL_ASSET_W;
+      const x1 = ((col + 1) / spalten) * MODUL_ASSET_W;
+      const y0 = (row / zeilen) * MODUL_ASSET_H;
+      const y1 = ((row + 1) / zeilen) * MODUL_ASSET_H;
+      const aTL: P = [x0, y0];
+      const aTR: P = [x1, y0];
+      const aBR: P = [x1, y1];
+      const aBL: P = [x0, y1];
+      const cTL = ziel(x0 / MODUL_ASSET_W, y0 / MODUL_ASSET_H);
+      const cTR = ziel(x1 / MODUL_ASSET_W, y0 / MODUL_ASSET_H);
+      const cBR = ziel(x1 / MODUL_ASSET_W, y1 / MODUL_ASSET_H);
+      const cBL = ziel(x0 / MODUL_ASSET_W, y1 / MODUL_ASSET_H);
+      teile.push(
+        { matrix: affine3(aTL, aTR, aBR, cTL, cTR, cBR), clip: poly(cTL, cTR, cBR) },
+        { matrix: affine3(aTL, aBR, aBL, cTL, cBR, cBL), clip: poly(cTL, cBR, cBL) },
+      );
+    }
+  }
+  return teile;
+}

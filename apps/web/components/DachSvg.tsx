@@ -14,6 +14,7 @@ import {
   modulAssetInner,
   modulMatrix,
   modulMatrixDreiecke,
+  modulMatrixNetz,
   regularisiereModulViereck,
 } from '../lib/modul-assets';
 import {
@@ -315,10 +316,12 @@ export function moduleAufHomographie({
     // beschreiben bewusst die starke Neigung der Gaubenfläche; dort muss die
     // exakte projektive Form erhalten bleiben. Nur normale Dachflächen bekommen
     // den Schutz gegen den trapezförmigen Gummizug aus frei markierten Umrissen.
-    const [visTL, visTR, visBR, visBL] = flaeche.gaubenTyp
-      ? [TL, TR, BR, BL]
-      : regularisiereModulViereck(TL, TR, BR, BL);
-    const dreiecke = modulMatrixDreiecke(visTL, visTR, visBR, visBL, p.quer);
+    const dreiecke = flaeche.gaubenTyp
+      ? modulMatrixNetz(TL, TR, BR, BL, p.quer)
+      : (() => {
+          const [visTL, visTR, visBR, visBL] = regularisiereModulViereck(TL, TR, BR, BL);
+          return modulMatrixDreiecke(visTL, visTR, visBR, visBL, p.quer);
+        })();
     return (
       <g
         key={key}
@@ -326,6 +329,13 @@ export function moduleAufHomographie({
         className={toggle ? 'cursor-pointer' : undefined}
         onClick={toggle ? () => toggle(key) : undefined}
       >
+        {flaeche.gaubenTyp && (
+          <path
+            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            fill="#08090b"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
         {dreiecke.map((dr, di) => {
           // ':' aus dem posKey raus — in url(#…)-Referenzen ist es ein Sonderzeichen
           const cid = `clip-${clipIdPrefix}-${flaeche.id}-${key}-${di}`.replace(/[^a-zA-Z0-9_-]/g, '-');
