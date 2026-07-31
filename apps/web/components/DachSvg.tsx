@@ -10,7 +10,12 @@ import {
   type Homographie,
   type Punkt,
 } from '../lib/foto-geometrie';
-import { modulAssetInner, modulMatrix, modulMatrixDreiecke } from '../lib/modul-assets';
+import {
+  modulAssetInner,
+  modulMatrix,
+  modulMatrixDreiecke,
+  regularisiereModulViereck,
+} from '../lib/modul-assets';
 import {
   DACHFARBEN,
   fmtDe,
@@ -298,13 +303,16 @@ export function moduleAufHomographie({
     // Modulmaße/Ausrichtung je Position (bei gemischten Bändern verschieden).
     const mB = p.wM;
     const mH = p.hM;
-    // Vier Modul-Ecken exakt homographisch projiziert; Asset in ZWEI Dreiecke
-    // geteilt und exakt eingepasst → perspektivisch gerade.
+    // Der exakte Fußabdruck bleibt homographisch. Für das sichtbare Modul wird
+    // das Viereck auf das nächstliegende Parallelogramm geglättet: Position,
+    // Maßstab und Drehung folgen dem Foto, einzelne Module werden auf stark
+    // trapezförmigen Dachflächen aber nicht mehr wie Gummi auseinandergezogen.
     const TL = projiziere(h, [p.xM, p.yM]);
     const TR = projiziere(h, [p.xM + mB, p.yM]);
     const BR = projiziere(h, [p.xM + mB, p.yM + mH]);
     const BL = projiziere(h, [p.xM, p.yM + mH]);
-    const dreiecke = modulMatrixDreiecke(TL, TR, BR, BL, p.quer);
+    const [visTL, visTR, visBR, visBL] = regularisiereModulViereck(TL, TR, BR, BL);
+    const dreiecke = modulMatrixDreiecke(visTL, visTR, visBR, visBL, p.quer);
     return (
       <g
         key={key}
