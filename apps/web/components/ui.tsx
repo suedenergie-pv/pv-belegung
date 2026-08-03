@@ -133,6 +133,7 @@ export function ToggleButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={aktiv}
       title={title}
       className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-medium transition ${
         disabled

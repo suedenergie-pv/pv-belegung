@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="de">
       <body className={inter.className}>
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <div className="mx-auto flex max-w-[1500px] items-center gap-3 px-4 py-3">
             <span className="inline-block h-3.5 w-3.5 rounded-full bg-akzent" />
             <h1 className="text-lg font-semibold tracking-tight">
               SüdEnergie <span className="text-slate-400">·</span> Belegungsplaner
@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </span>
           </div>
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-[1500px] px-4 py-6">{children}</main>
         <footer className="mx-auto max-w-5xl px-4 pb-8 pt-2 text-center text-xs text-slate-400">
           Vorplanung für den Vertrieb — keine Fachplanung. Finale Auslegung durch die
           Projektleitung (PV*SOL). Engine-Regelwerk R1–R12, noch nicht gegen PV*SOL kalibriert.

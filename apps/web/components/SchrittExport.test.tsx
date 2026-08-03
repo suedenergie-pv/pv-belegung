@@ -28,10 +28,11 @@ describe('Exportfunktionen', () => {
     const projekt = neuesProjekt();
     projekt.kunde = 'Audit Kunde';
     projekt.flaechen[0]!.felder = [vollFeldFuer(projekt.flaechen[0]!, modulById(projekt.modulId))];
-    const { getByRole } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);
+    const { getByRole, getByText } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);
 
     fireEvent.click(getByRole('button', { name: 'PDF herunterladen' }));
     await waitFor(() => expect(pdfMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(getByText('Technische Daten (JSON)', { exact: false }));
     fireEvent.click(getByRole('button', { name: 'JSON kopieren' }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1));
     const json = vi.mocked(navigator.clipboard.writeText).mock.calls[0]![0];

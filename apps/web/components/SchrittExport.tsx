@@ -135,9 +135,13 @@ export function SchrittExport({
       </Karte>
 
       <Karte>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <KartenTitel>Ticketsystem-Payload (JSON)</KartenTitel>
-          <div className="ml-auto flex gap-2">
+        <details>
+          <summary className="touch-target flex cursor-pointer list-none items-center gap-3 text-sm font-semibold text-slate-700">
+            Technische Daten (JSON)
+            <span className="ml-auto text-xs font-normal text-slate-400">für das Ticketsystem</span>
+          </summary>
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
+            <div className="ml-auto flex gap-2">
             <button
               type="button"
               disabled={exportGesperrt}
@@ -165,11 +169,11 @@ export function SchrittExport({
                 URL.revokeObjectURL(url);
               }}
             >
-              Download
+              JSON-Datei herunterladen
             </button>
+            </div>
           </div>
-        </div>
-        {exportGesperrt && (
+          {exportGesperrt && (
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             <p className="min-w-60 flex-1">
               JSON-Export gesperrt: Der hinterlegte Stringplan ist ungültig oder enthält mehr
@@ -184,14 +188,15 @@ export function SchrittExport({
               Alten Stringplan entfernen
             </button>
           </div>
-        )}
-        <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
-          {json}
-        </pre>
-        <p className="mt-2 text-xs text-slate-400">
-          Anbindung an das Ticketsystem („Vorplanung Vertrieb") folgt — bis dahin JSON kopieren
-          oder als Datei ans Ticket hängen.
-        </p>
+          )}
+          <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
+            {json}
+          </pre>
+          <p className="mt-2 text-xs text-slate-400">
+            Anbindung an das Ticketsystem („Vorplanung Vertrieb") folgt — bis dahin JSON kopieren
+            oder als Datei ans Ticket hängen.
+          </p>
+        </details>
       </Karte>
 
       {/* Offscreen-Render für die PDF-Rasterung: identische DachSvg-Komponenten,

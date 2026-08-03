@@ -477,6 +477,7 @@ export function SchrittFlaechen({
               <input
                 type="number"
                 inputMode="numeric"
+                aria-label="Azimut in Grad"
                 className="h-12 w-24 rounded-xl border border-slate-300 px-3 text-base"
                 value={f.azimutDeg}
                 min={0}
@@ -502,6 +503,7 @@ export function SchrittFlaechen({
                 <button
                   key={d.id}
                   type="button"
+                  aria-pressed={f.dachfarbe === d.id}
                   onClick={() => setFlaeche(f.id, { dachfarbe: d.id })}
                   className={`flex h-14 items-center gap-2 rounded-xl border-2 bg-white px-3 text-left transition ${
                     f.dachfarbe === d.id

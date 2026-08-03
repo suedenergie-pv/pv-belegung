@@ -396,6 +396,7 @@ export function DachSvg({
   geister,
   pointer,
   fotoOverlay,
+  maxHoehe,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
@@ -420,6 +421,8 @@ export function DachSvg({
   pointer?: PointerProps;
   /** Weitere Flächen desselben Projektfotos, hinter der aktiven Fläche. */
   fotoOverlay?: (clipIdPrefix: string) => ReactNode;
+  /** Maximale Editorhöhe in px; der Belegungsschritt darf den verfügbaren Platz ausnutzen. */
+  maxHoehe?: number;
 }) {
   // Dasselbe Dach kann gleichzeitig in Foto-Vorschau, Editor und PDF-Vorschau
   // vorkommen. Reacts useId trennt die dokumentweit geltenden SVG-Clip-IDs.
@@ -752,8 +755,8 @@ export function DachSvg({
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
           style={{
             aspectRatio: `${foto.breitePx} / ${foto.hoehePx}`,
-            maxHeight: 480,
-            maxWidth: (480 * foto.breitePx) / foto.hoehePx,
+            maxHeight: maxHoehe ?? 480,
+            maxWidth: ((maxHoehe ?? 480) * foto.breitePx) / foto.hoehePx,
           }}
         >
           <svg
@@ -993,7 +996,11 @@ export function DachSvg({
   return (
     <div
       className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
-      style={{ aspectRatio: `${B} / ${H}`, maxHeight: 420, maxWidth: (420 * B) / H }}
+      style={{
+        aspectRatio: `${B} / ${H}`,
+        maxHeight: maxHoehe ?? 420,
+        maxWidth: ((maxHoehe ?? 420) * B) / H,
+      }}
     >
       <svg
         viewBox={`0 0 ${B} ${H}`}

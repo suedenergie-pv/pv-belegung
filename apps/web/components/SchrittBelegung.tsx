@@ -7,7 +7,6 @@ import {
   aktiveModule,
   artVon,
   dachFotoVon,
-  farbenFuer,
   felderInput,
   fmtDe,
   leerePositionenFuer,
@@ -1074,14 +1073,24 @@ export function SchrittBelegung({
         }}
       />
 
-      <Karte>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+      <Karte className={projekt.fotos.length === 0 ? '!p-3' : ''}>
+        <div
+          className={`flex flex-wrap items-center gap-3 ${projekt.fotos.length === 0 ? '' : 'mb-3'}`}
+        >
           <div>
-            <KartenTitel>Belegungsfotos</KartenTitel>
-            <p className="mt-1 text-sm text-slate-500">
-              Ein Foto kann mehrere Dachflächen enthalten. Jede Fläche hat genau ein primäres
-              Belegungsfoto und behält darin ihre eigene Perspektive und ihren eigenen Umriss.
-            </p>
+            <KartenTitel>
+              {projekt.fotos.length === 0 ? 'Drohnenfoto (optional)' : 'Belegungsfotos'}
+            </KartenTitel>
+            {projekt.fotos.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Ohne Foto arbeitest du direkt in der maßstäblichen Draufsicht.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-500">
+                Fotos können mehrere Dachflächen enthalten. Jede Fläche behält ihre eigene
+                Perspektive und ihren eigenen Umriss.
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -1089,16 +1098,11 @@ export function SchrittBelegung({
             onClick={() => waehleFotoDatei(null)}
           >
             <IconFoto />
-            Foto hinzufügen
+            {projekt.fotos.length === 0 ? 'Drohnenfoto verwenden' : 'Foto hinzufügen'}
           </button>
         </div>
 
-        {projekt.fotos.length === 0 ? (
-          <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">
-            Noch kein Drohnenfoto. Die Flächen können unten weiterhin in der maßstäblichen
-            Draufsicht belegt werden oder nach dem Upload einem gemeinsamen Foto zugeordnet werden.
-          </p>
-        ) : (
+        {projekt.fotos.length > 0 && (
           <div className="grid gap-4 lg:grid-cols-2">
             {projekt.fotos.map((foto) => {
               const zugeordnet = projekt.flaechen.filter(
@@ -1296,6 +1300,84 @@ export function SchrittBelegung({
               </span>
             </div>
 
+            {/* Die Belegung ist das Arbeitsobjekt: Canvas vor Einstellungen und Sonderwerkzeugen. */}
+            {!belegungZeigen ? null : (
+              <div
+                id={`foto-masse-${f.id}`}
+                className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+              >
+                <DachSvg
+                  flaeche={fEff}
+                  raster={raster}
+                  modul={modul}
+                  masse={masseZeigen}
+                  maxHoehe={560}
+                  felderAnzeige={felder.map((feld, k) => ({
+                    rect: feld,
+                    ausgewaehlt: gewaehlt.includes(k),
+                  }))}
+                  feldVorschau={vorschauFuer(f)}
+                  geister={
+                    modusArt(f) === 'zellen'
+                      ? leerePositionenFuer(fEff, modul).map((p) => ({
+                          key: posKey(p),
+                          xM: p.xM,
+                          yM: p.yM,
+                          wM: p.wM,
+                          hM: p.hM,
+                        }))
+                      : undefined
+                  }
+                  pointer={
+                    felderWerkzeug
+                      ? {
+                          onDownM: (p) => onDownM(f, p),
+                          onMoveM: (p) =>
+                            setDrag((d) =>
+                              !d || d.flaecheId !== f.id ? d : p ? { ...d, aktuell: p } : null,
+                            ),
+                          onUpM: (p) => onUpM(f, p),
+                        }
+                      : undefined
+                  }
+                  zeichnen={
+                    zeichneHier
+                      ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
+                      : undefined
+                  }
+                  onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
+                  fotoOverlay={
+                    fotoAsset
+                      ? (clipIdPrefix) =>
+                          fotoFlaechenInhalt({
+                            projekt,
+                            foto: fotoAsset,
+                            ausblendenId: f.id,
+                            assetId: `modul-${f.id}`,
+                            clipIdPrefix,
+                          })
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+
+            {belegungZeigen && felder.length === 0 && !zeichneHier && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                <span className="min-w-60 flex-1">
+                  Ziehe einen Belegungsbereich direkt auf dem Dach auf oder starte mit der
+                  Vollbelegung.
+                </span>
+                <button
+                  type="button"
+                  className="touch-target rounded-lg bg-akzent px-4 py-2 font-semibold text-white hover:bg-akzent/90"
+                  onClick={() => automatischFuellen(f)}
+                >
+                  Automatisch belegen
+                </button>
+              </div>
+            )}
+
             {/* Zeile 1 — WERKZEUGE + Aktionen */}
             {belegungZeigen && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1306,7 +1388,7 @@ export function SchrittBelegung({
                     onClick={() => setzeModus(f, null)}
                   >
                     <IconFeld />
-                    Felder
+                    Belegungsbereiche
                   </WerkzeugKnopf>
                   <WerkzeugKnopf
                     aktiv={modusArt(f) === 'zellen'}
@@ -1323,15 +1405,17 @@ export function SchrittBelegung({
                   </WerkzeugKnopf>
                 </div>
                 <div className="ml-auto flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className={aktionKlasse}
-                    title="Ein Feld über die ganze nutzbare Fläche legen (danach frei verschiebbar)"
-                    onClick={() => automatischFuellen(f)}
-                  >
-                    <IconFeld />
-                    Automatisch füllen
-                  </button>
+                  {felder.length > 0 && (
+                    <button
+                      type="button"
+                      className={aktionKlasse}
+                      title="Ein Feld über die ganze nutzbare Fläche legen (danach frei verschiebbar)"
+                      onClick={() => automatischFuellen(f)}
+                    >
+                      <IconFeld />
+                      Automatisch belegen
+                    </button>
+                  )}
                   {felder.length > 0 && (
                     <button
                       type="button"
@@ -1340,14 +1424,14 @@ export function SchrittBelegung({
                       onClick={() => alleFelderLoeschen(f)}
                     >
                       <IconLeeren />
-                      Leeren
+                      Belegung entfernen
                     </button>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Zeile 2 — EINSTELLUNGEN: Ausrichtung, Randabstand, Dachfarbe */}
+            {/* Zeile 2 — häufige Einstellungen; Dachfarbe bleibt bei den Flächendetails. */}
             <div className="mb-3 flex flex-wrap items-center gap-2">
               {artVon(f) === 'flachdach' ? (
                 <span className="text-sm text-slate-500">
@@ -1403,20 +1487,6 @@ export function SchrittBelegung({
                 cm
               </label>
 
-              <div className="ml-auto flex gap-1.5">
-                {farbenFuer(artVon(f)).map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    title={d.name}
-                    onClick={() => patchFlaeche(f.id, { dachfarbe: d.id })}
-                    className={`touch-target h-9 w-9 rounded-lg border-2 ${
-                      f.dachfarbe === d.id ? 'border-akzent' : 'border-white shadow'
-                    }`}
-                    style={{ backgroundColor: d.fill }}
-                  />
-                ))}
-              </div>
             </div>
 
             {foto && !f.gaubenTyp && (
@@ -1444,33 +1514,38 @@ export function SchrittBelegung({
             {zeichenbar && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 {!zeichneHier && (
-                  <>
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      onClick={() => starteZeichnung(f, 'umriss')}
-                    >
-                      <IconUmriss />
-                      Umriss zeichnen{f.umrissM ? ' (neu)' : ''}
-                    </button>
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      onClick={() => starteZeichnung(f, 'hindernis')}
-                    >
-                      <IconHindernis />
-                      Hindernis markieren
-                    </button>
-                    {f.umrissM && (
+                  <details className="rounded-lg border border-slate-200 bg-slate-50">
+                    <summary className="touch-target cursor-pointer list-none px-3 py-2 text-sm font-medium text-slate-700">
+                      Umriss & Hindernisse
+                    </summary>
+                    <div className="flex flex-wrap gap-2 border-t border-slate-200 p-3">
                       <button
                         type="button"
-                        className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
-                        onClick={() => patchFlaeche(f.id, { umrissM: undefined })}
+                        className={aktionKlasse}
+                        onClick={() => starteZeichnung(f, 'umriss')}
                       >
-                        Umriss entfernen ({f.umrissM.length} Ecken)
+                        <IconUmriss />
+                        Umriss zeichnen{f.umrissM ? ' (neu)' : ''}
                       </button>
-                    )}
-                  </>
+                      <button
+                        type="button"
+                        className={aktionKlasse}
+                        onClick={() => starteZeichnung(f, 'hindernis')}
+                      >
+                        <IconHindernis />
+                        Hindernis markieren
+                      </button>
+                      {f.umrissM && (
+                        <button
+                          type="button"
+                          className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
+                          onClick={() => patchFlaeche(f.id, { umrissM: undefined })}
+                        >
+                          Umriss entfernen ({f.umrissM.length} Ecken)
+                        </button>
+                      )}
+                    </div>
+                  </details>
                 )}
                 {zeichneHier?.art === 'umriss' && (
                   <>
@@ -1544,7 +1619,7 @@ export function SchrittBelegung({
             )}
 
             {/* Felder-Panel: Pfeile (Tastatur + Halten), Auswahl-Aktionen */}
-            {felderWerkzeug && felder.length > 0 && (
+            {felderWerkzeug && felder.length > 0 && gewaehlt.length > 0 && (
               <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <div className="grid grid-cols-3 gap-1">
@@ -1587,7 +1662,7 @@ export function SchrittBelegung({
                     <span />
                   </div>
                   <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                    Schritt
+                    Verschieben um
                     <input
                       type="number"
                       inputMode="numeric"
@@ -1642,18 +1717,12 @@ export function SchrittBelegung({
                     </button>
                   </div>
                   <span className="text-sm text-slate-500">
-                    {gewaehlt.length === 0
-                      ? 'kein Feld ausgewählt'
-                      : `${gewaehlt.length} von ${felder.length} ausgewählt`}
+                    {gewaehlt.length} von {felder.length} ausgewählt
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-sky-800">
-                  <strong>Ziehen</strong> auf freier Fläche = neues Feld · <strong>Antippen</strong>{' '}
-                  = aus-/abwählen (mehrere möglich) · <strong>Ziehen am Feld</strong> = verschieben ·{' '}
-                  <strong>an den weißen Griffen ziehen</strong> = Größe korrigieren ·{' '}
-                  <strong>Pfeiltasten</strong> (oder die Knöpfe, gedrückt halten) = cm-genau schieben.
-                  Über den Rand/Umriss/ein Hindernis geschobene Module fallen einfach weg. Einzelne
-                  Module ab-/anschalten: Werkzeug „Module an/aus".
+                  Ziehen verschiebt die Auswahl, die weißen Griffe ändern ihre Größe. Pfeiltasten
+                  und Halteknöpfe verschieben zentimetergenau.
                 </p>
               </div>
             )}
@@ -1685,70 +1754,6 @@ export function SchrittBelegung({
               </div>
             )}
 
-            {!belegungZeigen ? null : (
-              <div id={`foto-masse-${f.id}`}>
-                <DachSvg
-                  flaeche={fEff}
-                  raster={raster}
-                  modul={modul}
-                  masse={masseZeigen}
-                  felderAnzeige={felder.map((feld, k) => ({
-                    rect: feld,
-                    ausgewaehlt: gewaehlt.includes(k),
-                  }))}
-                  feldVorschau={vorschauFuer(f)}
-                  geister={
-                    modusArt(f) === 'zellen'
-                      ? leerePositionenFuer(fEff, modul).map((p) => ({
-                          key: posKey(p),
-                          xM: p.xM,
-                          yM: p.yM,
-                          wM: p.wM,
-                          hM: p.hM,
-                        }))
-                      : undefined
-                  }
-                  pointer={
-                    felderWerkzeug
-                      ? {
-                          onDownM: (p) => onDownM(f, p),
-                          onMoveM: (p) =>
-                            setDrag((d) =>
-                              !d || d.flaecheId !== f.id ? d : p ? { ...d, aktuell: p } : null,
-                            ),
-                          onUpM: (p) => onUpM(f, p),
-                        }
-                      : undefined
-                  }
-                  zeichnen={
-                    zeichneHier
-                      ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
-                      : undefined
-                  }
-                  onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
-                  fotoOverlay={
-                    fotoAsset
-                      ? (clipIdPrefix) =>
-                          fotoFlaechenInhalt({
-                            projekt,
-                            foto: fotoAsset,
-                            ausblendenId: f.id,
-                            assetId: `modul-${f.id}`,
-                            clipIdPrefix,
-                          })
-                      : undefined
-                  }
-                />
-              </div>
-            )}
-
-            {belegungZeigen && felder.length === 0 && !zeichneHier && (
-              <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-                <strong>Noch nichts belegt.</strong> Ein Rechteck aufs Dach ziehen — es füllt sich
-                mit Modulen. Beliebig viele Felder möglich; „Automatisch füllen" legt eins über die
-                ganze Fläche.
-              </p>
-            )}
             {belegungZeigen && felder.length > 0 && raster.positionen.length === 0 && (
               <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
                 Kein Modul passt — Feld zu klein oder außerhalb der nutzbaren Fläche (Randabstand{' '}

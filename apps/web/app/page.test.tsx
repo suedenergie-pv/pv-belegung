@@ -33,7 +33,7 @@ describe('Projektverwaltung und Einstieg', () => {
   it('legt einen sicheren Erststand an, übernimmt Projektdaten und durchläuft alle drei Schritte', async () => {
     const { getByLabelText, getByRole, findByRole } = render(<Home />);
     await findByRole('button', { name: '+ Neu' });
-    expect((getByLabelText('Projekt') as HTMLSelectElement).value).toMatch(/^prj-/);
+    expect((getByLabelText('Aktuelles Projekt') as HTMLSelectElement).value).toMatch(/^prj-/);
 
     fireEvent.change(getByLabelText('Kunde'), { target: { value: 'Familie Audit' } });
     fireEvent.change(getByLabelText('Adresse'), { target: { value: 'Testweg 1' } });
@@ -42,8 +42,8 @@ describe('Projektverwaltung und Einstieg', () => {
     expect((getByRole('button', { name: 'Weiter →' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(getByRole('button', { name: 'Weiter →' }));
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
-    fireEvent.click(getByRole('button', { name: 'Automatisch füllen' }));
-    expect(await findByRole('button', { name: 'Leeren' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Automatisch belegen' }));
+    expect(await findByRole('button', { name: 'Belegung entfernen' })).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Quer' }));
     expect(getByRole('button', { name: 'Quer' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(getByRole('button', { name: 'Weiter →' }));
@@ -52,14 +52,14 @@ describe('Projektverwaltung und Einstieg', () => {
   });
 
   it('dupliziert und löscht Projekte ohne jemals den letzten aktiven Stand zu verlieren', async () => {
-    const { getByRole, findByRole, getByText } = render(<Home />);
-    await findByRole('button', { name: 'Duplizieren' });
-    fireEvent.click(getByRole('button', { name: 'Duplizieren' }));
-    expect(getByText('2 Projekte')).toBeTruthy();
-    fireEvent.click(getByRole('button', { name: 'Löschen' }));
-    expect(getByText('1 Projekt')).toBeTruthy();
-    fireEvent.click(getByRole('button', { name: 'Löschen' }));
-    await waitFor(() => expect(getByText('1 Projekt')).toBeTruthy());
-    expect((getByRole('combobox', { name: 'Projekt' }) as HTMLSelectElement).value).not.toBe('');
+    const { getByRole, getAllByRole, findByRole, getByText } = render(<Home />);
+    await findByRole('button', { name: '+ Neu' });
+    fireEvent.click(getByText('Projektaktionen ···'));
+    fireEvent.click(getByRole('button', { name: 'Projekt duplizieren' }));
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(2));
+    fireEvent.click(getByRole('button', { name: 'Projekt löschen' }));
+    fireEvent.click(getByRole('button', { name: 'Projekt löschen' }));
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(1));
+    expect((getByRole('combobox', { name: 'Aktuelles Projekt' }) as HTMLSelectElement).value).not.toBe('');
   });
 });

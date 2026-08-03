@@ -29,7 +29,9 @@ export default function Home() {
   });
   // localStorage erst nach dem Mount lesen (SSR-Hydration), danach jede Änderung sichern
   const [geladen, setGeladen] = useState(false);
-  const [speicherWarnung, setSpeicherWarnung] = useState(false);
+  const [speicherStatus, setSpeicherStatus] = useState<'gespeichert' | 'speichert' | 'fehler'>(
+    'gespeichert',
+  );
 
   useEffect(() => {
     const geladen = ladeProjekte();
@@ -57,8 +59,11 @@ export default function Home() {
   dbRef.current = db;
   useEffect(() => {
     if (!geladen) return;
+    setSpeicherStatus('speichert');
     const t = setTimeout(() => {
-      setSpeicherWarnung(speichereProjekte(dbRef.current) !== 'gespeichert');
+      setSpeicherStatus(
+        speichereProjekte(dbRef.current) === 'gespeichert' ? 'gespeichert' : 'fehler',
+      );
     }, 400);
     return () => clearTimeout(t);
   }, [geladen, db]);
@@ -153,13 +158,14 @@ export default function Home() {
     'h-11 rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:opacity-40';
 
   return (
-    <div className="space-y-5 pb-10">
+    <div className={`space-y-5 pb-10 ${schritt === 1 ? '' : 'mx-auto max-w-5xl'}`}>
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <label htmlFor="projekt-auswahl" className="text-sm font-medium text-slate-500">
-          Projekt
+        <label htmlFor="projekt-auswahl" className="sr-only">
+          Aktuelles Projekt
         </label>
         <select
           id="projekt-auswahl"
+          aria-label="Aktuelles Projekt"
           value={db.aktivId ?? ''}
           onChange={(e) => setDb((d) => ({ ...d, aktivId: e.target.value }))}
           className="h-11 max-w-[22rem] flex-1 rounded-full border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
@@ -170,28 +176,44 @@ export default function Home() {
             </option>
           ))}
         </select>
-        <span className="text-xs text-slate-400">
-          {db.projekte.length} {db.projekte.length === 1 ? 'Projekt' : 'Projekte'}
+        <span className="hidden text-xs text-slate-400 sm:inline">
+          {speicherStatus === 'speichert'
+            ? 'Speichert …'
+            : speicherStatus === 'gespeichert'
+              ? '✓ Gespeichert'
+              : 'Speichern fehlgeschlagen'}
         </span>
         <div className="ml-auto flex gap-2">
           <button type="button" className={knopf} onClick={neuesAnlegen} disabled={!geladen}>
             + Neu
           </button>
-          <button type="button" className={knopf} onClick={dupliziereAktiv} disabled={!aktiv}>
-            Duplizieren
-          </button>
-          <button
-            type="button"
-            className={`${knopf} text-red-500 hover:border-red-300`}
-            onClick={loescheAktiv}
-            disabled={!aktiv}
-          >
-            Löschen
-          </button>
+          <details className="group relative">
+            <summary className={`${knopf} flex cursor-pointer list-none items-center`}>
+              Projektaktionen ···
+            </summary>
+            <div className="absolute right-0 z-30 mt-2 grid min-w-48 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+              <button
+                type="button"
+                className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                onClick={dupliziereAktiv}
+                disabled={!aktiv}
+              >
+                Projekt duplizieren
+              </button>
+              <button
+                type="button"
+                className="h-10 rounded-lg px-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                onClick={loescheAktiv}
+                disabled={!aktiv}
+              >
+                Projekt löschen
+              </button>
+            </div>
+          </details>
         </div>
       </div>
 
-      {speicherWarnung && (
+      {speicherStatus === 'fehler' && (
         <div
           role="alert"
           className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
