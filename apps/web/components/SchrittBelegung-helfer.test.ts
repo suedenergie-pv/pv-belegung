@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { feldMitGriff, leerVerschoben, punktInRechteck, rechteckAus } from './SchrittBelegung';
+import { neueFlaeche, neueGaubenFlaeche } from '../lib/model';
+import {
+  feldMitGriff,
+  flaechenInBelegungsReihenfolge,
+  leerVerschoben,
+  punktInRechteck,
+  rechteckAus,
+} from './SchrittBelegung';
+
+describe('Flächenreihenfolge', () => {
+  it('setzt Gauben direkt hinter ihr Hauptdach statt ans Ende der Belegung', () => {
+    const dachA = neueFlaeche(1, 'A');
+    const dachB = neueFlaeche(2, 'B');
+    const gaube1 = neueGaubenFlaeche(3, 'C', 'flachdach', dachA.id, undefined, 'g1');
+    const gaube2 = neueGaubenFlaeche(4, 'D', 'flachdach', dachA.id, undefined, 'g2');
+
+    expect(
+      flaechenInBelegungsReihenfolge([dachA, dachB, gaube1, gaube2]).map((f) => f.id),
+    ).toEqual([dachA.id, gaube1.id, gaube2.id, dachB.id]);
+  });
+});
 
 describe('Belegungsfeld-Griffe', () => {
   const feld = { xM: 2, yM: 3, breiteM: 4, hoeheM: 5, quer: false, leer: ['0-0', '1-2'] };

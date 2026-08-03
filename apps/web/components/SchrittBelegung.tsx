@@ -92,6 +92,27 @@ const MIN_FELD_M = 0.2;
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
+/** Hauptflächen und ihre Gauben für die verschachtelte UI zusammenhalten. */
+export function flaechenInBelegungsReihenfolge(flaechen: Flaeche[]): Flaeche[] {
+  return [
+    ...flaechen
+      .filter((f) => !f.gaubenTyp)
+      .flatMap((hauptflaeche) => [
+        hauptflaeche,
+        ...flaechen.filter(
+          (f) => f.gaubenTyp && f.elternFlaecheId === hauptflaeche.id,
+        ),
+      ]),
+    ...flaechen.filter(
+      (f) =>
+        f.gaubenTyp &&
+        !flaechen.some(
+          (hauptflaeche) => !hauptflaeche.gaubenTyp && hauptflaeche.id === f.elternFlaecheId,
+        ),
+    ),
+  ];
+}
+
 /**
  * Feldgröße aus einem Griff-Zug (16.07.2026): nur die vom Griff berührten Kanten
  * wandern (`nw` = links+oben, `e` = nur rechts …). Zieht man eine Kante über die
@@ -1034,6 +1055,11 @@ export function SchrittBelegung({
     setZeichnung({ ...zeichnung, punkte: [] });
   };
 
+  // Hauptdach und zugehörige Gauben bleiben im Vertriebsflow beieinander. Intern
+  // sind die Gauben weiterhin eigenständige Ebenen; nur die UI-Reihenfolge wird
+  // hierarchisch statt nach Erstellzeit aufgebaut (SPEC §4.3).
+  const belegungsReihenfolge = flaechenInBelegungsReihenfolge(projekt.flaechen);
+
   return (
     <div className="space-y-4">
       <Karte className="border-akzent/30 bg-gradient-to-r from-white to-akzent/5">
@@ -1222,7 +1248,8 @@ export function SchrittBelegung({
         )}
       </Karte>
 
-      {projekt.flaechen.map((f, i) => {
+      {belegungsReihenfolge.map((f) => {
+        const i = projekt.flaechen.indexOf(f);
         const fotoAsset = projektFotoVon(projekt, f);
         const foto = dachFotoVon(projekt, f);
         const fMitFoto: Flaeche = foto ? { ...f, foto } : f;
@@ -1264,6 +1291,8 @@ export function SchrittBelegung({
                   foto && belegungZeigen ? () => aktiviereFotoFokus(f.id) : undefined
                 }
                 fotoFokusAktiv={fotoFokusId === f.id}
+                flaecheKwp={(aktiv * modul.pmaxW) / 1000}
+                gesamtKwp={kwp}
                 onLoeschen={
                   projekt.flaechen.filter((x) => !x.gaubenTyp).length > 1
                     ? () => loescheHauptflaeche(f)
@@ -1778,18 +1807,29 @@ export function SchrittBelegung({
             (x.gaubenGruppeId ?? x.id) === (f.gaubenGruppeId ?? f.id),
         );
         const ersteSeite = gruppenGeschwister[0]?.id === f.id;
+        const gruppeId = f.gaubenGruppeId ?? f.id;
+        const gaubenGruppen = Array.from(
+          new Set(
+            projekt.flaechen
+              .filter((x) => x.gaubenTyp && x.elternFlaecheId === f.elternFlaecheId)
+              .map((x) => x.gaubenGruppeId ?? x.id),
+          ),
+        );
+        const gaubenNummer = Math.max(1, gaubenGruppen.indexOf(gruppeId) + 1);
         return (
           <details
             key={f.id}
+            data-gauben-gruppe={gruppeId}
             className={`rounded-xl border border-sky-200 bg-sky-50/60 p-2 ${
               ersteSeite ? 'mt-2' : '-mt-3'
             }`}
           >
-            <summary className="cursor-pointer px-2 py-1 text-sm font-semibold text-sky-900">
+            <summary className="sticky top-16 z-20 cursor-pointer rounded-lg bg-sky-50 px-2 py-2 text-sm font-semibold text-sky-900">
               {ersteSeite
-                ? `Gaubenbelegung bearbeiten · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
-                : 'Zweite Gaubenseite bearbeiten'}{' '}
-              · {aktiv} {aktiv === 1 ? 'Modul' : 'Module'}
+                ? `Gaube ${gaubenNummer} belegen · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
+                : `Gaube ${gaubenNummer} · zweite Dachseite`}{' '}
+              · {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} ·{' '}
+              {fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp Fläche · {fmtDe(kwp, 2)} kWp Gesamt
             </summary>
             <div className="mt-2">{karte}</div>
           </details>

@@ -225,7 +225,35 @@ export function GaubenEditor({
     setMarkieren(true);
   };
 
-  const erstellen = () => {
+  const gleicheGaubeMarkieren = (flaechen: Flaeche[]) => {
+    const erste = flaechen[0];
+    if (!erste) return;
+    const messung = erste.gaubenMessung;
+    setTyp(erste.gaubenTyp ?? 'flachdach');
+    setQuelle(messung?.quelle ?? 'aufmass');
+    setBreiteM(erste.breiteM);
+    setHoeheM(erste.hoeheM);
+    setZiegelQuer(messung?.ziegelQuer ?? 10);
+    setDeckbreiteCm(messung?.deckbreiteCm ?? 30);
+    setZiegelReihen(messung?.ziegelReihen ?? 8);
+    setReihenabstandCm(messung?.reihenabstandCm ?? 34);
+    setBearbeiteId(null);
+    setPunkte([]);
+    setOffen(true);
+    setMarkieren(true);
+  };
+
+  const belegungOeffnen = (gruppenId: string) => {
+    const details = Array.from(
+      document.querySelectorAll<HTMLDetailsElement>('details[data-gauben-gruppe]'),
+    ).filter((element) => element.dataset.gaubenGruppe === gruppenId);
+    details.forEach((element) => {
+      element.open = true;
+    });
+    details[0]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const erstellen = (weitereGleiche = false) => {
     if (!aussen || punkte.length < erwartet) return;
     const aussparung = gaubenAussparungAusFoto(eltern, aussen);
     if (!aussparung) return;
@@ -269,7 +297,14 @@ export function GaubenEditor({
       },
       aussparung,
     });
-    reset();
+    if (weitereGleiche) {
+      setPunkte([]);
+      setBearbeiteId(null);
+      setMarkieren(true);
+      setOffen(true);
+    } else {
+      reset();
+    }
   };
 
   return (
@@ -277,7 +312,12 @@ export function GaubenEditor({
       <div className="flex flex-wrap items-center gap-2">
         <div>
           <strong className="block text-sm text-sky-950">Gauben auf dieser Dachfläche</strong>
-          <span className="text-xs text-sky-700">Im selben Foto markieren – Zuordnung und Aussparung passieren automatisch.</span>
+          <span className="text-xs text-sky-700">
+            {gruppen.length > 0
+              ? `${gruppen.length} ${gruppen.length === 1 ? 'Gaube' : 'Gauben'} angelegt · `
+              : ''}
+            Im selben Foto markieren – Zuordnung und Aussparung passieren automatisch.
+          </span>
         </div>
         {!offen && (
           <button
@@ -316,7 +356,21 @@ export function GaubenEditor({
                   </span>
                   <button
                     type="button"
-                    className="ml-auto h-9 rounded-lg border border-sky-300 px-3 text-xs font-medium text-sky-800 hover:bg-sky-50"
+                    className="ml-auto h-9 rounded-lg border border-sky-300 bg-sky-50 px-3 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                    onClick={() => belegungOeffnen(id)}
+                  >
+                    Belegung bearbeiten
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-xs font-semibold text-akzent hover:bg-akzent/10"
+                    onClick={() => gleicheGaubeMarkieren(flaechen)}
+                  >
+                    + Gleiche markieren
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg border border-sky-300 px-3 text-xs font-medium text-sky-800 hover:bg-sky-50"
                     onClick={() => markierungNeu(id, flaechen)}
                   >
                     Markierung neu
@@ -491,10 +545,23 @@ export function GaubenEditor({
                     punkte.length < erwartet ||
                     (!bearbeiteId && quelle === 'nachbardach' && !sichtbareSchaetzung)
                   }
-                  onClick={erstellen}
+                  onClick={() => erstellen(false)}
                 >
-                  {bearbeiteId ? 'Markierung übernehmen' : 'Gaube anlegen'}
+                  {bearbeiteId ? 'Markierung übernehmen' : 'Gaube anlegen & fertig'}
                 </button>
+                {!bearbeiteId && (
+                  <button
+                    type="button"
+                    className="h-11 rounded-lg bg-akzent px-4 text-sm font-semibold text-white disabled:opacity-40"
+                    disabled={
+                      punkte.length < erwartet ||
+                      (quelle === 'nachbardach' && !sichtbareSchaetzung)
+                    }
+                    onClick={() => erstellen(true)}
+                  >
+                    Anlegen & nächste gleiche markieren
+                  </button>
+                )}
                 <button type="button" className={sekundar} disabled={punkte.length === 0} onClick={() => setPunkte(punkte.slice(0, -1))}>Punkt zurück</button>
                 <button
                   type="button"

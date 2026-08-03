@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import {
   artVon,
+  fmtDe,
   type Dachform,
   type Flaeche,
   type Projekt,
@@ -63,6 +64,8 @@ export function FlaechenInlineEditor({
   onFotoPruefen,
   fotoFokusAktiv = false,
   onLoeschen,
+  flaecheKwp,
+  gesamtKwp,
 }: {
   projekt: Projekt;
   flaeche: Flaeche;
@@ -72,6 +75,8 @@ export function FlaechenInlineEditor({
   onFotoPruefen?: () => void;
   fotoFokusAktiv?: boolean;
   onLoeschen?: () => void;
+  flaecheKwp: number;
+  gesamtKwp: number;
 }) {
   const [offen, setOffen] = useState(!flaeche.grunddatenFertig);
   const art = artVon(flaeche);
@@ -115,7 +120,7 @@ export function FlaechenInlineEditor({
     <>
       <div
         id={`flaechen-masse-${flaeche.id}`}
-        className="sticky top-2 z-20 mb-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur"
+        className="sticky top-16 z-20 mb-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur"
       >
         <div className="flex flex-wrap items-end gap-3">
           <div className="mr-1 flex min-w-40 items-center gap-2 self-center">
@@ -182,7 +187,23 @@ export function FlaechenInlineEditor({
             </>
           )}
 
-          <div className="ml-auto flex gap-2 self-end">
+          <div className="ml-auto flex flex-wrap items-center gap-2 self-end">
+            <span
+              aria-label={`Leistung ${flaeche.name}: ${fmtDe(flaecheKwp, 2)} kWp`}
+              className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-akzent/10 px-3 text-sm text-akzent"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide">Fläche</span>
+              <strong className="text-base tabular-nums">{fmtDe(flaecheKwp, 2)} kWp</strong>
+            </span>
+            <span
+              aria-label={`Gesamtleistung: ${fmtDe(gesamtKwp, 2)} kWp`}
+              className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm text-white"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                Gesamt
+              </span>
+              <strong className="text-base tabular-nums">{fmtDe(gesamtKwp, 2)} kWp</strong>
+            </span>
             {onFotoPruefen && (
               <button
                 type="button"
@@ -216,10 +237,6 @@ export function FlaechenInlineEditor({
             )}
           </div>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
-          Maße ändern die sichtbare Modulgröße sofort; die gesetzten Fotoecken bleiben stehen.
-          {onFotoPruefen && ' „Am Foto anpassen" hält Maßzeile und Foto gleichzeitig sichtbar.'}
-        </p>
       </div>
 
       {offen && (

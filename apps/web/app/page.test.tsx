@@ -44,6 +44,8 @@ describe('Projektverwaltung und Einstieg', () => {
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
     fireEvent.click(getByRole('button', { name: 'Automatisch belegen' }));
     expect(await findByRole('button', { name: 'Belegung entfernen' })).toBeTruthy();
+    expect(getByLabelText('Leistung Dachfläche 1: 11,5 kWp')).toBeTruthy();
+    expect(getByLabelText('Gesamtleistung: 11,5 kWp')).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Quer' }));
     expect(getByRole('button', { name: 'Quer' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(getByRole('button', { name: 'Weiter →' }));
