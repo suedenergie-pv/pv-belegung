@@ -15,7 +15,6 @@ import {
   modulMatrix,
   modulMatrixDreiecke,
   modulMatrixNetz,
-  regularisiereModulViereck,
 } from '../lib/modul-assets';
 import {
   DACHFARBEN,
@@ -304,24 +303,20 @@ export function moduleAufHomographie({
     // Modulmaße/Ausrichtung je Position (bei gemischten Bändern verschieden).
     const mB = p.wM;
     const mH = p.hM;
-    // Der exakte Fußabdruck bleibt homographisch. Für das sichtbare Modul wird
-    // das Viereck auf das nächstliegende Parallelogramm geglättet: Position,
-    // Maßstab und Drehung folgen dem Foto, einzelne Module werden auf stark
-    // trapezförmigen Dachflächen aber nicht mehr wie Gummi auseinandergezogen.
+    // Sichtbares Modul und Fußabdruck verwenden exakt dieselben homographisch
+    // projizierten Ecken. Eine modulweise Parallelogramm-Glättung ist hier
+    // absichtlich verboten: Sie verschiebt benachbarte Reihen unterschiedlich,
+    // öffnet Fugen und kann Module sogar über den markierten Dachrand schieben.
     const TL = projiziere(h, [p.xM, p.yM]);
     const TR = projiziere(h, [p.xM + mB, p.yM]);
     const BR = projiziere(h, [p.xM + mB, p.yM + mH]);
     const BL = projiziere(h, [p.xM, p.yM + mH]);
-    // Gauben sind laut Datenmodell eigenständige Ebenen. Ihre vier Fotoecken
-    // beschreiben bewusst die starke Neigung der Gaubenfläche; dort muss die
-    // exakte projektive Form erhalten bleiben. Nur normale Dachflächen bekommen
-    // den Schutz gegen den trapezförmigen Gummizug aus frei markierten Umrissen.
+    // Gauben sind laut Datenmodell eigenständige Ebenen. Ihre meist stärkere
+    // Perspektive wird mit einem feineren Netz gerendert; normale Dachflächen
+    // benötigen nur die beiden exakt aneinanderliegenden Dreiecke.
     const dreiecke = flaeche.gaubenTyp
       ? modulMatrixNetz(TL, TR, BR, BL, p.quer)
-      : (() => {
-          const [visTL, visTR, visBR, visBL] = regularisiereModulViereck(TL, TR, BR, BL);
-          return modulMatrixDreiecke(visTL, visTR, visBR, visBL, p.quer);
-        })();
+      : modulMatrixDreiecke(TL, TR, BR, BL, p.quer);
     return (
       <g
         key={key}

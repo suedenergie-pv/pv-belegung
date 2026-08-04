@@ -115,39 +115,6 @@ export function modulMatrix(
 
 type P = readonly [number, number];
 
-/**
- * Glättet ein stark projektiv verzogenes Modul-Viereck auf das am besten
- * passende Parallelogramm. Mittelpunkt sowie die gemittelten horizontalen und
- * vertikalen Kanten bleiben erhalten. Damit folgen Position, Größe und Drehung
- * weiterhin der Foto-Homographie, das Modul selbst bekommt aber keinen
- * trapezförmigen „Gummizug“. Der exakte Fußabdruck bleibt im Dach-Renderer
- * separat erhalten.
- */
-export function regularisiereModulViereck(
-  TL: P,
-  TR: P,
-  BR: P,
-  BL: P,
-): [P, P, P, P] {
-  const mitte: P = [
-    (TL[0] + TR[0] + BR[0] + BL[0]) / 4,
-    (TL[1] + TR[1] + BR[1] + BL[1]) / 4,
-  ];
-  const u: P = [
-    ((TR[0] - TL[0]) + (BR[0] - BL[0])) / 2,
-    ((TR[1] - TL[1]) + (BR[1] - BL[1])) / 2,
-  ];
-  const v: P = [
-    ((BL[0] - TL[0]) + (BR[0] - TR[0])) / 2,
-    ((BL[1] - TL[1]) + (BR[1] - TR[1])) / 2,
-  ];
-  const punkt = (su: number, sv: number): P => [
-    mitte[0] + (su * u[0] + sv * v[0]) / 2,
-    mitte[1] + (su * u[1] + sv * v[1]) / 2,
-  ];
-  return [punkt(-1, -1), punkt(1, -1), punkt(1, 1), punkt(-1, 1)];
-}
-
 /** Affine Matrix, die 3 Asset-Punkte EXAKT auf 3 Zielpunkte abbildet. */
 function affine3(a0: P, a1: P, a2: P, p0: P, p1: P, p2: P): string {
   const ax1 = a1[0] - a0[0];

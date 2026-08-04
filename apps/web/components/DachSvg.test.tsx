@@ -1,7 +1,16 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { modulById, neueFlaeche, rasterFuer, vollFeldFuer, type Flaeche } from '../lib/model';
+import { homographie, projiziere } from '../lib/foto-geometrie';
+import {
+  modulById,
+  neueFlaeche,
+  perspektiveQuelle,
+  rahmenBreiteVon,
+  rasterFuer,
+  vollFeldFuer,
+  type Flaeche,
+} from '../lib/model';
 import { DachSvg } from './DachSvg';
 
 describe('DachSvg', () => {
@@ -37,6 +46,54 @@ describe('DachSvg', () => {
     expect(ids).toHaveLength(raster.positionen.length * 2 * 2);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) expect(html).toContain(`clip-path="url(#${id})"`);
+  });
+
+  it('verwendet bei starker Perspektive exakt die projizierten Modul-Fußabdrücke', () => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const basis: Flaeche = {
+      ...neueFlaeche(1, 'A'),
+      breiteM: 7,
+      hoeheM: 9,
+      ausrichtung: 'hoch',
+      foto: {
+        dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+        breitePx: 320,
+        hoehePx: 520,
+        traufePx: null,
+        // Entspricht dem gemeldeten stark konvergierenden Dachfoto.
+        eckenPx: [[82, 480], [260, 480], [300, 38], [40, 36]],
+      },
+    };
+    const flaeche = { ...basis, felder: [vollFeldFuer(basis, modul)] };
+    const raster = rasterFuer(flaeche, modul);
+    const html = renderToStaticMarkup(
+      <DachSvg flaeche={flaeche} raster={raster} modul={modul} />,
+    );
+    const clips = [...html.matchAll(/<clipPath[^>]*><polygon points="([^"]+)"/g)].map((m) =>
+      m[1]!.split(' ').map((paar) => paar.split(',').map(Number) as [number, number]),
+    );
+    const h = homographie(
+      rahmenBreiteVon(flaeche),
+      flaeche.hoeheM,
+      flaeche.foto!.eckenPx!,
+      perspektiveQuelle(flaeche),
+    )!;
+
+    expect(clips).toHaveLength(raster.positionen.length * 2);
+    raster.positionen.forEach((p, i) => {
+      const sichtbar = [...clips[i * 2]!, ...clips[i * 2 + 1]!];
+      const ecken = [
+        projiziere(h, [p.xM, p.yM]),
+        projiziere(h, [p.xM + p.wM, p.yM]),
+        projiziere(h, [p.xM + p.wM, p.yM + p.hM]),
+        projiziere(h, [p.xM, p.yM + p.hM]),
+      ];
+      for (const [x, y] of ecken) {
+        expect(
+          sichtbar.some(([sx, sy]) => Math.abs(sx - x) < 1e-8 && Math.abs(sy - y) < 1e-8),
+        ).toBe(true);
+      }
+    });
   });
 
   it('behält bei Gauben die eigene Vierpunkt-Perspektive exakt bei', () => {
