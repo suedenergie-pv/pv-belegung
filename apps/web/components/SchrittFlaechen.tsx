@@ -568,7 +568,7 @@ export function SchrittFlaechen({
         <p className="text-xs text-slate-400">
           Maße bitte als Aufmaß-Werte (wahre Maße) eingeben — die Sparrenlänge NICHT aus der
           Draufsicht/Luftbild ablesen (Verkürzung!). Im nächsten Schritt können A/B/C gemeinsam
-          einem Drohnenfoto oder auf mehrere Fotos verteilt zugeordnet werden. Gauben werden dort
+          auf Fotos liegen; dieselbe Fläche darf dort auch mehrere Perspektiven bekommen. Gauben werden dort
           direkt innerhalb ihres Hauptdachs angelegt.
         </p>
       )}

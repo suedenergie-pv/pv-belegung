@@ -58,7 +58,8 @@
 
 Lies zuerst diese CLAUDE.md komplett (v.a. „Nicht verhandelbar", Screenshot-Workflow,
 Preview-Falle unten) und SPEC §9/§13. Arbeitsstand: alles committet & deployt,
-Live-URL https://suedenergie-pv.github.io/pv-belegung/ (jeder Push auf main deployt).
+Produktiv-URL https://belegung.suedenergie-pv.de/ (IONOS-VPS, Nginx). GitHub Pages
+unter https://suedenergie-pv.github.io/pv-belegung/ bleibt als Fallback bestehen.
 
 ✅ Projektliste, Dachform (Trapez), Jolywood-Rendering, PDF-Kleinkram,
 Stringcheck-Umbenennung, Belegungs-Optimierer, SüdEnergie-Logo im PDF-Kopf
@@ -360,7 +361,8 @@ Datum. 75 Engine-Tests grün.
 3. ✅ **Repo öffentlich + Live-Deploy** — GitHub Pages via Actions-Workflow
    (`.github/workflows/pages.yml`): jeder Push auf main deployt
    https://suedenergie-pv.github.io/pv-belegung/ (statischer Export; CI entfernt
-   die dev-only debug-shot-Route, lokal bleibt sie). App ist rein clientseitig.
+   die dev-only debug-shot-Route, lokal bleibt sie). Produktiv läuft derselbe statische
+   Export unter https://belegung.suedenergie-pv.de/ auf dem IONOS-VPS. App ist rein clientseitig.
 4. ✅ **Polygon-Umriss je Fläche** (Genrihs Walmdach-Frage) — `umrissM` (beliebige
    Eckenzahl; Eckenzahl wird nie abgefragt, sie ergibt sich beim Klicken),
    Engine filtert Module, die nicht komplett im Polygon liegen; Randabstand gilt

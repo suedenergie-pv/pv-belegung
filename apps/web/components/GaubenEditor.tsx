@@ -11,6 +11,7 @@ import {
 import { sortiereEcken, type Ecken, type Punkt } from '../lib/foto-geometrie';
 import {
   fmtDe,
+  fotoZuordnungenVon,
   type Flaeche,
   type GaubenMessung,
   type GaubenTyp,
@@ -383,7 +384,7 @@ export function GaubenEditor({
                     Entfernen
                   </button>
                 </div>
-                {!flaechen.every((f) => f.fotoZuordnung?.eckenPx) && (
+                {!flaechen.every((f) => fotoZuordnungenVon(f)[0]?.eckenPx) && (
                   <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
                     Die Gaube ist dem Foto noch zugeordnet, muss nach dem Fotoaustausch aber neu
                     markiert werden. Maße und bisherige Belegung bleiben erhalten.

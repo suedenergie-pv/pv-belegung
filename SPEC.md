@@ -328,11 +328,28 @@ Rule-based Solver, KEIN LLM: (1) gültige Stringlängen `n` je Modul×WR enumeri
 
 Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert Projekt als eskaliert. Anspruch des Tools sind 80 % Standarddächer, nicht 100 % — ehrliche Eskalation statt falscher Plan.
 
-### 8.4 Belegungsfotos und Flächenzuordnung (17.07.2026)
+### 8.4 Belegungsfotos und Flächenzuordnung (04.08.2026)
 
 - Drohnenfotos sind projektweite Bild-Assets. Ein Foto darf mehrere Dachflächen A/B/C enthalten; alternativ dürfen die Flächen auf mehrere Fotos verteilt werden.
-- Jede Dachfläche hat in v1 genau **ein primäres Belegungsfoto**. Die Zuordnung wird im Schritt „Belegung" frei gesetzt und kann später geändert werden. Flächen ohne Foto bleiben in der maßstäblichen Draufsicht bearbeitbar.
-- Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset. Dadurch hat jede Fläche auf demselben Foto ihre eigene Homographie, ihren eigenen Umriss und ihre eigenen Hindernisse.
+- Jede Dachfläche darf **einem oder mehreren Belegungsfotos** zugeordnet sein. Jede
+  Zuordnung ist eine eigene Perspektive derselben metrischen Dachfläche. Flächen
+  ohne Foto bleiben in der maßstäblichen Draufsicht bearbeitbar; die Draufsicht
+  bleibt auch bei vorhandenen Fotos als zusätzliche Arbeitsansicht erreichbar.
+- Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur
+  **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset und nicht global zur Fläche.
+  Belegungsfelder, ausgeschaltete Module, metrischer Umriss und Hindernisse gehören
+  dagegen genau einmal zur Dachfläche. Eine Änderung in einer Perspektive wird daher
+  automatisch in allen anderen Perspektiven derselben Fläche sichtbar.
+- Eine Fläche darf demselben Foto höchstens einmal zugeordnet werden. Jede Perspektive
+  wird separat mit vier Ecken kalibriert. Das Neusetzen einer Perspektive darf die
+  gemeinsame metrische Geometrie der Dachfläche nicht löschen.
+- UX: In der Flächenkarte wird zwischen Draufsicht und den zugeordneten Fotos
+  umgeschaltet. „Foto hinzufügen“ bzw. „Weitere Perspektive“ lädt direkt an dieser
+  Fläche ein Bild hoch, ordnet es automatisch zu und öffnet die neue Perspektive.
+  Bereits vorhandene Projektfotos können dort optional wiederverwendet werden. Die
+  projektweite Fotoübersicht dient nur Vorschau, Umbenennen, Ersetzen und Löschen;
+  sie enthält keinen zweiten Zuordnungsweg. Das Entfernen einer Perspektive löst
+  nur die aktive Zuordnung und niemals die Belegung.
 - Das frühere eigene UI-Tab „Gesamtansicht" entfällt. Die Foto-Gruppen im Belegungsschritt und im PDF übernehmen diese Aufgabe.
 - Der Vertriebsablauf hat drei Hauptschritte: **Projekt → Dach & Belegung → Export**.
   Dachflächen-Grunddaten und Belegung liegen bewusst im selben Arbeitsschritt.
@@ -461,6 +478,9 @@ Ein Klick erzeugt Ticket in `tickets_projektierung` mit Payload:
 ```
 
 Ticket-Kategorie: neue Kategorie „Vorplanung Vertrieb" (V3-Datenmodell des Ticketsystems: `user_categories` beachten — bekannter Bug!). PL macht daraus die PV*SOL-Detailauslegung. Feldnamen ASCII snake_case, kompatibel als spätere CRM-Keys (gleiche Konvention wie Objektaufnahme-PDF).
+
+PDF- und JSON-Downloads enthalten im Dateinamen neben dem Kunden-/Projektbezug auch
+die Gesamtanlagengröße in kWp, damit Dateien außerhalb des Tools eindeutig bleiben.
 
 ---
 

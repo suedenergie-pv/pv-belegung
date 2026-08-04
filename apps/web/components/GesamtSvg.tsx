@@ -4,6 +4,7 @@ import { useId } from 'react';
 import { homographie } from '../lib/foto-geometrie';
 import {
   modulById,
+  fotoZuordnungVon,
   perspektiveQuelle,
   rahmenBreiteVon,
   rasterFuer,
@@ -51,12 +52,12 @@ export function fotoFlaechenInhalt({
   const modul = modulById(projekt.modulId);
   const px = (v: number) => foto.breitePx * v;
   return projekt.flaechen.map((f, i) => {
-    const z = f.fotoZuordnung;
+    const z = fotoZuordnungVon(f, foto.id);
     if (
       !z?.eckenPx ||
       z.fotoId !== foto.id ||
       f.id === ausblendenId ||
-      (nurFertige && !f.markierungFertig)
+      (nurFertige && !z.markierungFertig)
     ) return null;
     const h = homographie(rahmenBreiteVon(f), f.hoeheM, z.eckenPx, perspektiveQuelle(f));
     if (!h) return null;

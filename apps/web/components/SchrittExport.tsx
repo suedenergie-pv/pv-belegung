@@ -7,6 +7,7 @@ import {
   flaechenAusrichtungsLabel,
   bauePayload,
   dachFotoVon,
+  downloadDateiname,
   flaechenTitel,
   flaecheM2,
   fmtDe,
@@ -164,7 +165,7 @@ export function SchrittExport({
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `belegung-${(projekt.kunde || 'projekt').toLowerCase().replace(/\s+/g, '-')}.json`;
+                a.download = downloadDateiname(projekt, 'belegung', 'json');
                 a.click();
                 URL.revokeObjectURL(url);
               }}

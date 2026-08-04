@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bauePayload,
+  downloadDateiname,
   fertigeFotoFlaechen,
+  fotoZuordnungenVon,
   felderInput,
   flaecheM2,
   flachdachOstRichtung,
@@ -153,22 +155,79 @@ describe('Mehrfoto-Sicherheit', () => {
     const projekt = neuesProjekt();
     projekt.fotos = [
       { id: 'foto-1', name: 'Foto 1', dataUrl: 'data:image/jpeg;base64,x', breitePx: 100, hoehePx: 80 },
+      { id: 'foto-2', name: 'Foto 2', dataUrl: 'data:image/jpeg;base64,y', breitePx: 120, hoehePx: 90 },
     ];
     projekt.flaechen = [
       {
         ...projekt.flaechen[0]!,
-        fotoZuordnung: {
-          fotoId: 'foto-1',
-          traufePx: null,
-          eckenPx: [[0, 80], [100, 80], [100, 0], [0, 0]],
-        },
-        markierungFertig: false,
+        fotoZuordnungen: [
+          {
+            fotoId: 'foto-1',
+            traufePx: null,
+            eckenPx: [[0, 80], [100, 80], [100, 0], [0, 0]],
+            markierungFertig: false,
+          },
+          {
+            fotoId: 'foto-2',
+            traufePx: null,
+            eckenPx: [[0, 90], [120, 90], [120, 0], [0, 0]],
+            markierungFertig: true,
+          },
+        ],
       },
     ];
     expect(fertigeFotoFlaechen(projekt, 'foto-1')).toHaveLength(0);
+    expect(fertigeFotoFlaechen(projekt, 'foto-2')).toHaveLength(1);
 
-    projekt.flaechen[0]!.markierungFertig = true;
+    projekt.flaechen[0]!.fotoZuordnungen![0]!.markierungFertig = true;
     expect(fertigeFotoFlaechen(projekt, 'foto-1')).toHaveLength(1);
+  });
+
+  it('migriert die einzelne v2-Fotozuordnung verlustfrei auf Perspektiven', () => {
+    const projekt = neuesProjekt();
+    projekt.fotoModellVersion = 2;
+    projekt.fotos = [
+      { id: 'foto-1', name: 'Foto 1', dataUrl: 'data:image/jpeg;base64,x', breitePx: 100, hoehePx: 80 },
+    ];
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!,
+      fotoZuordnung: {
+        fotoId: 'foto-1',
+        traufePx: null,
+        eckenPx: [[0, 80], [100, 80], [100, 0], [0, 0]],
+      },
+      markierungFertig: true,
+    };
+    const alt: ProjektDb = {
+      aktivId: 'projekt-1',
+      projekte: [{ id: 'projekt-1', projekt, schritt: 1, erstelltAm: 1, geaendertAm: 1 }],
+    };
+    vi.stubGlobal('window', {
+      localStorage: { getItem: vi.fn(() => JSON.stringify(alt)) },
+    });
+
+    const migriert = ladeProjekte().projekte[0]!.projekt;
+    expect(migriert.fotoModellVersion).toBe(3);
+    expect(fotoZuordnungenVon(migriert.flaechen[0]!)).toEqual([
+      expect.objectContaining({ fotoId: 'foto-1', markierungFertig: true }),
+    ]);
+    expect(migriert.flaechen[0]!.fotoZuordnung).toBeUndefined();
+    expect(migriert.flaechen[0]!.markierungFertig).toBeUndefined();
+  });
+
+  it('setzt die Gesamtleistung in sichere PDF- und JSON-Dateinamen', () => {
+    const projekt = neuesProjekt();
+    projekt.kunde = 'Müller & Söhne';
+    projekt.flaechen[0]!.felder = [
+      { xM: 0, yM: 0, breiteM: 10, hoeheM: 6, quer: true },
+    ];
+
+    expect(downloadDateiname(projekt, 'belegungsplan', 'pdf')).toMatch(
+      /^belegungsplan-muller-sohne-\d+,\d{2}-kwp\.pdf$/,
+    );
+    expect(downloadDateiname(projekt, 'belegung', 'json')).toMatch(
+      /^belegung-muller-sohne-\d+,\d{2}-kwp\.json$/,
+    );
   });
 
   it('überschreibt bei vollem Browser-Speicher keinen zweiten Stand ohne Fotos', () => {

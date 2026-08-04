@@ -137,7 +137,7 @@ export interface ProjektFoto extends GesamtFoto {
   name: string;
 }
 
-/** Lage genau einer Fläche auf ihrem primären Belegungsfoto. */
+/** Lage genau einer Fläche auf genau einem Belegungsfoto. */
 export interface FotoZuordnung {
   fotoId: string;
   eckenPx?: Ecken;
@@ -145,6 +145,8 @@ export interface FotoZuordnung {
   traufePx: [number, number, number, number] | null;
   /** Optionaler Maßstab aus der Ziegelzählung, flächenspezifisch. */
   pxProM?: number;
+  /** Diese Perspektive ist fertig markiert und darf im Belegungsplan erscheinen. */
+  markierungFertig?: boolean;
 }
 
 /**
@@ -214,10 +216,9 @@ export interface Flaeche {
   grunddatenFertig?: boolean;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
-  /**
-   * Primäres Belegungsfoto im neuen Mehrfoto-Modell. Das Bild liegt einmalig in
-   * Projekt.fotos; hier stehen nur Zuordnung, Perspektive und Maßstab.
-   */
+  /** Mehrere kalibrierte Perspektiven derselben metrischen Dachfläche. */
+  fotoZuordnungen?: FotoZuordnung[];
+  /** @deprecated Nur zum Einlesen von Altprojekten (Foto-Modell v2). */
   fotoZuordnung?: FotoZuordnung;
   /**
    * Lage dieser Fläche auf dem projektweiten Gesamtfoto (4 Anker-Ecken in
@@ -225,11 +226,7 @@ export interface Flaeche {
    * rechts/links). Nur für die Gesamtansicht — unabhängig vom Einzelflächen-Foto.
    */
   gesamtEckenPx?: Ecken;
-  /**
-   * Foto-Markierung abgeschlossen → Belegung anzeigen. Solange false (und ein Foto
-   * mit Umriss existiert), bleibt das LEERE Foto sichtbar, um Hindernisse VOR der
-   * Belegung zu markieren (Genrih 07.07.: bei belegtem Dach sieht man sie nicht).
-   */
+  /** @deprecated Markierungsstatus liegt seit Foto-Modell v3 an der Zuordnung. */
   markierungFertig?: boolean;
   /**
    * Manuell gezeichneter Flächen-Umriss (beliebige Eckenzahl, Flächen-Koordinaten
@@ -428,8 +425,8 @@ export interface Projekt {
   mppts: UiStringDef[][];
   /** Projektweite Belegungsfotos; jedes kann beliebig viele Flächen enthalten. */
   fotos: ProjektFoto[];
-  /** Migrationsmarker für das Mehrfoto-Modell (17.07.2026). */
-  fotoModellVersion?: 2;
+  /** Migrationsmarker für mehrere Perspektiven je Fläche (04.08.2026). */
+  fotoModellVersion?: 2 | 3;
   /** Projektweites Gesamt-Drohnenfoto für die Gesamtansicht (optional). */
   gesamtFoto?: GesamtFoto;
 }
@@ -476,7 +473,7 @@ export function neuesProjekt(): Projekt {
     wrId: null,
     mppts: [],
     fotos: [],
-    fotoModellVersion: 2,
+    fotoModellVersion: 3,
   };
 }
 
@@ -516,20 +513,40 @@ export function neueFotoId(): string {
   return `foto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** Das zu einer Fläche gehörende Projektfoto, falls die Zuordnung gültig ist. */
-export function projektFotoVon(p: Projekt, f: Flaeche): ProjektFoto | undefined {
+/** Alle Perspektiven einer Fläche; liest für Tests/Altstände auch noch v2. */
+export function fotoZuordnungenVon(f: Flaeche): FotoZuordnung[] {
+  if (Array.isArray(f.fotoZuordnungen)) return f.fotoZuordnungen;
   return f.fotoZuordnung
-    ? p.fotos.find((foto) => foto.id === f.fotoZuordnung!.fotoId)
-    : undefined;
+    ? [{ ...f.fotoZuordnung, markierungFertig: f.markierungFertig }]
+    : [];
+}
+
+/** Eine konkrete Perspektive oder, ohne ID, die erste Perspektive der Fläche. */
+export function fotoZuordnungVon(
+  f: Flaeche,
+  fotoId?: string,
+): FotoZuordnung | undefined {
+  const alle = fotoZuordnungenVon(f);
+  return fotoId ? alle.find((z) => z.fotoId === fotoId) : alle[0];
+}
+
+/** Das zu einer Perspektive gehörende Projektfoto, falls die Zuordnung gültig ist. */
+export function projektFotoVon(
+  p: Projekt,
+  f: Flaeche,
+  fotoId?: string,
+): ProjektFoto | undefined {
+  const z = fotoZuordnungVon(f, fotoId);
+  return z ? p.fotos.find((foto) => foto.id === z.fotoId) : undefined;
 }
 
 /**
  * Kompatibilitätsansicht für FotoHintergrund/DachSvg: Bild-Asset und
  * flächenspezifische Zuordnung werden transient zu einem DachFoto zusammengesetzt.
  */
-export function dachFotoVon(p: Projekt, f: Flaeche): DachFoto | undefined {
-  const asset = projektFotoVon(p, f);
-  const z = f.fotoZuordnung;
+export function dachFotoVon(p: Projekt, f: Flaeche, fotoId?: string): DachFoto | undefined {
+  const z = fotoZuordnungVon(f, fotoId);
+  const asset = z ? projektFotoVon(p, f, z.fotoId) : undefined;
   if (!asset || !z) return undefined;
   return {
     dataUrl: asset.dataUrl,
@@ -658,12 +675,10 @@ export function fertigeFotoFlaechen(
 ): Array<{ f: Flaeche; i: number }> {
   return p.flaechen
     .map((f, i) => ({ f, i }))
-    .filter(
-      ({ f }) =>
-        f.fotoZuordnung?.fotoId === fotoId &&
-        !!f.fotoZuordnung.eckenPx &&
-        !!f.markierungFertig,
-    );
+    .filter(({ f }) => {
+      const z = fotoZuordnungVon(f, fotoId);
+      return !!z?.eckenPx && !!z.markierungFertig;
+    });
 }
 
 /** Tatsächliche Ausrichtungsverteilung der aktiven Module einer Fläche. */
@@ -713,6 +728,23 @@ export function kwpGesamt(p: Projekt): number {
     p.flaechen.reduce((sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)), 0) *
     (modul.pmaxW / 1000)
   );
+}
+
+/** Einheitlicher, Windows-sicherer Downloadname mit gut sichtbarer Anlagenleistung. */
+export function downloadDateiname(
+  p: Projekt,
+  praefix: 'belegungsplan' | 'belegung',
+  endung: 'pdf' | 'json',
+): string {
+  const bezug = (p.kunde.trim() || 'projekt')
+    .toLocaleLowerCase('de-DE')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'projekt';
+  const leistung = fmtDe(kwpGesamt(p), 2).replace(/\s/g, '');
+  return `${praefix}-${bezug}-${leistung}-kwp.${endung}`;
 }
 
 export function baueEngineInput(p: Projekt): StringPlanInput | null {
@@ -827,8 +859,10 @@ export function eintragDatum(e: ProjektEintrag): string {
  * Bilddaten ausschließlich in Projekt.fotos und werden nicht mehr je Fläche dupliziert.
  */
 function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
-  const bereitsNeu = roh.fotoModellVersion === 2 && Array.isArray(roh.fotos);
-  if (bereitsNeu) {
+  const hatProjektFotos =
+    (roh.fotoModellVersion === 2 || roh.fotoModellVersion === 3) &&
+    Array.isArray(roh.fotos);
+  if (hatProjektFotos) {
     projekt.fotos = roh.fotos.filter(
       (f): f is ProjektFoto =>
         !!f &&
@@ -842,13 +876,27 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
       const rest = { ...f };
       delete rest.foto;
       delete rest.gesamtEckenPx;
-      if (rest.fotoZuordnung && !fotoIds.has(rest.fotoZuordnung.fotoId)) {
-        delete rest.fotoZuordnung;
-      }
+      const kandidaten = fotoZuordnungenVon(rest);
+      const gesehen = new Set<string>();
+      const fotoZuordnungen = kandidaten
+        .filter((z) => {
+          if (!z || !fotoIds.has(z.fotoId) || gesehen.has(z.fotoId)) return false;
+          gesehen.add(z.fotoId);
+          return true;
+        })
+        .map((z) => ({
+          ...z,
+          markierungFertig:
+            z.markierungFertig ?? rest.markierungFertig ?? !!z.eckenPx,
+        }));
+      delete rest.fotoZuordnung;
+      delete rest.markierungFertig;
+      if (fotoZuordnungen.length > 0) rest.fotoZuordnungen = fotoZuordnungen;
+      else delete rest.fotoZuordnungen;
       return rest;
     });
     delete projekt.gesamtFoto;
-    projekt.fotoModellVersion = 2;
+    projekt.fotoModellVersion = 3;
     return;
   }
 
@@ -885,25 +933,33 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
         breitePx: f.foto.breitePx,
         hoehePx: f.foto.hoehePx,
       });
-      zuordnung = { fotoId: id, traufePx: f.foto.traufePx };
+      zuordnung = {
+        fotoId: id,
+        traufePx: f.foto.traufePx,
+        markierungFertig: f.markierungFertig ?? !!f.foto.eckenPx,
+      };
       if (f.foto.eckenPx) zuordnung.eckenPx = f.foto.eckenPx;
       if (f.foto.pxProM !== undefined) zuordnung.pxProM = f.foto.pxProM;
     } else if (gesamtId && f.gesamtEckenPx) {
-      zuordnung = { fotoId: gesamtId, eckenPx: f.gesamtEckenPx, traufePx: null };
+      zuordnung = {
+        fotoId: gesamtId,
+        eckenPx: f.gesamtEckenPx,
+        traufePx: null,
+        markierungFertig: f.markierungFertig ?? true,
+      };
     }
 
     const rest = { ...f };
     delete rest.foto;
     delete rest.gesamtEckenPx;
-    if (zuordnung) rest.fotoZuordnung = zuordnung;
-    if (zuordnung?.eckenPx && rest.markierungFertig === undefined) {
-      rest.markierungFertig = true;
-    }
+    delete rest.fotoZuordnung;
+    delete rest.markierungFertig;
+    if (zuordnung) rest.fotoZuordnungen = [zuordnung];
     return rest;
   });
 
   projekt.fotos = fotos;
-  projekt.fotoModellVersion = 2;
+  projekt.fotoModellVersion = 3;
   delete projekt.gesamtFoto;
 }
 
@@ -936,13 +992,6 @@ function migriereProjekt(roh: Projekt): Projekt {
     for (const f of projekt.flaechen) mit.push(f.zone ? f : { ...f, zone: naechsteZone(mit) });
     projekt.flaechen = mit;
   }
-  // Bestehende Foto-Flächen (Umriss schon gesetzt) gelten als fertig markiert,
-  // damit sie nach dem Update nicht plötzlich in die Markier-Ansicht springen.
-  projekt.flaechen = projekt.flaechen.map((f) =>
-    f.fotoZuordnung?.eckenPx && f.markierungFertig === undefined
-      ? { ...f, markierungFertig: true }
-      : f,
-  );
   // 16.07.2026 (Felder-Umbau): Alt-Schlüssel des Automatismus strippen. Genrih:
   // „es gibt eh keine gespeicherten Belegungen" — Alt-Belegungen werden NICHT
   // konvertiert; die Fläche startet unbelegt („Automatisch füllen" ist ein Klick).

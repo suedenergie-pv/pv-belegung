@@ -8,6 +8,8 @@ import {
   artVon,
   dachFotoVon,
   felderInput,
+  fotoZuordnungVon,
+  fotoZuordnungenVon,
   fmtDe,
   leerePositionenFuer,
   modulById,
@@ -67,6 +69,10 @@ interface Zeichnung {
  * 'zellen' = einzelne Module im Feld antippen und dauerhaft entfernen.
  */
 type WerkzeugArt = 'zellen';
+
+type FotoUploadZiel =
+  | { art: 'ersetzen'; fotoId: string }
+  | { art: 'perspektive'; flaecheId: string };
 
 /** Laufende Zeiger-Geste — lebt nur im State, wird erst beim Loslassen committet. */
 type Drag =
@@ -246,6 +252,8 @@ export function SchrittBelegung({
   // Maße einblenden — beim Kunden vor Ort abschaltbar (Genrih 07.07.)
   const [masseZeigen, setMasseZeigen] = useState(true);
   const [fotoFokusId, setFotoFokusId] = useState<string | null>(null);
+  /** Aktive Arbeitsansicht je Fläche: Foto-ID oder 'plan' für die Draufsicht. */
+  const [ansichtJeFlaeche, setAnsichtJeFlaeche] = useState<Record<string, string>>({});
   // Aktives Werkzeug (exklusiv je Fläche); null = Felder-Werkzeug (Standard)
   const [modus, setModus] = useState<{ art: WerkzeugArt; flaecheId: string } | null>(null);
   // Schrittweite der Pfeil-Bewegung in cm
@@ -261,8 +269,7 @@ export function SchrittBelegung({
    */
   const dragAktiv = useRef(false);
   const fotoInputRef = useRef<HTMLInputElement>(null);
-  /** null = neues Foto; string = dieses Foto ersetzen. */
-  const fotoZielRef = useRef<string | null>(null);
+  const fotoZielRef = useRef<FotoUploadZiel | null>(null);
 
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
@@ -368,16 +375,20 @@ export function SchrittBelegung({
     window.requestAnimationFrame(() => scrolleZuFotoMitMassen(flaecheId));
   };
 
-  const waehleFotoDatei = (fotoId: string | null) => {
-    fotoZielRef.current = fotoId;
+  const waehleFotoDatei = (ziel: FotoUploadZiel) => {
+    fotoZielRef.current = ziel;
     fotoInputRef.current?.click();
   };
 
   const fotoDateiGewaehlt = async (file: File) => {
     const bild = await dateiZuBild(file);
-    const zielId = fotoZielRef.current;
+    const ziel = fotoZielRef.current;
+    fotoZielRef.current = null;
+    if (!ziel) return;
+    const neueId = ziel.art === 'perspektive' ? neueFotoId() : null;
     aendereProjekt((p) => {
-      if (zielId) {
+      if (ziel.art === 'ersetzen') {
+        const zielId = ziel.fotoId;
         return {
           ...p,
           fotos: p.fotos.map((foto) =>
@@ -385,35 +396,88 @@ export function SchrittBelegung({
           ),
           // Neue Pixelmaße machen alte Anker unbrauchbar; Flächen bleiben zugeordnet,
           // müssen aber auf dem neuen Bild sauber neu markiert werden.
-          flaechen: p.flaechen.map((f) =>
-            f.fotoZuordnung?.fotoId === zielId
-              ? {
-                  ...f,
-                  fotoZuordnung: { fotoId: zielId, traufePx: null },
-                  markierungFertig: false,
-                  // Der metrische Sicherheits-Ausschnitt bleibt erhalten. Seine
-                  // alten Pixelpunkte gehören aber zum ersetzten Bild und dürfen
-                  // erst nach „Markierung neu“ wieder gekoppelt werden.
-                  gaubenAussparungen: f.gaubenAussparungen?.map(
+          flaechen: p.flaechen.map((f) => {
+            const zuordnungen = fotoZuordnungenVon(f);
+            if (!zuordnungen.some((z) => z.fotoId === zielId)) return f;
+            return {
+              ...f,
+              fotoZuordnungen: zuordnungen.map((z) =>
+                z.fotoId === zielId
+                  ? { fotoId: zielId, traufePx: null, markierungFertig: false }
+                  : z,
+              ),
+              // Gauben-Markierungen sind an die erste (definierende) Perspektive
+              // gekoppelt. Der Austausch einer Zusatzperspektive darf sie nicht löschen.
+              gaubenAussparungen:
+                zuordnungen[0]?.fotoId === zielId
+                  ? f.gaubenAussparungen?.map(
                     ({ fotoEckenPx: _altePixel, ...a }) => a,
-                  ),
-                }
-              : f,
-          ),
+                    )
+                  : f.gaubenAussparungen,
+            };
+          }),
         };
       }
-      const id = neueFotoId();
+      const id = neueId!;
       const foto: ProjektFoto = {
         id,
         name: `Drohnenfoto ${p.fotos.length + 1}`,
         ...bild,
       };
-      return { ...p, fotos: [...p.fotos, foto] };
+      return {
+        ...p,
+        fotos: [...p.fotos, foto],
+        flaechen: p.flaechen.map((f) => {
+          if (f.id !== ziel.flaecheId) return f;
+          const neu = {
+            ...f,
+            fotoZuordnungen: [
+              ...fotoZuordnungenVon(f),
+              { fotoId: id, traufePx: null, markierungFertig: false },
+            ],
+          };
+          delete neu.fotoZuordnung;
+          delete neu.markierungFertig;
+          return neu;
+        }),
+      };
     });
+    if (ziel.art === 'perspektive' && neueId) {
+      setAnsichtJeFlaeche((alt) => ({ ...alt, [ziel.flaecheId]: neueId }));
+      setAuswahl(null);
+      setDrag(null);
+      setZeichnung(null);
+      setModus(null);
+    }
   };
 
-  /** Eine Fläche genau einem primären Belegungsfoto zuordnen oder davon lösen. */
-  const setzeFotoZuordnung = (flaecheId: string, fotoId: string | null) => {
+  /** Eine weitere Perspektive derselben Fläche anlegen. */
+  const fuegeFotoZuordnungHinzu = (flaecheId: string, fotoId: string) => {
+    setAuswahl(null);
+    setDrag(null);
+    setZeichnung(null);
+    setModus(null);
+    aendereProjekt((p) => ({
+      ...p,
+      flaechen: p.flaechen.map((f) => {
+        if (f.id !== flaecheId) return f;
+        const neu = { ...f };
+        delete neu.foto;
+        delete neu.gesamtEckenPx;
+        const bisher = fotoZuordnungenVon(neu);
+        neu.fotoZuordnungen = bisher.some((z) => z.fotoId === fotoId)
+          ? bisher
+          : [...bisher, { fotoId, traufePx: null, markierungFertig: false }];
+        delete neu.fotoZuordnung;
+        delete neu.markierungFertig;
+        return neu;
+      }),
+    }));
+    setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: fotoId }));
+  };
+
+  /** Nur eine Perspektive lösen; metrische Geometrie und Belegung bleiben erhalten. */
+  const loeseFotoZuordnung = (flaecheId: string, fotoId: string) => {
     setAuswahl(null);
     setDrag(null);
     setZeichnung(null);
@@ -422,29 +486,20 @@ export function SchrittBelegung({
       ...p,
       flaechen: p.flaechen.map((f) => {
         if (f.id !== flaecheId && f.elternFlaecheId !== flaecheId) return f;
-        const neu = { ...f };
-        delete neu.foto;
-        delete neu.gesamtEckenPx;
-        if (fotoId) {
-          neu.fotoZuordnung = { fotoId, traufePx: null };
-          neu.markierungFertig = false;
-        } else {
-          delete neu.fotoZuordnung;
-          delete neu.markierungFertig;
-        }
-        if (neu.gaubenAussparungen) {
-          neu.gaubenAussparungen = neu.gaubenAussparungen.map(
-            ({ fotoEckenPx: _altePixel, ...a }) => a,
-          );
-        }
+        const verbleibend = fotoZuordnungenVon(f).filter((z) => z.fotoId !== fotoId);
+        if (verbleibend.length === fotoZuordnungenVon(f).length) return f;
+        const neu = { ...f, fotoZuordnungen: verbleibend };
+        delete neu.fotoZuordnung;
+        delete neu.markierungFertig;
         return neu;
       }),
     }));
+    setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: 'plan' }));
   };
 
   const loescheFoto = (foto: ProjektFoto) => {
     const anzahl = projektRef.current.flaechen.filter(
-      (f) => f.fotoZuordnung?.fotoId === foto.id,
+      (f) => fotoZuordnungenVon(f).some((z) => z.fotoId === foto.id),
     ).length;
     if (
       !window.confirm(
@@ -457,8 +512,12 @@ export function SchrittBelegung({
       ...p,
       fotos: p.fotos.filter((x) => x.id !== foto.id),
       flaechen: p.flaechen.map((f) => {
-        if (f.fotoZuordnung?.fotoId !== foto.id) return f;
-        const neu = { ...f };
+        const bisher = fotoZuordnungenVon(f);
+        if (!bisher.some((z) => z.fotoId === foto.id)) return f;
+        const neu = {
+          ...f,
+          fotoZuordnungen: bisher.filter((z) => z.fotoId !== foto.id),
+        };
         delete neu.fotoZuordnung;
         delete neu.markierungFertig;
         return neu;
@@ -467,25 +526,35 @@ export function SchrittBelegung({
   };
 
   /** FotoHintergrund arbeitet weiter mit DachFoto; hier zurück ins neue Modell übersetzen. */
-  const patchFotoFlaeche = (f: Flaeche, patch: Partial<Flaeche>) => {
-    const { foto, ...rest } = patch;
+  const patchFotoFlaeche = (f: Flaeche, fotoId: string, patch: Partial<Flaeche>) => {
+    const { foto, markierungFertig, ...rest } = patch;
     aendereProjekt((p) => {
       const aktuell = p.flaechen.find((x) => x.id === f.id);
       if (!aktuell) return p;
       const neu: Partial<Flaeche> = { ...rest };
-      if (foto && aktuell.fotoZuordnung) {
+      const aktuellZ = fotoZuordnungVon(aktuell, fotoId);
+      if (aktuellZ) {
         const z: FotoZuordnung = {
-          fotoId: aktuell.fotoZuordnung.fotoId,
-          traufePx: foto.traufePx,
+          ...aktuellZ,
+          ...(foto ? { traufePx: foto.traufePx } : {}),
         };
-        if (foto.eckenPx) z.eckenPx = foto.eckenPx;
-        if (foto.pxProM !== undefined) z.pxProM = foto.pxProM;
-        neu.fotoZuordnung = z;
+        if (foto?.eckenPx) z.eckenPx = foto.eckenPx;
+        else if (foto) delete z.eckenPx;
+        if (foto?.pxProM !== undefined) z.pxProM = foto.pxProM;
+        else if (foto) delete z.pxProM;
+        if (markierungFertig !== undefined) z.markierungFertig = markierungFertig;
+        neu.fotoZuordnungen = fotoZuordnungenVon(aktuell).map((x) =>
+          x.fotoId === fotoId ? z : x,
+        );
 
         // Gauben-Pixel bleiben im gemeinsamen Foto fest. Wird nur die
         // Perspektive des Mutterdachs korrigiert, folgt die metrische Aussparung
         // automatisch, statt als unsichtbares altes Loch liegenzubleiben.
-        if (!aktuell.gaubenTyp && foto.eckenPx) {
+        if (
+          !aktuell.gaubenTyp &&
+          foto?.eckenPx &&
+          fotoZuordnungenVon(aktuell)[0]?.fotoId === fotoId
+        ) {
           neu.gaubenAussparungen = aktualisiereGaubenAussparungen(
             { ...aktuell, ...rest, foto },
             aktuell.gaubenAussparungen,
@@ -500,8 +569,8 @@ export function SchrittBelegung({
   };
 
   /** Gaube aus EINEM Parent-Foto-Workflow als interne Kindfläche(n) anlegen. */
-  const erstelleGaube = (eltern: Flaeche, daten: NeueGaubeAusFoto) => {
-    if (!eltern.fotoZuordnung) return;
+  const erstelleGaube = (eltern: Flaeche, fotoId: string, daten: NeueGaubeAusFoto) => {
+    if (!fotoZuordnungVon(eltern, fotoId)) return;
     aendereProjekt((p) => {
       const gruppeId = `gaube-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       const nummern = p.flaechen
@@ -513,13 +582,12 @@ export function SchrittBelegung({
         breiteM: daten.breiteM,
         hoeheM: daten.hoeheM,
         gaubenMessung: daten.messung,
-        markierungFertig: true,
         inaktiv: [] as string[],
       };
 
       const baueKind = (
         seite: 'links' | 'rechts' | undefined,
-        eckenPx: NonNullable<Flaeche['fotoZuordnung']>['eckenPx'],
+        eckenPx: FotoZuordnung['eckenPx'],
       ) => {
         const seitenMass = seite ? daten.seitenMasse?.[seite] : undefined;
         const zone = naechsteZone(mitZonen);
@@ -532,11 +600,12 @@ export function SchrittBelegung({
             daten.typ === 'satteldach'
               ? (eltern.azimutDeg + (seite === 'links' ? 270 : 90)) % 360
               : eltern.azimutDeg,
-          fotoZuordnung: {
-            fotoId: eltern.fotoZuordnung!.fotoId,
+          fotoZuordnungen: [{
+            fotoId,
             traufePx: null,
+            markierungFertig: true,
             ...(eckenPx ? { eckenPx } : {}),
-          },
+          }],
         };
         // Sofortige Vorschau: ein Feld über die ganze neue Gaubenfläche.
         kind.felder = [vollFeldFuer(kind, modul)];
@@ -607,7 +676,7 @@ export function SchrittBelegung({
   ) => {
     aendereProjekt((p) => {
       const eltern = p.flaechen.find((f) => f.id === elternId);
-      const fotoId = eltern?.fotoZuordnung?.fotoId;
+      const fotoId = eltern ? fotoZuordnungenVon(eltern)[0]?.fotoId : undefined;
       return {
         ...p,
         flaechen: p.flaechen.map((f) => {
@@ -631,11 +700,19 @@ export function SchrittBelegung({
             f.gaubenTyp === 'satteldach' && f.gaubenSeite
               ? markierung.seiten?.[f.gaubenSeite]
               : markierung.aussen;
-          if (!eckenPx || !fotoId) return { ...f, markierungFertig: false };
+          if (!eckenPx || !fotoId) return f;
+          const bisher = fotoZuordnungenVon(f);
+          const z: FotoZuordnung = {
+            fotoId,
+            traufePx: null,
+            eckenPx,
+            markierungFertig: true,
+          };
           return {
             ...f,
-            fotoZuordnung: { fotoId, traufePx: null, eckenPx },
-            markierungFertig: true,
+            fotoZuordnungen: bisher.some((x) => x.fotoId === fotoId)
+              ? bisher.map((x) => (x.fotoId === fotoId ? z : x))
+              : [...bisher, z],
           };
         }),
       };
@@ -1104,37 +1181,29 @@ export function SchrittBelegung({
           className={`flex flex-wrap items-center gap-3 ${projekt.fotos.length === 0 ? '' : 'mb-3'}`}
         >
           <div>
-            <KartenTitel>
-              {projekt.fotos.length === 0 ? 'Drohnenfoto (optional)' : 'Belegungsfotos'}
-            </KartenTitel>
+            <KartenTitel>Belegungsfotos</KartenTitel>
             {projekt.fotos.length === 0 ? (
               <p className="text-sm text-slate-500">
-                Ohne Foto arbeitest du direkt in der maßstäblichen Draufsicht.
+                Fotos fügst du direkt bei der jeweiligen Dachfläche hinzu. Ohne Foto
+                arbeitest du in der maßstäblichen Draufsicht.
               </p>
             ) : (
               <p className="mt-1 text-sm text-slate-500">
-                Fotos können mehrere Dachflächen enthalten. Jede Fläche behält ihre eigene
-                Perspektive und ihren eigenen Umriss.
+                Hier kannst du hochgeladene Bilder umbenennen, ersetzen oder löschen.
+                Weitere Perspektiven fügst du direkt an der Dachfläche hinzu.
               </p>
             )}
           </div>
-          <button
-            type="button"
-            className="touch-target ml-auto inline-flex h-10 items-center gap-2 rounded-lg bg-akzent px-4 text-sm font-semibold text-white hover:bg-akzent/90"
-            onClick={() => waehleFotoDatei(null)}
-          >
-            <IconFoto />
-            {projekt.fotos.length === 0 ? 'Drohnenfoto verwenden' : 'Foto hinzufügen'}
-          </button>
         </div>
 
         {projekt.fotos.length > 0 && (
           <div className="grid gap-4 lg:grid-cols-2">
             {projekt.fotos.map((foto) => {
-              const zugeordnet = projekt.flaechen.filter(
-                (f) => !f.gaubenTyp && f.fotoZuordnung?.fotoId === foto.id,
-              );
-              const frei = projekt.flaechen.filter((f) => !f.gaubenTyp && !f.fotoZuordnung);
+              const verwendetVon = projekt.flaechen.filter(
+                (f) =>
+                  !f.gaubenTyp &&
+                  fotoZuordnungenVon(f).some((z) => z.fotoId === foto.id),
+              ).length;
               return (
                 <section key={foto.id} className="rounded-xl border border-slate-200 p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1153,7 +1222,7 @@ export function SchrittBelegung({
                     <button
                       type="button"
                       className={aktionKlasse}
-                      onClick={() => waehleFotoDatei(foto.id)}
+                      onClick={() => waehleFotoDatei({ art: 'ersetzen', fotoId: foto.id })}
                     >
                       Ersetzen
                     </button>
@@ -1176,85 +1245,36 @@ export function SchrittBelegung({
                   >
                     <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />
                   </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {zugeordnet.map((f) => {
-                      const index = projekt.flaechen.findIndex((x) => x.id === f.id);
-                      return (
-                        <div key={f.id} className="flex overflow-hidden rounded-lg border border-slate-300 bg-white">
-                          <button
-                            type="button"
-                            className="h-9 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                            title="Zur Bearbeitung dieser Fläche springen"
-                            onClick={() =>
-                              document.getElementById(`belegung-${f.id}`)?.scrollIntoView({
-                                behavior: 'smooth',
-                                block: 'start',
-                              })
-                            }
-                          >
-                            {f.fotoZuordnung?.eckenPx ? '✓ ' : '○ '}
-                            {zonenVon(f, index)} · {f.name}
-                          </button>
-                          <button
-                            type="button"
-                            className="h-9 border-l border-slate-200 px-2 text-red-500 hover:bg-red-50"
-                            title="Fläche von diesem Foto lösen"
-                            onClick={() => setzeFotoZuordnung(f.id, null)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {frei.length > 0 && (
-                      <select
-                        value=""
-                        aria-label={`Dachfläche zu ${foto.name} hinzufügen`}
-                        onChange={(e) => {
-                          if (e.target.value) setzeFotoZuordnung(e.target.value, foto.id);
-                        }}
-                        className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-                      >
-                        <option value="">+ Dachfläche hinzufügen</option>
-                        {frei.map((f) => {
-                          const index = projekt.flaechen.findIndex((x) => x.id === f.id);
-                          return (
-                            <option key={f.id} value={f.id}>
-                              {zonenVon(f, index)} · {f.name}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    )}
-                    {zugeordnet.length === 0 && frei.length === 0 && (
-                      <span className="text-sm text-slate-400">Keine Dachflächen vorhanden</span>
-                    )}
-                  </div>
+                  <p className="text-xs text-slate-400">
+                    {verwendetVon === 0
+                      ? 'Aktuell keiner Dachfläche zugeordnet'
+                      : `In ${verwendetVon} ${verwendetVon === 1 ? 'Dachfläche' : 'Dachflächen'} verwendet`}
+                  </p>
                 </section>
               );
             })}
           </div>
         )}
-
-        {projekt.flaechen.some((f) => !f.gaubenTyp && !f.fotoZuordnung) && projekt.fotos.length > 0 && (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Noch nicht zugeordnet:{' '}
-            {projekt.flaechen
-              .filter((f) => !f.gaubenTyp && !f.fotoZuordnung)
-              .map((f, i) => zonenVon(f, projekt.flaechen.indexOf(f)))
-              .join(', ')}. Diese Flächen bleiben unten als normale Draufsicht bearbeitbar.
-          </p>
-        )}
       </Karte>
 
       {belegungsReihenfolge.map((f) => {
         const i = projekt.flaechen.indexOf(f);
-        const fotoAsset = projektFotoVon(projekt, f);
-        const foto = dachFotoVon(projekt, f);
-        const fMitFoto: Flaeche = foto ? { ...f, foto } : f;
+        const fotoZuordnungen = fotoZuordnungenVon(f);
+        const gewuenschteAnsicht = ansichtJeFlaeche[f.id];
+        const fotoZuordnung =
+          gewuenschteAnsicht === 'plan'
+            ? undefined
+            : fotoZuordnungVon(f, gewuenschteAnsicht) ?? fotoZuordnungen[0];
+        const fotoId = fotoZuordnung?.fotoId;
+        const fotoAsset = fotoId ? projektFotoVon(projekt, f, fotoId) : undefined;
+        const foto = fotoId ? dachFotoVon(projekt, f, fotoId) : undefined;
+        const fMitFoto: Flaeche = foto
+          ? { ...f, foto, markierungFertig: fotoZuordnung?.markierungFertig }
+          : f;
         const fEffBasis = mitDrag(f);
-        const fEff: Flaeche = foto ? { ...fEffBasis, foto } : fEffBasis;
+        const fEff: Flaeche = foto
+          ? { ...fEffBasis, foto, markierungFertig: fotoZuordnung?.markierungFertig }
+          : fEffBasis;
         const raster = rasterFuer(fEff, modul);
         const aktiv = aktiveModule(fEff, raster);
         const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
@@ -1263,7 +1283,7 @@ export function SchrittBelegung({
         const zeichenbar = !foto;
         // Belegung erst zeigen, wenn keine Foto-Markierung mehr läuft (Hindernisse
         // werden VORHER auf dem leeren Foto gesetzt, Genrih 07.07.).
-        const belegungZeigen = !foto || !!f.markierungFertig || !!foto.traufePx;
+        const belegungZeigen = !foto || !!fotoZuordnung?.markierungFertig || !!foto.traufePx;
         const felder = felderVon(fEff);
         const gewaehlt = auswahlVon(f);
         const gaubenAufFlaeche = projekt.flaechen.filter(
@@ -1308,20 +1328,70 @@ export function SchrittBelegung({
               )}
               {f.gaubenTyp && <KartenTitel>{f.name}</KartenTitel>}
               {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500">
-                Foto
+                Ansicht
                 <select
-                  value={f.fotoZuordnung?.fotoId ?? ''}
-                  onChange={(e) => setzeFotoZuordnung(f.id, e.target.value || null)}
-                  className="touch-target h-9 max-w-48 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
+                  aria-label={`Ansicht für ${f.name}`}
+                  value={fotoId ?? 'plan'}
+                  onChange={(e) => {
+                    setAnsichtJeFlaeche((alt) => ({ ...alt, [f.id]: e.target.value }));
+                    setAuswahl(null);
+                    setDrag(null);
+                    setZeichnung(null);
+                    setModus(null);
+                  }}
+                  className="touch-target h-9 max-w-56 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
                 >
-                  <option value="">keins · Draufsicht</option>
-                  {projekt.fotos.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.name}
+                  <option value="plan">Draufsicht</option>
+                  {fotoZuordnungen.map((z, index) => {
+                    const asset = projekt.fotos.find((x) => x.id === z.fotoId);
+                    return asset ? (
+                    <option key={z.fotoId} value={z.fotoId}>
+                      Perspektive {index + 1} · {asset.name}
                     </option>
-                  ))}
+                    ) : null;
+                  })}
                 </select>
               </label>}
+              {!f.gaubenTyp && (
+                <button
+                  type="button"
+                  className="touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-sm font-semibold text-akzent hover:bg-akzent/10"
+                  onClick={() =>
+                    waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })
+                  }
+                >
+                  <IconFoto />
+                  {fotoZuordnungen.length === 0 ? 'Foto hinzufügen' : 'Weitere Perspektive'}
+                </button>
+              )}
+              {!f.gaubenTyp && projekt.fotos.some(
+                (x) => !fotoZuordnungen.some((z) => z.fotoId === x.id),
+              ) && (
+                <select
+                  value=""
+                  aria-label={`Vorhandenes Foto für ${f.name} verwenden`}
+                  onChange={(e) => {
+                    if (e.target.value) fuegeFotoZuordnungHinzu(f.id, e.target.value);
+                  }}
+                  className="touch-target h-9 max-w-60 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600"
+                >
+                  <option value="">Vorhandenes Foto verwenden …</option>
+                  {projekt.fotos
+                    .filter((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id))
+                    .map((x) => (
+                      <option key={x.id} value={x.id}>{x.name}</option>
+                    ))}
+                </select>
+              )}
+              {!f.gaubenTyp && fotoId && (
+                <button
+                  type="button"
+                  className="h-9 rounded-lg px-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={() => loeseFotoZuordnung(f.id, fotoId)}
+                >
+                  Perspektive entfernen
+                </button>
+              )}
               <span className="ml-auto text-sm text-slate-500">
                 {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)}{' '}
                 kWp
@@ -1518,11 +1588,11 @@ export function SchrittBelegung({
 
             </div>
 
-            {foto && !f.gaubenTyp && (
+            {foto && !f.gaubenTyp && fotoZuordnungen[0]?.fotoId === fotoId && (
               <GaubenEditor
                 eltern={fMitFoto}
                 gauben={gaubenAufFlaeche}
-                onErstellen={(daten) => erstelleGaube(f, daten)}
+                onErstellen={(daten) => erstelleGaube(f, fotoId, daten)}
                 onLoeschen={(gruppenId) => loescheGaube(f.id, gruppenId)}
                 onMasseAendern={aendereGaubenMasse}
                 onMarkierungAendern={(gruppenId, markierung) =>
@@ -1531,12 +1601,13 @@ export function SchrittBelegung({
               />
             )}
 
-            {foto && (
+            {foto && fotoId && (
               <FotoHintergrund
                 flaeche={fMitFoto}
                 fotoVerwalten={false}
                 zustandsKey={`${f.id}:${fotoAsset?.id ?? 'legacy'}`}
-                onPatch={(patch) => patchFotoFlaeche(f, patch)}
+                geometrieBehalten={fotoZuordnungen.length > 1 || !!f.umrissM}
+                onPatch={(patch) => patchFotoFlaeche(f, fotoId, patch)}
               />
             )}
 

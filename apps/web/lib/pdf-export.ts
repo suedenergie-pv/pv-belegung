@@ -3,6 +3,7 @@ import { logoPng } from './logo';
 import {
   aktiveModule,
   ausrichtungenVon,
+  downloadDateiname,
   flaechenAusrichtungsLabel,
   flachdachOstRichtung,
   flachdachSuedRichtung,
@@ -392,6 +393,5 @@ export async function erzeugeBelegungsPdf(
   }
 
   fuss();
-  const dateiname = `belegungsplan-${(projekt.kunde || 'projekt').toLowerCase().replace(/\s+/g, '-')}.pdf`;
-  doc.save(dateiname);
+  doc.save(downloadDateiname(projekt, 'belegungsplan', 'pdf'));
 }

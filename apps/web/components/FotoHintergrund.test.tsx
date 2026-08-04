@@ -77,4 +77,20 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     expect(patch.hindernisse![0]!.breiteM).toBeCloseTo(2);
     expect(patch.hindernisse![0]!.hoeheM).toBeCloseTo(2);
   });
+
+  it('behält beim Neuausrichten einer Zusatzperspektive die gemeinsame Geometrie', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const { getByRole } = render(
+      <FotoHintergrund
+        flaeche={{ ...flaeche, markierungFertig: true, umrissM: [[0, 0], [10, 0], [10, 6], [0, 6]] }}
+        onPatch={onPatch}
+        fotoVerwalten={false}
+        geometrieBehalten
+      />,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Ausrichtung neu (First + 4 Ecken)' }));
+    expect('umrissM' in onPatch.mock.calls[0]![0]).toBe(false);
+  });
 });

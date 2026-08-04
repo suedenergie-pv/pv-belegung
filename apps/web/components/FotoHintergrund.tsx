@@ -105,6 +105,7 @@ export function FotoHintergrund({
   onPatch,
   fotoVerwalten = true,
   zustandsKey,
+  geometrieBehalten = false,
 }: {
   flaeche: Flaeche;
   onPatch: (patch: Partial<Flaeche>) => void;
@@ -112,6 +113,8 @@ export function FotoHintergrund({
   fotoVerwalten?: boolean;
   /** Wechselt das übergeordnete Foto-Asset, werden alle flüchtigen Werkzeuge zurückgesetzt. */
   zustandsKey?: string;
+  /** Neue Foto-Perspektiven dürfen den gemeinsamen metrischen Umriss nicht löschen. */
+  geometrieBehalten?: boolean;
 }) {
   const foto = flaeche.foto;
   const flaechenArt = artVon(flaeche);
@@ -210,10 +213,14 @@ export function FotoHintergrund({
     const vier: [Punkt, Punkt, Punkt, Punkt] = [pts[0]!, pts[1]!, pts[2]!, pts[3]!];
     // Firstlinie (falls gezogen) legt die Traufe-Achse fest; sonst alter Heuristik-Fallback
     const ecken = firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
-    // Perspektive neu → Umriss (Rechteck) zurücksetzen, danach optional zeichnen
-    onPatch({ foto: { ...foto, eckenPx: ecken, traufePx: null }, umrissM: undefined, markierungFertig: false, inaktiv: [] });
+    onPatch({
+      foto: { ...foto, eckenPx: ecken, traufePx: null },
+      ...(geometrieBehalten ? {} : { umrissM: undefined }),
+      markierungFertig: false,
+      inaktiv: [],
+    });
     setPunkte([]);
-    setModus('umriss');
+    setModus(geometrieBehalten ? 'hindernis' : 'umriss');
   };
 
   const umrissAbschliessen = (pts: Punkt[]) => {
@@ -427,7 +434,7 @@ export function FotoHintergrund({
                   const { eckenPx: _e, ...rest } = foto;
                   onPatch({
                     foto: { ...rest, traufePx: null },
-                    umrissM: undefined,
+                    ...(geometrieBehalten ? {} : { umrissM: undefined }),
                     markierungFertig: false,
                     inaktiv: [],
                   });
