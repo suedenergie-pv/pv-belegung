@@ -31,7 +31,7 @@ afterEach(() => {
 
 describe('Projektverwaltung und Einstieg', () => {
   it('legt einen sicheren Erststand an, übernimmt Projektdaten und durchläuft alle drei Schritte', async () => {
-    const { getByLabelText, getByRole, findByRole } = render(<Home />);
+    const { getByLabelText, getByRole, getByTestId, findByRole } = render(<Home />);
     await findByRole('button', { name: '+ Neu' });
     expect((getByLabelText('Aktuelles Projekt') as HTMLSelectElement).value).toMatch(/^prj-/);
 
@@ -43,6 +43,9 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.click(getByRole('button', { name: 'Weiter →' }));
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
     expect(getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).className).toContain('sticky');
+    expect(getByTestId('arbeitsbereich-p1').className).toContain(
+      'lg:grid-cols-[minmax(0,1fr)_17rem]',
+    );
     expect(getByRole('button', { name: 'Hochkant' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(getByRole('button', { name: 'Automatisch belegen' }));
     expect(await findByRole('button', { name: 'Belegung entfernen' })).toBeTruthy();

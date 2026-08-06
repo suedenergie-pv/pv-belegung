@@ -1321,18 +1321,22 @@ export function SchrittBelegung({
               />
             )}
             <div
+              data-testid={`arbeitsbereich-${f.id}`}
+              className={belegungZeigen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-3' : ''}
+            >
+            <div
               role="toolbar"
               aria-label={`Werkzeuge für ${f.name}`}
-              className={`${belegungZeigen ? 'sticky top-16 z-30' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
+              className={`${belegungZeigen ? 'sticky top-16 z-30 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:mb-0 lg:self-start' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className={`flex flex-wrap items-center gap-2 ${belegungZeigen ? 'lg:flex-col lg:items-stretch' : ''}`}>
                 {f.gaubenTyp && (
                   <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                     Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
                   </span>
                 )}
                 {f.gaubenTyp && <span className="text-sm font-semibold text-slate-800">{f.name}</span>}
-                {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500">
+                {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
                   Ansicht
                   <select
                     aria-label={`Ansicht für ${f.name}`}
@@ -1344,7 +1348,7 @@ export function SchrittBelegung({
                       setZeichnung(null);
                       setModus(null);
                     }}
-                    className="touch-target h-9 max-w-56 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
+                    className="touch-target h-9 min-w-0 max-w-56 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
                   >
                     <option value="plan">Draufsicht</option>
                     {fotoZuordnungen.map((z, index) => {
@@ -1360,7 +1364,7 @@ export function SchrittBelegung({
                 {!f.gaubenTyp && (
                   <button
                     type="button"
-                    className="touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-sm font-semibold text-akzent hover:bg-akzent/10"
+                    className={`touch-target inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-sm font-semibold text-akzent hover:bg-akzent/10 ${belegungZeigen ? 'lg:w-full' : ''}`}
                     onClick={() =>
                       waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })
                     }
@@ -1378,7 +1382,7 @@ export function SchrittBelegung({
                     onChange={(e) => {
                       if (e.target.value) fuegeFotoZuordnungHinzu(f.id, e.target.value);
                     }}
-                    className="touch-target h-9 max-w-60 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600"
+                    className={`touch-target h-9 max-w-60 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600 ${belegungZeigen ? 'lg:w-full lg:max-w-none' : ''}`}
                   >
                     <option value="">Vorhandenes Foto verwenden …</option>
                     {projekt.fotos
@@ -1391,22 +1395,22 @@ export function SchrittBelegung({
                 {!f.gaubenTyp && fotoId && (
                   <button
                     type="button"
-                    className="h-9 rounded-lg px-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    className={`h-9 rounded-lg px-2 text-sm font-medium text-red-600 hover:bg-red-50 ${belegungZeigen ? 'lg:w-full' : ''}`}
                     onClick={() => loeseFotoZuordnung(f.id, fotoId)}
                   >
                     Perspektive entfernen
                   </button>
                 )}
-                <span className="ml-auto whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+                <span className={`ml-auto whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white ${belegungZeigen ? 'lg:ml-0 lg:text-center' : ''}`}>
                   {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp
                   {felder.length > 0 && ` · ${felder.length} ${felder.length === 1 ? 'Feld' : 'Felder'}`}
                 </span>
               </div>
 
               {belegungZeigen && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
-                  <span className="hidden text-xs font-bold uppercase tracking-wide text-slate-400 xl:inline">Werkzeuge</span>
-                  <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 lg:flex-col lg:items-stretch">
+                  <span className="hidden text-xs font-bold uppercase tracking-wide text-slate-400 lg:block">Werkzeuge</span>
+                  <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-2">
                     <WerkzeugKnopf
                       aktiv={modusArt(f) === null && !zeichneHier}
                       title="Felder aufziehen, auswählen und verschieben"
@@ -1427,13 +1431,13 @@ export function SchrittBelegung({
                   </div>
 
                   {artVon(f) === 'flachdach' ? (
-                    <span className="whitespace-nowrap text-sm text-slate-500">
+                    <span className="whitespace-nowrap text-sm text-slate-500 lg:text-center">
                       {f.flachdach?.aufstaenderung === 'ostwest'
                         ? `Ost-West ${f.flachdach.winkelDeg}° · quer`
                         : `Süd ${f.flachdach?.winkelDeg ?? 10}° · quer`}
                     </span>
                   ) : (
-                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-2">
                       <WerkzeugKnopf
                         aktiv={ausrichtungAktiv(fEff) === 'quer'}
                         title={gewaehlt.length > 0 ? `${gewaehlt.length} ausgewählte Felder quer legen` : 'Alle Module quer legen'}
@@ -1453,7 +1457,7 @@ export function SchrittBelegung({
                     </div>
                   )}
 
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-slate-600">
+                  <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-slate-600 lg:justify-between">
                     Rand
                     <input
                       type="number"
@@ -1474,7 +1478,7 @@ export function SchrittBelegung({
 
                   {zeichenbar && !zeichneHier && (
                     <>
-                      <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                      <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-2">
                         <WerkzeugKnopf aktiv={false} title="Dachumriss zeichnen" onClick={() => starteZeichnung(f, 'umriss')}>
                           <IconUmriss /> Umriss
                         </WerkzeugKnopf>
@@ -1492,7 +1496,7 @@ export function SchrittBelegung({
                           key={hi}
                           type="button"
                           title="Hindernis entfernen"
-                          className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                          className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300 lg:w-full"
                           onClick={() => patchFlaeche(f.id, { hindernisse: (f.hindernisse ?? []).filter((_, j) => j !== hi) })}
                         >
                           {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m ✕
@@ -1501,7 +1505,7 @@ export function SchrittBelegung({
                     </>
                   )}
 
-                  <div className="ml-auto flex flex-wrap gap-2">
+                  <div className="ml-auto flex flex-wrap gap-2 lg:ml-0 lg:grid lg:grid-cols-1">
                     <button type="button" className={aktionKlasse} onClick={() => automatischFuellen(f)}>
                       <IconFeld /> Automatisch belegen
                     </button>
@@ -1521,7 +1525,7 @@ export function SchrittBelegung({
               )}
 
               {belegungZeigen && zeichneHier && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 text-sm text-sky-900">
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 text-sm text-sky-900 lg:flex-col lg:items-stretch">
                   <strong>{zeichneHier.art === 'umriss' ? 'Umriss zeichnen' : 'Hindernis markieren'}</strong>
                   {zeichneHier.art === 'umriss' ? (
                     <button
@@ -1554,26 +1558,28 @@ export function SchrittBelegung({
               )}
 
               {felderWerkzeug && felder.length > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5">
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 lg:flex-col lg:items-stretch">
                   <span className="text-sm font-semibold text-sky-900">
                     {gewaehlt.length > 0 ? `${gewaehlt.length} von ${felder.length} ausgewählt` : 'Feld antippen oder aufziehen'}
                   </span>
-                  <button
-                    type="button"
-                    className={aktionKlasse}
-                    onClick={() => setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) })}
-                  >
-                    Alle auswählen
-                  </button>
+                  {gewaehlt.length < felder.length && (
+                    <button
+                      type="button"
+                      className={aktionKlasse}
+                      onClick={() => setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) })}
+                    >
+                      Alle auswählen
+                    </button>
+                  )}
                   {gewaehlt.length > 0 && (
                     <>
-                      <div className="flex items-center gap-1" aria-label="Auswahl verschieben">
+                      <div className="flex items-center gap-1 lg:justify-center" aria-label="Auswahl verschieben">
                         <HoldButton className={pfeilKlasse} title="nach links" onTrigger={() => bewegeAuswahl(f, -1, 0)}>←</HoldButton>
                         <HoldButton className={pfeilKlasse} title="nach oben" onTrigger={() => bewegeAuswahl(f, 0, -1)}>↑</HoldButton>
                         <HoldButton className={pfeilKlasse} title="nach unten" onTrigger={() => bewegeAuswahl(f, 0, 1)}>↓</HoldButton>
                         <HoldButton className={pfeilKlasse} title="nach rechts" onTrigger={() => bewegeAuswahl(f, 1, 0)}>→</HoldButton>
                       </div>
-                      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-slate-600">
+                      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-slate-600 lg:justify-between">
                         Schritt
                         <input
                           type="number"
@@ -1608,7 +1614,7 @@ export function SchrittBelegung({
               )}
 
               {belegungZeigen && modusArt(f) === 'zellen' && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-100 px-2 py-1.5 text-sm text-slate-700">
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-100 px-2 py-1.5 text-sm text-slate-700 lg:flex-col lg:items-stretch">
                   <strong>Module antippen zum An- oder Ausschalten.</strong>
                   {leerZahl > 0 && (
                     <button type="button" className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>
@@ -1624,7 +1630,7 @@ export function SchrittBelegung({
             {!belegungZeigen ? null : (
               <div
                 id={`foto-masse-${f.id}`}
-                className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 lg:col-start-1 lg:row-start-1 lg:mb-0"
               >
                 <DachSvg
                   flaeche={fEff}
@@ -1681,6 +1687,7 @@ export function SchrittBelegung({
                 />
               </div>
             )}
+            </div>
 
             {belegungZeigen && felder.length === 0 && !zeichneHier && (
               <p className="mb-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
