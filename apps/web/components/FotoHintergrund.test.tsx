@@ -41,8 +41,9 @@ describe('Foto-Markierung auf Tablet und PC', () => {
 
   it('verändert auf dem PC weder Oberfläche noch bestehende Mausbedienung', async () => {
     vi.stubGlobal('matchMedia', matchMedia(false));
-    const { queryByRole } = render(<FotoHintergrund flaeche={flaeche} onPatch={vi.fn()} fotoVerwalten={false} />);
+    const { findByRole, queryByRole } = render(<FotoHintergrund flaeche={flaeche} onPatch={vi.fn()} fotoVerwalten={false} />);
     await waitFor(() => expect(queryByRole('button', { name: 'Fadenkreuz bedienen' })).toBeNull());
+    expect((await findByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' })).className).toContain('sticky');
   });
 
   it('setzt per simuliertem Klick nach einem Swipe ein Hindernis in Meterkoordinaten', async () => {

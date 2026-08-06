@@ -529,7 +529,11 @@ export function FotoHintergrund({
 
       {foto && inMarkierung && (
         <div className="mt-3">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div
+            role="toolbar"
+            aria-label="Werkzeuge für die Foto-Markierung"
+            className="sticky top-16 z-40 -mx-2 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur"
+          >
             {touchGeraet && (
               <button
                 type="button"

@@ -1320,83 +1320,304 @@ export function SchrittBelegung({
                 }
               />
             )}
-            <div className="mb-3 flex flex-wrap items-center gap-3">
-              {f.gaubenTyp && (
-                <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                  Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
+            <div
+              role="toolbar"
+              aria-label={`Werkzeuge für ${f.name}`}
+              className={`${belegungZeigen ? 'sticky top-16 z-30' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {f.gaubenTyp && (
+                  <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                    Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
+                  </span>
+                )}
+                {f.gaubenTyp && <span className="text-sm font-semibold text-slate-800">{f.name}</span>}
+                {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500">
+                  Ansicht
+                  <select
+                    aria-label={`Ansicht für ${f.name}`}
+                    value={fotoId ?? 'plan'}
+                    onChange={(e) => {
+                      setAnsichtJeFlaeche((alt) => ({ ...alt, [f.id]: e.target.value }));
+                      setAuswahl(null);
+                      setDrag(null);
+                      setZeichnung(null);
+                      setModus(null);
+                    }}
+                    className="touch-target h-9 max-w-56 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
+                  >
+                    <option value="plan">Draufsicht</option>
+                    {fotoZuordnungen.map((z, index) => {
+                      const asset = projekt.fotos.find((x) => x.id === z.fotoId);
+                      return asset ? (
+                      <option key={z.fotoId} value={z.fotoId}>
+                        Perspektive {index + 1} · {asset.name}
+                      </option>
+                      ) : null;
+                    })}
+                  </select>
+                </label>}
+                {!f.gaubenTyp && (
+                  <button
+                    type="button"
+                    className="touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-sm font-semibold text-akzent hover:bg-akzent/10"
+                    onClick={() =>
+                      waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })
+                    }
+                  >
+                    <IconFoto />
+                    {fotoZuordnungen.length === 0 ? 'Foto hinzufügen' : 'Weitere Perspektive'}
+                  </button>
+                )}
+                {!f.gaubenTyp && projekt.fotos.some(
+                  (x) => !fotoZuordnungen.some((z) => z.fotoId === x.id),
+                ) && (
+                  <select
+                    value=""
+                    aria-label={`Vorhandenes Foto für ${f.name} verwenden`}
+                    onChange={(e) => {
+                      if (e.target.value) fuegeFotoZuordnungHinzu(f.id, e.target.value);
+                    }}
+                    className="touch-target h-9 max-w-60 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600"
+                  >
+                    <option value="">Vorhandenes Foto verwenden …</option>
+                    {projekt.fotos
+                      .filter((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id))
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>{x.name}</option>
+                      ))}
+                  </select>
+                )}
+                {!f.gaubenTyp && fotoId && (
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg px-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    onClick={() => loeseFotoZuordnung(f.id, fotoId)}
+                  >
+                    Perspektive entfernen
+                  </button>
+                )}
+                <span className="ml-auto whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+                  {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp
+                  {felder.length > 0 && ` · ${felder.length} ${felder.length === 1 ? 'Feld' : 'Felder'}`}
                 </span>
+              </div>
+
+              {belegungZeigen && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
+                  <span className="hidden text-xs font-bold uppercase tracking-wide text-slate-400 xl:inline">Werkzeuge</span>
+                  <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                    <WerkzeugKnopf
+                      aktiv={modusArt(f) === null && !zeichneHier}
+                      title="Felder aufziehen, auswählen und verschieben"
+                      onClick={() => setzeModus(f, null)}
+                    >
+                      <IconFeld />
+                      Bereiche
+                    </WerkzeugKnopf>
+                    <WerkzeugKnopf
+                      aktiv={modusArt(f) === 'zellen'}
+                      disabled={felder.length === 0}
+                      title={felder.length === 0 ? 'Erst einen Belegungsbereich anlegen' : 'Einzelne Module an- oder ausschalten'}
+                      onClick={() => setzeModus(f, modusArt(f) === 'zellen' ? null : 'zellen')}
+                    >
+                      <IconModulLoeschen />
+                      Module
+                    </WerkzeugKnopf>
+                  </div>
+
+                  {artVon(f) === 'flachdach' ? (
+                    <span className="whitespace-nowrap text-sm text-slate-500">
+                      {f.flachdach?.aufstaenderung === 'ostwest'
+                        ? `Ost-West ${f.flachdach.winkelDeg}° · quer`
+                        : `Süd ${f.flachdach?.winkelDeg ?? 10}° · quer`}
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                      <WerkzeugKnopf
+                        aktiv={ausrichtungAktiv(fEff) === 'quer'}
+                        title={gewaehlt.length > 0 ? `${gewaehlt.length} ausgewählte Felder quer legen` : 'Alle Module quer legen'}
+                        onClick={() => setzeAusrichtung(f, 'quer')}
+                      >
+                        <IconModulQuer />
+                        Quer
+                      </WerkzeugKnopf>
+                      <WerkzeugKnopf
+                        aktiv={ausrichtungAktiv(fEff) === 'hoch'}
+                        title={gewaehlt.length > 0 ? `${gewaehlt.length} ausgewählte Felder hochkant stellen` : 'Alle Module hochkant stellen'}
+                        onClick={() => setzeAusrichtung(f, 'hoch')}
+                      >
+                        <IconModulHoch />
+                        Hochkant
+                      </WerkzeugKnopf>
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-slate-600">
+                    Rand
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={Math.round(randVon(f) * 100)}
+                      onChange={(e) => {
+                        const cm = Number.parseInt(e.target.value, 10);
+                        if (!Number.isFinite(cm) || cm < 0) return;
+                        patchFlaeche(f.id, { randM: cm / 100 });
+                      }}
+                      className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
+                    />
+                    cm
+                  </label>
+
+                  {zeichenbar && !zeichneHier && (
+                    <>
+                      <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                        <WerkzeugKnopf aktiv={false} title="Dachumriss zeichnen" onClick={() => starteZeichnung(f, 'umriss')}>
+                          <IconUmriss /> Umriss
+                        </WerkzeugKnopf>
+                        <WerkzeugKnopf aktiv={false} title="Kamin, Fenster oder SAT markieren" onClick={() => starteZeichnung(f, 'hindernis')}>
+                          <IconHindernis /> Hindernis
+                        </WerkzeugKnopf>
+                      </div>
+                      {f.umrissM && (
+                        <button type="button" className={aktionKlasse} onClick={() => patchFlaeche(f.id, { umrissM: undefined })}>
+                          Umriss entfernen ({f.umrissM.length})
+                        </button>
+                      )}
+                      {(f.hindernisse ?? []).map((h, hi) => (
+                        <button
+                          key={hi}
+                          type="button"
+                          title="Hindernis entfernen"
+                          className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                          onClick={() => patchFlaeche(f.id, { hindernisse: (f.hindernisse ?? []).filter((_, j) => j !== hi) })}
+                        >
+                          {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m ✕
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <button type="button" className={aktionKlasse} onClick={() => automatischFuellen(f)}>
+                      <IconFeld /> Automatisch belegen
+                    </button>
+                    {felder.length > 0 && (
+                      <button
+                        type="button"
+                        aria-label="Belegung entfernen"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                        title="Alle Belegungsfelder dieser Fläche entfernen"
+                        onClick={() => alleFelderLoeschen(f)}
+                      >
+                        <IconLeeren /> Alles entfernen
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
-              {f.gaubenTyp && <KartenTitel>{f.name}</KartenTitel>}
-              {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500">
-                Ansicht
-                <select
-                  aria-label={`Ansicht für ${f.name}`}
-                  value={fotoId ?? 'plan'}
-                  onChange={(e) => {
-                    setAnsichtJeFlaeche((alt) => ({ ...alt, [f.id]: e.target.value }));
-                    setAuswahl(null);
-                    setDrag(null);
-                    setZeichnung(null);
-                    setModus(null);
-                  }}
-                  className="touch-target h-9 max-w-56 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
-                >
-                  <option value="plan">Draufsicht</option>
-                  {fotoZuordnungen.map((z, index) => {
-                    const asset = projekt.fotos.find((x) => x.id === z.fotoId);
-                    return asset ? (
-                    <option key={z.fotoId} value={z.fotoId}>
-                      Perspektive {index + 1} · {asset.name}
-                    </option>
-                    ) : null;
-                  })}
-                </select>
-              </label>}
-              {!f.gaubenTyp && (
-                <button
-                  type="button"
-                  className="touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-sm font-semibold text-akzent hover:bg-akzent/10"
-                  onClick={() =>
-                    waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })
-                  }
-                >
-                  <IconFoto />
-                  {fotoZuordnungen.length === 0 ? 'Foto hinzufügen' : 'Weitere Perspektive'}
-                </button>
+
+              {belegungZeigen && zeichneHier && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 text-sm text-sky-900">
+                  <strong>{zeichneHier.art === 'umriss' ? 'Umriss zeichnen' : 'Hindernis markieren'}</strong>
+                  {zeichneHier.art === 'umriss' ? (
+                    <button
+                      type="button"
+                      disabled={zeichneHier.punkte.length < 3}
+                      className="h-9 rounded-lg bg-akzent px-3 font-semibold text-white disabled:opacity-40"
+                      onClick={() => {
+                        patchFlaeche(f.id, { umrissM: zeichneHier.punkte });
+                        setZeichnung(null);
+                      }}
+                    >
+                      ✓ Fertig ({zeichneHier.punkte.length})
+                    </button>
+                  ) : (
+                    <button type="button" className={aktionKlasse} onClick={() => setZeichnung(null)}>✓ Fertig</button>
+                  )}
+                  {zeichneHier.art === 'umriss' && (
+                    <button
+                      type="button"
+                      disabled={zeichneHier.punkte.length === 0}
+                      className={aktionKlasse}
+                      onClick={() => setZeichnung({ ...zeichneHier, punkte: zeichneHier.punkte.slice(0, -1) })}
+                    >
+                      ↶ Punkt zurück
+                    </button>
+                  )}
+                  <button type="button" className={aktionKlasse} onClick={() => setZeichnung(null)}>Abbrechen</button>
+                  <span>{zeichneHier.art === 'umriss' ? 'Ecke für Ecke am Dachrand entlang.' : zeichneHier.punkte.length === 0 ? 'Erste Ecke anklicken.' : 'Gegenüberliegende Ecke anklicken.'}</span>
+                </div>
               )}
-              {!f.gaubenTyp && projekt.fotos.some(
-                (x) => !fotoZuordnungen.some((z) => z.fotoId === x.id),
-              ) && (
-                <select
-                  value=""
-                  aria-label={`Vorhandenes Foto für ${f.name} verwenden`}
-                  onChange={(e) => {
-                    if (e.target.value) fuegeFotoZuordnungHinzu(f.id, e.target.value);
-                  }}
-                  className="touch-target h-9 max-w-60 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600"
-                >
-                  <option value="">Vorhandenes Foto verwenden …</option>
-                  {projekt.fotos
-                    .filter((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id))
-                    .map((x) => (
-                      <option key={x.id} value={x.id}>{x.name}</option>
-                    ))}
-                </select>
+
+              {felderWerkzeug && felder.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5">
+                  <span className="text-sm font-semibold text-sky-900">
+                    {gewaehlt.length > 0 ? `${gewaehlt.length} von ${felder.length} ausgewählt` : 'Feld antippen oder aufziehen'}
+                  </span>
+                  <button
+                    type="button"
+                    className={aktionKlasse}
+                    onClick={() => setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) })}
+                  >
+                    Alle auswählen
+                  </button>
+                  {gewaehlt.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-1" aria-label="Auswahl verschieben">
+                        <HoldButton className={pfeilKlasse} title="nach links" onTrigger={() => bewegeAuswahl(f, -1, 0)}>←</HoldButton>
+                        <HoldButton className={pfeilKlasse} title="nach oben" onTrigger={() => bewegeAuswahl(f, 0, -1)}>↑</HoldButton>
+                        <HoldButton className={pfeilKlasse} title="nach unten" onTrigger={() => bewegeAuswahl(f, 0, 1)}>↓</HoldButton>
+                        <HoldButton className={pfeilKlasse} title="nach rechts" onTrigger={() => bewegeAuswahl(f, 1, 0)}>→</HoldButton>
+                      </div>
+                      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-slate-600">
+                        Schritt
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          max={100}
+                          value={schrittCm}
+                          onChange={(e) => {
+                            const n = Number.parseInt(e.target.value, 10);
+                            if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
+                          }}
+                          className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
+                        />
+                        cm
+                      </label>
+                      <button type="button" className={aktionKlasse} onClick={() => setAuswahl(null)}>Auswahl aufheben</button>
+                      {leerZahl > 0 && (
+                        <button type="button" className={aktionKlasse} onClick={() => zellenZurueckholen(f, gewaehlt)}>
+                          Module zurückholen ({leerZahl})
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                        onClick={() => auswahlLoeschen(f)}
+                      >
+                        🗑 Feld löschen{gewaehlt.length > 1 ? ` (${gewaehlt.length})` : ''}
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
-              {!f.gaubenTyp && fotoId && (
-                <button
-                  type="button"
-                  className="h-9 rounded-lg px-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                  onClick={() => loeseFotoZuordnung(f.id, fotoId)}
-                >
-                  Perspektive entfernen
-                </button>
+
+              {belegungZeigen && modusArt(f) === 'zellen' && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-100 px-2 py-1.5 text-sm text-slate-700">
+                  <strong>Module antippen zum An- oder Ausschalten.</strong>
+                  {leerZahl > 0 && (
+                    <button type="button" className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>
+                      Alle anschalten ({leerZahl})
+                    </button>
+                  )}
+                  <button type="button" className={aktionKlasse} onClick={() => setzeModus(f, null)}>✓ Fertig</button>
+                </div>
               )}
-              <span className="ml-auto text-sm text-slate-500">
-                {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)}{' '}
-                kWp
-                {felder.length > 0 && ` · ${felder.length} ${felder.length === 1 ? 'Feld' : 'Felder'}`}
-              </span>
             </div>
 
             {/* Die Belegung ist das Arbeitsobjekt: Canvas vor Einstellungen und Sonderwerkzeugen. */}
@@ -1462,131 +1683,11 @@ export function SchrittBelegung({
             )}
 
             {belegungZeigen && felder.length === 0 && !zeichneHier && (
-              <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                <span className="min-w-60 flex-1">
-                  Ziehe einen Belegungsbereich direkt auf dem Dach auf oder starte mit der
-                  Vollbelegung.
-                </span>
-                <button
-                  type="button"
-                  className="touch-target rounded-lg bg-akzent px-4 py-2 font-semibold text-white hover:bg-akzent/90"
-                  onClick={() => automatischFuellen(f)}
-                >
-                  Automatisch belegen
-                </button>
-              </div>
+              <p className="mb-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                Ziehe einen Belegungsbereich direkt auf dem Dach auf oder nutze oben in der
+                Werkzeugleiste „Automatisch belegen“.
+              </p>
             )}
-
-            {/* Zeile 1 — WERKZEUGE + Aktionen */}
-            {belegungZeigen && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1">
-                  <WerkzeugKnopf
-                    aktiv={modusArt(f) === null}
-                    title="Felder aufziehen, auswählen und verschieben"
-                    onClick={() => setzeModus(f, null)}
-                  >
-                    <IconFeld />
-                    Belegungsbereiche
-                  </WerkzeugKnopf>
-                  <WerkzeugKnopf
-                    aktiv={modusArt(f) === 'zellen'}
-                    disabled={felder.length === 0}
-                    title={
-                      felder.length === 0
-                        ? 'Erst ein Belegungsfeld aufziehen'
-                        : 'Einzelne Module antippen zum Ab- und wieder Anschalten'
-                    }
-                    onClick={() => setzeModus(f, modusArt(f) === 'zellen' ? null : 'zellen')}
-                  >
-                    <IconModulLoeschen />
-                    Module an/aus
-                  </WerkzeugKnopf>
-                </div>
-                <div className="ml-auto flex flex-wrap gap-2">
-                  {felder.length > 0 && (
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      title="Ein Feld über die ganze nutzbare Fläche legen (danach frei verschiebbar)"
-                      onClick={() => automatischFuellen(f)}
-                    >
-                      <IconFeld />
-                      Automatisch belegen
-                    </button>
-                  )}
-                  {felder.length > 0 && (
-                    <button
-                      type="button"
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
-                      title="Alle Belegungsfelder dieser Fläche entfernen"
-                      onClick={() => alleFelderLoeschen(f)}
-                    >
-                      <IconLeeren />
-                      Belegung entfernen
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Zeile 2 — häufige Einstellungen; Dachfarbe bleibt bei den Flächendetails. */}
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {artVon(f) === 'flachdach' ? (
-                <span className="text-sm text-slate-500">
-                  {f.flachdach?.aufstaenderung === 'ostwest'
-                    ? `Ost-West ${f.flachdach.winkelDeg}° (PROFINESS Flat, quer)`
-                    : `Süd ${f.flachdach?.winkelDeg ?? 10}° (PROFINESS Flat, quer)`}
-                </span>
-              ) : (
-              <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-                <WerkzeugKnopf
-                  aktiv={ausrichtungAktiv(fEff) === 'quer'}
-                  title={
-                    gewaehlt.length > 0
-                      ? `Die ${gewaehlt.length} ausgewählten Felder quer legen`
-                      : 'Alle Module quer legen (und Vorgabe für neue Felder)'
-                  }
-                  onClick={() => setzeAusrichtung(f, 'quer')}
-                >
-                  <IconModulQuer />
-                  Quer
-                </WerkzeugKnopf>
-                <WerkzeugKnopf
-                  aktiv={ausrichtungAktiv(fEff) === 'hoch'}
-                  title={
-                    gewaehlt.length > 0
-                      ? `Die ${gewaehlt.length} ausgewählten Felder hochkant stellen`
-                      : 'Alle Module hochkant stellen (und Vorgabe für neue Felder)'
-                  }
-                  onClick={() => setzeAusrichtung(f, 'hoch')}
-                >
-                  <IconModulHoch />
-                  Hochkant
-                </WerkzeugKnopf>
-              </div>
-              )}
-
-              <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                Rand
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={Math.round(randVon(f) * 100)}
-                  onChange={(e) => {
-                    const cm = Number.parseInt(e.target.value, 10);
-                    if (!Number.isFinite(cm) || cm < 0) return;
-                    patchFlaeche(f.id, { randM: cm / 100 });
-                  }}
-                  className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
-                />
-                cm
-              </label>
-
-            </div>
 
             {foto && !f.gaubenTyp && fotoZuordnungen[0]?.fotoId === fotoId && (
               <GaubenEditor
@@ -1609,249 +1710,6 @@ export function SchrittBelegung({
                 geometrieBehalten={fotoZuordnungen.length > 1 || !!f.umrissM}
                 onPatch={(patch) => patchFotoFlaeche(f, fotoId, patch)}
               />
-            )}
-
-            {zeichenbar && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                {!zeichneHier && (
-                  <details className="rounded-lg border border-slate-200 bg-slate-50">
-                    <summary className="touch-target cursor-pointer list-none px-3 py-2 text-sm font-medium text-slate-700">
-                      Umriss & Hindernisse
-                    </summary>
-                    <div className="flex flex-wrap gap-2 border-t border-slate-200 p-3">
-                      <button
-                        type="button"
-                        className={aktionKlasse}
-                        onClick={() => starteZeichnung(f, 'umriss')}
-                      >
-                        <IconUmriss />
-                        Umriss zeichnen{f.umrissM ? ' (neu)' : ''}
-                      </button>
-                      <button
-                        type="button"
-                        className={aktionKlasse}
-                        onClick={() => starteZeichnung(f, 'hindernis')}
-                      >
-                        <IconHindernis />
-                        Hindernis markieren
-                      </button>
-                      {f.umrissM && (
-                        <button
-                          type="button"
-                          className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400"
-                          onClick={() => patchFlaeche(f.id, { umrissM: undefined })}
-                        >
-                          Umriss entfernen ({f.umrissM.length} Ecken)
-                        </button>
-                      )}
-                    </div>
-                  </details>
-                )}
-                {zeichneHier?.art === 'umriss' && (
-                  <>
-                    <button
-                      type="button"
-                      disabled={zeichneHier.punkte.length < 3}
-                      className="h-9 rounded-lg bg-akzent px-3 text-sm font-semibold text-white disabled:opacity-40"
-                      onClick={() => {
-                        patchFlaeche(f.id, { umrissM: zeichneHier.punkte });
-                        setZeichnung(null);
-                      }}
-                    >
-                      ✓ Fertig ({zeichneHier.punkte.length} Ecken)
-                    </button>
-                    <button
-                      type="button"
-                      disabled={zeichneHier.punkte.length === 0}
-                      className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 disabled:opacity-40"
-                      onClick={() =>
-                        setZeichnung({ ...zeichneHier, punkte: zeichneHier.punkte.slice(0, -1) })
-                      }
-                    >
-                      ↶ Punkt zurück
-                    </button>
-                    <button
-                      type="button"
-                      className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-red-500"
-                      onClick={() => setZeichnung(null)}
-                    >
-                      Abbrechen
-                    </button>
-                    <span className="text-sm text-sky-800">
-                      Ecke für Ecke am Rand entlang klicken — beliebig viele. Schließen: Klick auf
-                      den ersten Punkt oder „Fertig".
-                    </span>
-                  </>
-                )}
-                {zeichneHier?.art === 'hindernis' && (
-                  <>
-                    <button
-                      type="button"
-                      className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700"
-                      onClick={() => setZeichnung(null)}
-                    >
-                      ✓ Fertig
-                    </button>
-                    <span className="text-sm text-sky-800">
-                      {zeichneHier.punkte.length === 0
-                        ? 'Erste Ecke des Hindernisses anklicken (Kamin, Fenster, SAT …).'
-                        : 'Jetzt die gegenüberliegende Ecke anklicken — danach gleich das nächste Hindernis.'}
-                    </span>
-                  </>
-                )}
-                {!zeichneHier &&
-                  (f.hindernisse ?? []).map((h, hi) => (
-                    <button
-                      key={hi}
-                      type="button"
-                      title="Hindernis entfernen"
-                      className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
-                      onClick={() =>
-                        patchFlaeche(f.id, {
-                          hindernisse: (f.hindernisse ?? []).filter((_, j) => j !== hi),
-                        })
-                      }
-                    >
-                      {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m ✕
-                    </button>
-                  ))}
-              </div>
-            )}
-
-            {/* Felder-Panel: Pfeile (Tastatur + Halten), Auswahl-Aktionen */}
-            {felderWerkzeug && felder.length > 0 && gewaehlt.length > 0 && (
-              <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="grid grid-cols-3 gap-1">
-                    <span />
-                    <HoldButton
-                      className={pfeilKlasse}
-                      disabled={gewaehlt.length === 0}
-                      title="nach oben (Pfeiltaste ↑, gedrückt halten schiebt weiter)"
-                      onTrigger={() => bewegeAuswahl(f, 0, -1)}
-                    >
-                      ↑
-                    </HoldButton>
-                    <span />
-                    <HoldButton
-                      className={pfeilKlasse}
-                      disabled={gewaehlt.length === 0}
-                      title="nach links (Pfeiltaste ←, gedrückt halten schiebt weiter)"
-                      onTrigger={() => bewegeAuswahl(f, -1, 0)}
-                    >
-                      ←
-                    </HoldButton>
-                    <span className="flex h-9 w-9 items-center justify-center text-slate-400">✥</span>
-                    <HoldButton
-                      className={pfeilKlasse}
-                      disabled={gewaehlt.length === 0}
-                      title="nach rechts (Pfeiltaste →, gedrückt halten schiebt weiter)"
-                      onTrigger={() => bewegeAuswahl(f, 1, 0)}
-                    >
-                      →
-                    </HoldButton>
-                    <span />
-                    <HoldButton
-                      className={pfeilKlasse}
-                      disabled={gewaehlt.length === 0}
-                      title="nach unten (Pfeiltaste ↓, gedrückt halten schiebt weiter)"
-                      onTrigger={() => bewegeAuswahl(f, 0, 1)}
-                    >
-                      ↓
-                    </HoldButton>
-                    <span />
-                  </div>
-                  <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                    Verschieben um
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={100}
-                      value={schrittCm}
-                      onChange={(e) => {
-                        const n = Number.parseInt(e.target.value, 10);
-                        if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
-                      }}
-                      className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
-                    />
-                    cm
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      onClick={() =>
-                        setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) })
-                      }
-                    >
-                      Alle auswählen
-                    </button>
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      disabled={gewaehlt.length === 0}
-                      onClick={() => setAuswahl(null)}
-                    >
-                      ✕ Auswahl aufheben
-                    </button>
-                    {leerZahl > 0 && (
-                      <button
-                        type="button"
-                        className={aktionKlasse}
-                        title="Gelöschte Module in den ausgewählten Feldern wiederherstellen"
-                        onClick={() =>
-                          zellenZurueckholen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k))
-                        }
-                      >
-                        Gelöschte Module zurückholen ({leerZahl})
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300 disabled:opacity-40"
-                      disabled={gewaehlt.length === 0}
-                      onClick={() => auswahlLoeschen(f)}
-                    >
-                      🗑 Feld löschen{gewaehlt.length > 1 ? ` (${gewaehlt.length})` : ''}
-                    </button>
-                  </div>
-                  <span className="text-sm text-slate-500">
-                    {gewaehlt.length} von {felder.length} ausgewählt
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-sky-800">
-                  Ziehen verschiebt die Auswahl, die weißen Griffe ändern ihre Größe. Pfeiltasten
-                  und Halteknöpfe verschieben zentimetergenau.
-                </p>
-              </div>
-            )}
-
-            {belegungZeigen && modusArt(f) === 'zellen' && (
-              <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-slate-700">
-                    Module antippen zum Ab- und wieder Anschalten.
-                  </span>
-                  {leerZahl > 0 && (
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}
-                    >
-                      Alle anschalten ({leerZahl})
-                    </button>
-                  )}
-                  <button type="button" className={aktionKlasse} onClick={() => setzeModus(f, null)}>
-                    ✓ Fertig
-                  </button>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Abgeschaltete Module bleiben als graue Lücke sichtbar — nochmal antippen holt sie
-                  zurück. Die Lücke gehört zum Feld und wandert beim Verschieben mit. Im PDF ist
-                  dort nichts.
-                </p>
-              </div>
             )}
 
             {belegungZeigen && felder.length > 0 && raster.positionen.length === 0 && (
