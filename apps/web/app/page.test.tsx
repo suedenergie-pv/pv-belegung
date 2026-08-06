@@ -31,7 +31,7 @@ afterEach(() => {
 
 describe('Projektverwaltung und Einstieg', () => {
   it('legt einen sicheren Erststand an, übernimmt Projektdaten und durchläuft alle drei Schritte', async () => {
-    const { getByLabelText, getByRole, getByTestId, findByRole } = render(<Home />);
+    const { getByLabelText, getByRole, getByTestId, findByRole, queryByRole, getByText } = render(<Home />);
     await findByRole('button', { name: '+ Neu' });
     expect((getByLabelText('Aktuelles Projekt') as HTMLSelectElement).value).toMatch(/^prj-/);
 
@@ -42,17 +42,11 @@ describe('Projektverwaltung und Einstieg', () => {
     expect((getByRole('button', { name: 'Weiter →' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(getByRole('button', { name: 'Weiter →' }));
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
-    expect(getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).className).toContain('sticky');
-    expect(getByTestId('arbeitsbereich-p1').className).toContain(
-      'lg:grid-cols-[minmax(0,1fr)_19rem]',
-    );
-    expect(getByRole('button', { name: 'Hochkant' }).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(getByRole('button', { name: 'Automatisch belegen' }));
-    expect(await findByRole('button', { name: 'Belegung entfernen' })).toBeTruthy();
-    expect(getByLabelText('Leistung Dachfläche 1: 11,04 kWp')).toBeTruthy();
-    expect(getByLabelText('Gesamtleistung: 11,04 kWp')).toBeTruthy();
-    fireEvent.click(getByRole('button', { name: 'Quer' }));
-    expect(getByRole('button', { name: 'Quer' }).getAttribute('aria-pressed')).toBe('true');
+    expect(getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' })).toBeTruthy();
+    expect(getByTestId('arbeitsbereich-p1').className).not.toContain('lg:grid-cols');
+    expect(getByText('Noch kein Drohnenbild zugeordnet')).toBeTruthy();
+    expect(queryByRole('button', { name: 'Hochkant' })).toBeNull();
+    expect(queryByRole('button', { name: 'Automatisch belegen' })).toBeNull();
     fireEvent.click(getByRole('button', { name: 'Weiter →' }));
     expect((await findByRole('button', { name: '3. Export' })).getAttribute('aria-current')).toBe('step');
     expect(getByRole('heading', { name: 'Zusammenfassung' })).toBeTruthy();

@@ -252,7 +252,7 @@ export function SchrittBelegung({
   // Maße einblenden — beim Kunden vor Ort abschaltbar (Genrih 07.07.)
   const [masseZeigen, setMasseZeigen] = useState(true);
   const [fotoFokusId, setFotoFokusId] = useState<string | null>(null);
-  /** Aktive Arbeitsansicht je Fläche: Foto-ID oder 'plan' für die Draufsicht. */
+  /** Aktive Foto-Perspektive je Fläche. */
   const [ansichtJeFlaeche, setAnsichtJeFlaeche] = useState<Record<string, string>>({});
   // Aktives Werkzeug (exklusiv je Fläche); null = Felder-Werkzeug (Standard)
   const [modus, setModus] = useState<{ art: WerkzeugArt; flaecheId: string } | null>(null);
@@ -494,7 +494,7 @@ export function SchrittBelegung({
         return neu;
       }),
     }));
-    setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: 'plan' }));
+    setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: '' }));
   };
 
   const loescheFoto = (foto: ProjektFoto) => {
@@ -1184,8 +1184,8 @@ export function SchrittBelegung({
             <KartenTitel>Belegungsfotos</KartenTitel>
             {projekt.fotos.length === 0 ? (
               <p className="text-sm text-slate-500">
-                Fotos fügst du direkt bei der jeweiligen Dachfläche hinzu. Ohne Foto
-                arbeitest du in der maßstäblichen Draufsicht.
+                Fotos fügst du direkt bei der jeweiligen Dachfläche hinzu. Für die
+                Belegung ist mindestens ein kalibriertes Drohnenfoto erforderlich.
               </p>
             ) : (
               <p className="mt-1 text-sm text-slate-500">
@@ -1261,10 +1261,7 @@ export function SchrittBelegung({
         const i = projekt.flaechen.indexOf(f);
         const fotoZuordnungen = fotoZuordnungenVon(f);
         const gewuenschteAnsicht = ansichtJeFlaeche[f.id];
-        const fotoZuordnung =
-          gewuenschteAnsicht === 'plan'
-            ? undefined
-            : fotoZuordnungVon(f, gewuenschteAnsicht) ?? fotoZuordnungen[0];
+        const fotoZuordnung = fotoZuordnungVon(f, gewuenschteAnsicht) ?? fotoZuordnungen[0];
         const fotoId = fotoZuordnung?.fotoId;
         const fotoAsset = fotoId ? projektFotoVon(projekt, f, fotoId) : undefined;
         const foto = fotoId ? dachFotoVon(projekt, f, fotoId) : undefined;
@@ -1278,12 +1275,10 @@ export function SchrittBelegung({
         const raster = rasterFuer(fEff, modul);
         const aktiv = aktiveModule(fEff, raster);
         const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
-        // Umriss/Hindernis-Zeichnen in SchrittBelegung nur für die Draufsicht
-        // (ohne Foto). Bei Foto passiert das in FotoHintergrund auf dem leeren Dach.
-        const zeichenbar = !foto;
-        // Belegung erst zeigen, wenn keine Foto-Markierung mehr läuft (Hindernisse
-        // werden VORHER auf dem leeren Foto gesetzt, Genrih 07.07.).
-        const belegungZeigen = !foto || !!fotoZuordnung?.markierungFertig || !!foto.traufePx;
+        // Foto-only-Workflow (06.08.2026): Umriss und Hindernisse werden immer in
+        // FotoHintergrund markiert. Eine synthetische Draufsicht gibt es nicht mehr.
+        const zeichenbar = false;
+        const belegungZeigen = !!foto && (!!fotoZuordnung?.markierungFertig || !!foto.traufePx);
         const felder = felderVon(fEff);
         const gewaehlt = auswahlVon(f);
         const gaubenAufFlaeche = projekt.flaechen.filter(
@@ -1336,11 +1331,11 @@ export function SchrittBelegung({
                   </span>
                 )}
                 {f.gaubenTyp && <span className="text-sm font-semibold text-slate-800">{f.name}</span>}
-                {!f.gaubenTyp && <label className="min-w-0 flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
+                {!f.gaubenTyp && fotoZuordnungen.length > 0 && <label className="min-w-0 flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
                   Ansicht
                   <select
                     aria-label={`Ansicht für ${f.name}`}
-                    value={fotoId ?? 'plan'}
+                    value={fotoId ?? ''}
                     onChange={(e) => {
                       setAnsichtJeFlaeche((alt) => ({ ...alt, [f.id]: e.target.value }));
                       setAuswahl(null);
@@ -1350,7 +1345,6 @@ export function SchrittBelegung({
                     }}
                     className="touch-target h-9 min-w-0 max-w-56 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
                   >
-                    <option value="plan">Draufsicht</option>
                     {fotoZuordnungen.map((z, index) => {
                       const asset = projekt.fotos.find((x) => x.id === z.fotoId);
                       return asset ? (
@@ -1688,6 +1682,19 @@ export function SchrittBelegung({
               </div>
             )}
             </div>
+
+            {!foto && (
+              <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
+                <strong className="block text-base text-slate-800">
+                  {f.gaubenTyp ? 'Drohnenfoto der Gaube fehlt' : 'Noch kein Drohnenbild zugeordnet'}
+                </strong>
+                <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500">
+                  {f.gaubenTyp
+                    ? 'Die Gaube wird im Foto ihres Hauptdachs angelegt. Bitte dort die Fotozuordnung und Markierung prüfen.'
+                    : 'Foto hinzufügen oder ein vorhandenes Projektfoto verwenden. Danach Perspektive, Dachrand und Hindernisse direkt im Bild markieren.'}
+                </p>
+              </div>
+            )}
 
             {belegungZeigen && felder.length === 0 && !zeichneHier && (
               <p className="mb-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">

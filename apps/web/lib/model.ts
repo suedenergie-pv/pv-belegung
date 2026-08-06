@@ -681,6 +681,20 @@ export function fertigeFotoFlaechen(
     });
 }
 
+/** Belegte Flächen ohne gültige, fertig kalibrierte Foto-Perspektive. */
+export function belegteFlaechenOhneFoto(p: Projekt): Flaeche[] {
+  const modul = modulById(p.modulId);
+  return p.flaechen.filter((f) => {
+    if (aktiveModule(f, rasterFuer(f, modul)) === 0) return false;
+    return !fotoZuordnungenVon(f).some(
+      (z) =>
+        !!z.eckenPx &&
+        !!z.markierungFertig &&
+        p.fotos.some((foto) => foto.id === z.fotoId),
+    );
+  });
+}
+
 /** Tatsächliche Ausrichtungsverteilung der aktiven Module einer Fläche. */
 export function ausrichtungenVon(
   f: Flaeche,

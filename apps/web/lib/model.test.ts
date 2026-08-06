@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bauePayload,
+  belegteFlaechenOhneFoto,
   downloadDateiname,
   fertigeFotoFlaechen,
   fotoZuordnungenVon,
@@ -185,6 +186,28 @@ describe('Mehrfoto-Sicherheit', () => {
 
     projekt.flaechen[0]!.fotoZuordnungen![0]!.markierungFertig = true;
     expect(fertigeFotoFlaechen(projekt, 'foto-1')).toHaveLength(1);
+  });
+
+  it('blockiert nur belegte Flächen ohne fertig kalibriertes Foto', () => {
+    const projekt = neuesProjekt();
+    projekt.flaechen[0]!.felder = [
+      { xM: 0, yM: 0, breiteM: 10, hoeheM: 6, quer: false },
+    ];
+    expect(belegteFlaechenOhneFoto(projekt)).toEqual([projekt.flaechen[0]]);
+
+    projekt.fotos = [
+      { id: 'foto-1', name: 'Foto 1', dataUrl: 'data:image/jpeg;base64,x', breitePx: 100, hoehePx: 80 },
+    ];
+    projekt.flaechen[0]!.fotoZuordnungen = [{
+      fotoId: 'foto-1',
+      traufePx: null,
+      eckenPx: [[0, 80], [100, 80], [100, 0], [0, 0]],
+      markierungFertig: true,
+    }];
+    expect(belegteFlaechenOhneFoto(projekt)).toEqual([]);
+
+    projekt.flaechen.push(neueFlaeche(2, 'B'));
+    expect(belegteFlaechenOhneFoto(projekt)).toEqual([]);
   });
 
   it('migriert die einzelne v2-Fotozuordnung verlustfrei auf Perspektiven', () => {

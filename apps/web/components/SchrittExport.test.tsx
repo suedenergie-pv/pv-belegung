@@ -28,6 +28,15 @@ describe('Exportfunktionen', () => {
     const projekt = neuesProjekt();
     projekt.kunde = 'Audit Kunde';
     projekt.flaechen[0]!.felder = [vollFeldFuer(projekt.flaechen[0]!, modulById(projekt.modulId))];
+    projekt.fotos = [
+      { id: 'foto-1', name: 'Foto 1', dataUrl: 'data:image/jpeg;base64,x', breitePx: 100, hoehePx: 80 },
+    ];
+    projekt.flaechen[0]!.fotoZuordnungen = [{
+      fotoId: 'foto-1',
+      traufePx: null,
+      eckenPx: [[0, 80], [100, 80], [100, 0], [0, 0]],
+      markierungFertig: true,
+    }];
     const { getByRole, getByText } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);
 
     fireEvent.click(getByRole('button', { name: 'PDF herunterladen' }));
@@ -37,6 +46,17 @@ describe('Exportfunktionen', () => {
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1));
     const json = vi.mocked(navigator.clipboard.writeText).mock.calls[0]![0];
     expect(JSON.parse(json)).toMatchObject({ projekt: { kunde: 'Audit Kunde' }, geometrie_quelle: 'manual' });
+  });
+
+  it('sperrt PDF und JSON bei belegter Fläche ohne kalibriertes Foto', () => {
+    const projekt = neuesProjekt();
+    projekt.flaechen[0]!.felder = [vollFeldFuer(projekt.flaechen[0]!, modulById(projekt.modulId))];
+    const { getByRole, getByText } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);
+
+    expect((getByRole('button', { name: 'PDF herunterladen' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(getByText(/benötigt ein fertig kalibriertes Drohnenfoto/)).toBeTruthy();
+    fireEvent.click(getByText('Technische Daten (JSON)', { exact: false }));
+    expect((getByRole('button', { name: 'JSON kopieren' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('zeigt PDF-Fehler an, ohne die Oberfläche hängen zu lassen', async () => {

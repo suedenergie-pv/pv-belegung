@@ -4,9 +4,9 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   ausrichtungenVon,
+  belegteFlaechenOhneFoto,
   flaechenAusrichtungsLabel,
   bauePayload,
-  dachFotoVon,
   downloadDateiname,
   flaechenTitel,
   flaecheM2,
@@ -20,7 +20,6 @@ import {
   type Projekt,
 } from '../lib/model';
 import { erzeugeBelegungsPdf } from '../lib/pdf-export';
-import { DachSvg } from './DachSvg';
 import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
@@ -34,12 +33,15 @@ export function SchrittExport({
   const modul = modulById(projekt.modulId);
   const result = useMemo(() => pruefeStringplan(projekt), [projekt]);
   const zuordnung = zuordnungsHinweise(projekt);
+  const ohneFoto = belegteFlaechenOhneFoto(projekt);
   const [kopiert, setKopiert] = useState(false);
   const [pdfLaeuft, setPdfLaeuft] = useState(false);
   const [pdfFehler, setPdfFehler] = useState<string | null>(null);
   const renderRef = useRef<HTMLDivElement>(null);
 
-  const exportGesperrt = (result !== null && !result.valid) || zuordnung.fehler.length > 0;
+  const stringExportGesperrt =
+    (result !== null && !result.valid) || zuordnung.fehler.length > 0;
+  const exportGesperrt = stringExportGesperrt || ohneFoto.length > 0;
   const payload = useMemo(() => bauePayload(projekt, result), [projekt, result]);
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
 
@@ -50,9 +52,6 @@ export function SchrittExport({
       await erzeugeBelegungsPdf(
         projekt,
         result,
-        (flaecheId) =>
-          renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ??
-          null,
         (fotoId) =>
           renderRef.current?.querySelector<SVGSVGElement>(`[data-foto="${fotoId}"] svg`) ??
           null,
@@ -118,7 +117,7 @@ export function SchrittExport({
           <KartenTitel>Belegungsplan (PDF)</KartenTitel>
           <button
             type="button"
-            disabled={pdfLaeuft}
+            disabled={pdfLaeuft || ohneFoto.length > 0}
             className="ml-auto h-12 rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:cursor-wait disabled:opacity-60"
             onClick={() => void pdfHerunterladen()}
           >
@@ -128,6 +127,12 @@ export function SchrittExport({
         {result && !result.valid && (
           <p className="text-sm text-slate-500">
             Der aktuelle Stringplan ist ungültig und wird im PDF weggelassen.
+          </p>
+        )}
+        {ohneFoto.length > 0 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Export gesperrt: {ohneFoto.map((f) => f.name).join(', ')} benötigt ein fertig
+            kalibriertes Drohnenfoto. Die gespeicherte Belegung bleibt erhalten.
           </p>
         )}
         {pdfFehler && (
@@ -177,17 +182,16 @@ export function SchrittExport({
           {exportGesperrt && (
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             <p className="min-w-60 flex-1">
-              JSON-Export gesperrt: Der hinterlegte Stringplan ist ungültig oder enthält mehr
-              Module als aktuell belegt. Der Stringcheck ist ausgeblendet; das PDF bleibt
-              verfügbar.
+              Export gesperrt: Stringplan/Modulzuordnung ist ungültig oder eine belegte
+              Dachfläche besitzt noch kein fertig kalibriertes Drohnenfoto.
             </p>
-            <button
+            {stringExportGesperrt && <button
               type="button"
               className="touch-target rounded-lg border border-red-300 bg-white px-3 py-2 font-semibold text-red-700 hover:bg-red-100"
               onClick={() => onChange({ ...projekt, wrId: null, mppts: [] })}
             >
               Alten Stringplan entfernen
-            </button>
+            </button>}
           </div>
           )}
           <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
@@ -200,28 +204,13 @@ export function SchrittExport({
         </details>
       </Karte>
 
-      {/* Offscreen-Render für die PDF-Rasterung: identische DachSvg-Komponenten,
-          Maße bleiben mm × Maßstab (SPEC §3.5) — nur unsichtbar positioniert. */}
+      {/* Offscreen-Render der Foto-Gruppen für den foto-basierten PDF-Export. */}
       <div
         ref={renderRef}
         aria-hidden
         className="pointer-events-none fixed top-0 h-0 overflow-hidden"
         style={{ left: -10000, width: 1400 }}
       >
-        {projekt.flaechen.map((f) => {
-          const foto = dachFotoVon(projekt, f);
-          const renderFlaeche = foto ? { ...f, foto } : f;
-          return (
-            <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
-              <DachSvg
-                flaeche={renderFlaeche}
-                raster={rasterFuer(f, modul)}
-                modul={modul}
-                druck
-              />
-            </div>
-          );
-        })}
         {projekt.fotos.map((foto) => (
           <div key={foto.id} data-foto={foto.id} style={{ width: 1400 }}>
             <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />

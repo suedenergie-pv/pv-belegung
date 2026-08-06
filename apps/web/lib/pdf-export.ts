@@ -4,7 +4,6 @@ import {
   aktiveModule,
   ausrichtungenVon,
   downloadDateiname,
-  flaechenAusrichtungsLabel,
   flachdachOstRichtung,
   flachdachSuedRichtung,
   fertigeFotoFlaechen,
@@ -13,7 +12,6 @@ import {
   fmtDe,
   kwpGesamt,
   modulById,
-  randVon,
   rasterFuer,
   wrById,
   zonenVon,
@@ -22,9 +20,9 @@ import {
 
 /**
  * PDF-Export des Belegungsplans (Hauptexport fürs Vertriebsgespräch, 06.07.2026):
- * Seite 1 = Zusammenfassung + Gesamtübersicht aller Flächen, danach je Fläche
- * eine Detailseite. Die SVG-Ansichten (DachSvg, Maße aus mm × Maßstab — SPEC §3.5)
- * werden per Canvas gerastert; kein Server, alles bleibt im Browser.
+ * Seite 1 = Zusammenfassung + Fotoübersicht aller Flächen. Die Foto-SVGs werden
+ * per Canvas gerastert; kein Server, alles bleibt im Browser. Eine synthetische
+ * Dach-Draufsicht wird nicht exportiert.
  * Der Stringplan ist bewusst NUR Zusatzinfo: gültig → eine Zeile, sonst weggelassen.
  */
 
@@ -79,27 +77,18 @@ const HINWEIS =
   'Vorplanung Vertrieb — keine Fachplanung. Finale Auslegung durch die Projektleitung (PV*SOL).';
 
 /**
- * Baut das PDF. `svgVonFlaeche` liefert das im DOM gerenderte SVG je Fläche
- * (offscreen-Render in SchrittExport) — der Generator kennt kein React.
+ * Baut das PDF aus fertig kalibrierten Projektfotos — der Generator kennt kein React.
  */
 export async function erzeugeBelegungsPdf(
   projekt: Projekt,
   result: StringPlanResult | null,
-  svgVonFlaeche: (flaecheId: string) => SVGSVGElement | null,
-  svgVonFoto?: (fotoId: string) => SVGSVGElement | null,
+  svgVonFoto: (fotoId: string) => SVGSVGElement | null,
 ): Promise<void> {
   const { jsPDF } = await import('jspdf');
   const modul = modulById(projekt.modulId);
 
   // Logo vorab rastern (fällt bei Fehler auf den Text-Schriftzug zurück)
   const logo = await logoPng().catch(() => null);
-
-  // Alle Flächen vorab rastern (Detailbreite; die Übersicht nutzt dieselben Bilder)
-  const bilder = new Map<string, { dataUrl: string; seitenverhaeltnis: number }>();
-  for (const f of projekt.flaechen) {
-    const svg = svgVonFlaeche(f.id);
-    if (svg) bilder.set(f.id, await svgZuJpeg(svg, 1600));
-  }
 
   // Projektfotos mit allen jeweils zugeordneten Flächen, falls vorhanden.
   const fotoBilder: Array<{
@@ -112,7 +101,7 @@ export async function erzeugeBelegungsPdf(
   for (const foto of projekt.fotos) {
     const zugeordneteFlaechen = fertigeFotoFlaechen(projekt, foto.id);
     if (zugeordneteFlaechen.length === 0) continue;
-    const svg = svgVonFoto?.(foto.id) ?? null;
+    const svg = svgVonFoto(foto.id);
     if (!svg) continue;
     const bild = await svgZuJpeg(svg, 1600);
     const flaechen = zugeordneteFlaechen
@@ -237,9 +226,7 @@ export async function erzeugeBelegungsPdf(
   doc.line(RAND, y, SEITE_B - RAND, y);
   y += 7;
 
-  // Belegungsübersicht: bevorzugt die Drohnenfotos mit ihren zugeordneten Flächen;
-  // ohne Foto eine Fläche groß bzw. mehrere Flächen als Kacheln.
-  const einzelflaeche = projekt.flaechen.length === 1;
+  // Belegungsübersicht ausschließlich aus Drohnenfotos mit ihren zugeordneten Flächen.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20);
@@ -302,94 +289,10 @@ export async function erzeugeBelegungsPdf(
     }
     if (spalte !== 0) y += kartenH + 6;
   } else {
-    const spalten = einzelflaeche ? 1 : 2;
-    const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
-    let zeilenHoehe = 0;
-    let x = RAND;
-    let spalte = 0;
-    for (const f of projekt.flaechen) {
-      const bild = bilder.get(f.id);
-      if (!bild) continue;
-      let bildB = zelleB;
-      let bildH = bildB * bild.seitenverhaeltnis;
-      // Einzelfläche darf die ganze Restseite füllen, sonst kompakte Übersicht.
-      const maxH = einzelflaeche ? SEITE_H - y - 18 : 92;
-      if (bildH > maxH) {
-        bildH = maxH;
-        bildB = bildH / bild.seitenverhaeltnis;
-      }
-      if (y + bildH + 10 > SEITE_H - 16 && !einzelflaeche) break; // Seite voll — Details folgen
-      doc.addImage(
-        bild.dataUrl,
-        'JPEG',
-        x + (einzelflaeche ? (NUTZ_B - bildB) / 2 : 0),
-        y,
-        bildB,
-        bildH,
-      );
-      if (!einzelflaeche) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.setTextColor(90);
-        doc.text(f.name, x, y + bildH + 4);
-      }
-      zeilenHoehe = Math.max(zeilenHoehe, bildH + 8);
-      spalte += 1;
-      if (spalte >= spalten) {
-        spalte = 0;
-        x = RAND;
-        y += zeilenHoehe;
-        zeilenHoehe = 0;
-      } else {
-        x += zelleB + 6;
-      }
-    }
-  }
-
-  // ---- Je Fläche eine Detailseite (nur bei mehreren Flächen) ----
-  if (!einzelflaeche)
-  for (const [fIndex, f] of projekt.flaechen.entries()) {
-    const bild = bilder.get(f.id);
-    if (!bild) continue;
-    doc.addPage();
-    let dy = RAND + 4;
-    const raster = rasterFuer(f, modul);
-    const n = aktiveModule(f, raster);
-    const ausrichtungen = ausrichtungenVon(f, raster);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.setTextColor(20);
-    doc.text(flaechenTitel(f, fIndex), RAND, dy);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(80);
-    doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SEITE_B - RAND, dy, { align: 'right' });
-    dy += 6;
     doc.setFontSize(9);
-    // Nur ASCII/WinAnsi-sichere Trennzeichen — "·" rendert in jsPDF-Helvetica als Kästchen
-    doc.text(
-      `${f.flachdach ? flaechenAusrichtungsLabel(f) : azimutLabel(f.azimutDeg)}, Neigung ${f.neigungDeg}°, Fläche ${fmtDe(flaecheM2(f), 1)} m², ` +
-        `Randabstand ${fmtDe(randVon(f) * 100, 0)} cm`,
-      RAND,
-      dy,
-    );
-    dy += 5;
-    const lageText =
-      ausrichtungen.bezeichnung === 'gemischt'
-        ? `${ausrichtungen.hochkant} hochkant, ${ausrichtungen.quer} quer`
-        : ausrichtungen.bezeichnung === 'quer'
-          ? 'quer verlegt'
-          : 'hochkant verlegt';
-    doc.text(`${n} × ${modul.name} (${lageText})`, RAND, dy);
-    dy += 6;
-    let bildB = NUTZ_B;
-    let bildH = bildB * bild.seitenverhaeltnis;
-    const maxH = SEITE_H - dy - 20;
-    if (bildH > maxH) {
-      bildH = maxH;
-      bildB = bildH / bild.seitenverhaeltnis;
-    }
-    doc.addImage(bild.dataUrl, 'JPEG', RAND + (NUTZ_B - bildB) / 2, dy, bildB, bildH);
+    doc.setTextColor(120);
+    doc.text('Kein fertig kalibriertes Belegungsfoto vorhanden.', RAND, y + 4);
   }
 
   fuss();

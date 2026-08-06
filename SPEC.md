@@ -22,7 +22,7 @@ Leitprinzip UX: **idiotensicher = Auswahl wegnehmen, nicht erklären.** Dropdown
 
 ### 1.2 Output pro Projekt
 
-1. Dachplan (Draufsicht pro Fläche + gruppierte Belegungsfotos, §8.4/§11)
+1. Dachplan (gruppierte Belegungsfotos je Fläche und Perspektive, §8.4/§11)
 2. Modulbelegung (Anzahl, Ausrichtung, Position)
 3. Stringplan (Strings pro MPPT, validiert gegen Regelwerk §7)
 4. Grobe Anlagengröße (kWp = Modulanzahl × Pmax)
@@ -332,9 +332,11 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 
 - Drohnenfotos sind projektweite Bild-Assets. Ein Foto darf mehrere Dachflächen A/B/C enthalten; alternativ dürfen die Flächen auf mehrere Fotos verteilt werden.
 - Jede Dachfläche darf **einem oder mehreren Belegungsfotos** zugeordnet sein. Jede
-  Zuordnung ist eine eigene Perspektive derselben metrischen Dachfläche. Flächen
-  ohne Foto bleiben in der maßstäblichen Draufsicht bearbeitbar; die Draufsicht
-  bleibt auch bei vorhandenen Fotos als zusätzliche Arbeitsansicht erreichbar.
+  Zuordnung ist eine eigene Perspektive derselben metrischen Dachfläche. Die
+  Belegung wird ausschließlich auf kalibrierten Drohnenfotos bearbeitet; eine
+  synthetische Draufsicht ist im Vertriebsflow nicht mehr vorhanden. Flächen ohne
+  Foto behalten ihre metrischen Daten, bleiben aber bis zur Fotozuordnung und
+  Kalibrierung unbelegbar und nicht als Belegungsplan exportierbar.
 - Perspektive, Traufkante, Foto-Maßstab und Markierungsstatus gehören zur
   **Zuordnung Fläche ↔ Foto**, nicht zum Bild-Asset und nicht global zur Fläche.
   Belegungsfelder, ausgeschaltete Module, metrischer Umriss und Hindernisse gehören
@@ -343,8 +345,8 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - Eine Fläche darf demselben Foto höchstens einmal zugeordnet werden. Jede Perspektive
   wird separat mit vier Ecken kalibriert. Das Neusetzen einer Perspektive darf die
   gemeinsame metrische Geometrie der Dachfläche nicht löschen.
-- UX: In der Flächenkarte wird zwischen Draufsicht und den zugeordneten Fotos
-  umgeschaltet. „Foto hinzufügen“ bzw. „Weitere Perspektive“ lädt direkt an dieser
+- UX: In der Flächenkarte wird zwischen den zugeordneten Fotos umgeschaltet.
+  „Foto hinzufügen“ bzw. „Weitere Perspektive“ lädt direkt an dieser
   Fläche ein Bild hoch, ordnet es automatisch zu und öffnet die neue Perspektive.
   Bereits vorhandene Projektfotos können dort optional wiederverwendet werden. Die
   projektweite Fotoübersicht dient nur Vorschau, Umbenennen, Ersetzen und Löschen;
@@ -353,10 +355,12 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - Das frühere eigene UI-Tab „Gesamtansicht" entfällt. Die Foto-Gruppen im Belegungsschritt und im PDF übernehmen diese Aufgabe.
 - Der Vertriebsablauf hat drei Hauptschritte: **Projekt → Dach & Belegung → Export**.
   Dachflächen-Grunddaten und Belegung liegen bewusst im selben Arbeitsschritt.
-- Jede neue Hauptfläche startet mit geöffneten Grunddaten. Nach Bestätigung bleibt
-  direkt über ihrer Foto-/Draufsicht eine kompakte Zeile sichtbar: Flächenform,
-  Traufe/Breite, Sparrenlänge/Tiefe und – falls nötig – Firstbreite sowie Versatz.
-  Seltene Angaben bleiben unter „Details" eingeklappt (progressive disclosure).
+- Jede neue Hauptfläche startet mit geöffneten Grunddaten. Auf dem Desktop liegen
+  die häufigen Angaben in einer kompakten Zeile: Flächenart, Traufe/Breite,
+  Sparrenlänge/Tiefe, Flächenform, Ausrichtung und Neigung. Nur konditionale Angaben
+  (Firstbreite/Versatz oder Flachdach-Aufständerung) dürfen eine zweite Zeile bilden.
+  Die Dacheindeckung liegt, soweit für Export/Montage noch benötigt, unter
+  „Technische Details" und belegt keine eigenen breiten Auswahlkarten mehr.
 - Änderungen dieser Maße lassen die vier Fotoecken unverändert: Die Ecken bestimmen
   die Perspektive, die wahren Maße bestimmen den metrischen Maßstab und damit die
   sichtbare Modulgröße. Belegungsfelder, manuelle Umrisse und Hindernisse werden beim
@@ -405,7 +409,7 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 
 ### 11.1 Ansichten
 
-- **v1:** Draufsicht pro Fläche (2D-Plan, wahre Maße, Modulraster, Dachfarbe) sowie ein oder mehrere Belegungsfotos. Auf jedem Foto werden alle zugeordneten Flächen mit ihrer eigenen projektiven Abbildung zusammengesetzt. Ein separates Gesamtansicht-Tab gibt es nicht mehr.
+- **v1:** Ein oder mehrere kalibrierte Belegungsfotos je Fläche. Auf jedem Foto werden alle zugeordneten Flächen mit ihrer eigenen projektiven Abbildung zusammengesetzt. Eine synthetische Draufsicht und ein separates Gesamtansicht-Tab gibt es nicht mehr. Die metrische 2D-Geometrie bleibt intern die verbindliche Grundlage für Raster, Randabstände, Hindernisse und Export.
 - Kein Tilt/3D-Hover (konsistent mit Website-Designsystem).
 
 ### 11.2 Modul-Symbole (SVG `<symbol>` / `<use>`, freigegeben 04.07.2026)
