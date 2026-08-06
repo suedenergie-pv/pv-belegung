@@ -44,7 +44,7 @@ describe('Projektverwaltung und Einstieg', () => {
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
     expect(getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).className).toContain('sticky');
     expect(getByTestId('arbeitsbereich-p1').className).toContain(
-      'lg:grid-cols-[minmax(0,1fr)_17rem]',
+      'lg:grid-cols-[minmax(0,1fr)_19rem]',
     );
     expect(getByRole('button', { name: 'Hochkant' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(getByRole('button', { name: 'Automatisch belegen' }));

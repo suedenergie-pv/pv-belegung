@@ -1322,21 +1322,21 @@ export function SchrittBelegung({
             )}
             <div
               data-testid={`arbeitsbereich-${f.id}`}
-              className={belegungZeigen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-3' : ''}
+              className={belegungZeigen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start lg:gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_21rem]' : ''}
             >
             <div
               role="toolbar"
               aria-label={`Werkzeuge für ${f.name}`}
               className={`${belegungZeigen ? 'sticky top-16 z-30 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:mb-0 lg:self-start' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
             >
-              <div className={`flex flex-wrap items-center gap-2 ${belegungZeigen ? 'lg:flex-col lg:items-stretch' : ''}`}>
+              <div className={`min-w-0 flex flex-wrap items-center gap-2 ${belegungZeigen ? 'lg:flex-col lg:items-stretch' : ''}`}>
                 {f.gaubenTyp && (
                   <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
                     Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
                   </span>
                 )}
                 {f.gaubenTyp && <span className="text-sm font-semibold text-slate-800">{f.name}</span>}
-                {!f.gaubenTyp && <label className="flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
+                {!f.gaubenTyp && <label className="min-w-0 flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
                   Ansicht
                   <select
                     aria-label={`Ansicht für ${f.name}`}
@@ -1401,7 +1401,7 @@ export function SchrittBelegung({
                     Perspektive entfernen
                   </button>
                 )}
-                <span className={`ml-auto whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white ${belegungZeigen ? 'lg:ml-0 lg:text-center' : ''}`}>
+                <span className={`ml-auto rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white ${belegungZeigen ? 'lg:ml-0 lg:text-center' : 'whitespace-nowrap'}`}>
                   {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp
                   {felder.length > 0 && ` · ${felder.length} ${felder.length === 1 ? 'Feld' : 'Felder'}`}
                 </span>
