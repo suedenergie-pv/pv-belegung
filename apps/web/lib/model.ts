@@ -455,7 +455,7 @@ export function neueFlaeche(nr: number, zone?: string): Flaeche {
     neigungDeg: 35,
     azimutDeg: 180,
     dachfarbe: 'anthrazit',
-    ausrichtung: 'quer',
+    ausrichtung: 'hoch',
     grunddatenFertig: false,
     // Neue Flächen starten UNBELEGT — der Nutzer zieht seine Felder selbst
     // (oder klickt „Automatisch füllen"). Genrih 16.07.: Automatismus mildern.

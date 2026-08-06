@@ -19,6 +19,10 @@ import {
 } from './model';
 
 describe('Export-Geometrie und Modulausrichtung', () => {
+  it('legt neue Dachflächen standardmäßig mit hochkant stehenden Modulen an', () => {
+    expect(neueFlaeche(1, 'A').ausrichtung).toBe('hoch');
+  });
+
   it('berechnet Rechteck, Trapez und manuelles Polygon korrekt', () => {
     const rechteck = neueFlaeche(1, 'A');
     rechteck.breiteM = 10;
