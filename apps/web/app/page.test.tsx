@@ -30,6 +30,15 @@ afterEach(() => {
 });
 
 describe('Projektverwaltung und Einstieg', () => {
+  it('zeigt bei beschädigter Speicherung die Reparaturansicht statt eines leeren Projekts', async () => {
+    window.localStorage.setItem('pv-belegung-projekte-v2', '{kaputt');
+    const { findByRole, getByRole } = render(<Home />);
+    expect(await findByRole('heading', { name: 'Gespeicherter Stand muss repariert werden' })).toBeTruthy();
+    expect(getByRole('button', { name: 'Rohdaten sichern' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Bewusst leeren Stand anlegen' }));
+    expect(await findByRole('heading', { name: 'Projekt' })).toBeTruthy();
+  });
+
   it('legt einen sicheren Erststand an, übernimmt Projektdaten und durchläuft alle drei Schritte', async () => {
     const { getByLabelText, getByRole, getByTestId, findByRole, queryByRole, getByText } = render(<Home />);
     await findByRole('button', { name: '+ Neu' });

@@ -3,25 +3,39 @@ import {
   bauePayload,
   belegteFlaechenOhneFoto,
   downloadDateiname,
+  eintragListenName,
   fertigeFotoFlaechen,
   fotoZuordnungenVon,
   felderInput,
   flaecheM2,
   flachdachOstRichtung,
   flachdachRichtungsLabel,
-  ladeProjekte,
+  migriereProjekt,
+  migriereWorkflowSchritt,
   modulById,
   neueFlaeche,
   neuesProjekt,
   patchFlaechenGeometrie,
   perspektiveQuelle,
   projektFreigabe,
-  speichereProjekte,
   zonenLabel,
-  type ProjektDb,
 } from './model';
 
 describe('Export-Geometrie und Modulausrichtung', () => {
+  it('nummeriert gleichnamige Projekte und zeigt ihre Änderungszeit', () => {
+    const projekt = neuesProjekt();
+    projekt.kunde = 'Gleicher Kunde';
+    const eintraege = [1, 2].map((nr) => ({
+      id: `projekt-${nr}`,
+      projekt,
+      schritt: 0,
+      erstelltAm: nr,
+      geaendertAm: new Date(2026, 7, 27, 10, nr).getTime(),
+    }));
+    expect(eintragListenName(eintraege[0]!, eintraege)).toContain('Gleicher Kunde #1');
+    expect(eintragListenName(eintraege[1]!, eintraege)).toMatch(/#2 · 27\.08\.26 10:02/);
+  });
+
   it('setzt Zonen nach Z mit AA, AB und AZ fort', () => {
     expect(zonenLabel(25)).toBe('Z');
     expect(zonenLabel(26)).toBe('AA');
@@ -270,15 +284,7 @@ describe('Mehrfoto-Sicherheit', () => {
       },
       markierungFertig: true,
     };
-    const alt: ProjektDb = {
-      aktivId: 'projekt-1',
-      projekte: [{ id: 'projekt-1', projekt, schritt: 1, erstelltAm: 1, geaendertAm: 1 }],
-    };
-    vi.stubGlobal('window', {
-      localStorage: { getItem: vi.fn(() => JSON.stringify(alt)) },
-    });
-
-    const migriert = ladeProjekte().projekte[0]!.projekt;
+    const migriert = migriereProjekt(projekt);
     expect(migriert.fotoModellVersion).toBe(3);
     expect(fotoZuordnungenVon(migriert.flaechen[0]!)).toEqual([
       expect.objectContaining({ fotoId: 'foto-1', markierungFertig: true }),
@@ -302,49 +308,10 @@ describe('Mehrfoto-Sicherheit', () => {
     );
   });
 
-  it('überschreibt bei vollem Browser-Speicher keinen zweiten Stand ohne Fotos', () => {
-    const projekt = neuesProjekt();
-    projekt.fotos = [
-      { id: 'foto-1', name: 'Foto 1', dataUrl: 'data:image/jpeg;base64,x', breitePx: 100, hoehePx: 80 },
-    ];
-    const db: ProjektDb = {
-      aktivId: 'projekt-1',
-      projekte: [
-        { id: 'projekt-1', projekt, schritt: 2, erstelltAm: 1, geaendertAm: 1 },
-      ],
-    };
-    const aufrufe: Array<[string, string]> = [];
-    const setItem = vi.fn((key: string, value: string) => {
-      aufrufe.push([key, value]);
-      throw new DOMException('Quota exceeded', 'QuotaExceededError');
-    });
-    vi.stubGlobal('window', { localStorage: { setItem } });
-
-    expect(speichereProjekte(db)).toBe('speicher_voll');
-    expect(setItem).toHaveBeenCalledTimes(1);
-    expect(aufrufe[0]![1]).toContain('data:image/jpeg;base64,x');
-  });
-
   it('migriert bestehende Projekte auf den zusammengeführten Drei-Schritt-Ablauf', () => {
     const projekt = neuesProjekt();
     delete projekt.flaechen[0]!.grunddatenFertig;
-    const alt: ProjektDb = {
-      aktivId: 'projekt-2',
-      projekte: [0, 1, 2, 3].map((schritt) => ({
-        id: `projekt-${schritt}`,
-        projekt,
-        schritt,
-        erstelltAm: 1,
-        geaendertAm: 1,
-      })),
-    };
-    vi.stubGlobal('window', {
-      localStorage: { getItem: vi.fn(() => JSON.stringify(alt)) },
-    });
-
-    const migriert = ladeProjekte();
-    expect(migriert.workflowVersion).toBe(2);
-    expect(migriert.projekte.map((e) => e.schritt)).toEqual([0, 1, 1, 2]);
-    expect(migriert.projekte[0]!.projekt.flaechen[0]!.grunddatenFertig).toBe(true);
+    expect([0, 1, 2, 3].map(migriereWorkflowSchritt)).toEqual([0, 1, 1, 2]);
+    expect(migriereProjekt(projekt).flaechen[0]!.grunddatenFertig).toBe(true);
   });
 });

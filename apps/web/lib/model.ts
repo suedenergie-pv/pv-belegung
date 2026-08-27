@@ -985,15 +985,6 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
 export const fmtDe = (v: number, digits = 2): string =>
   v.toLocaleString('de-DE', { maximumFractionDigits: digits });
 
-/**
- * Projektverwaltung in localStorage (mehrere Projekte, 06.07.2026): Ein
- * Vertriebler hat mehrere Termine — jedes Projekt bleibt erhalten. Kein
- * Server-State, reines Browser-Feature. Migration vom Alt-Key (Einzelprojekt,
- * `pv-belegung-wizard-v1`) beim ersten Laden, damit nichts verloren geht.
- */
-const STORAGE_KEY = 'pv-belegung-wizard-v1'; // alt, nur noch für Migration
-const PROJEKTE_KEY = 'pv-belegung-projekte-v1';
-
 export interface ProjektEintrag {
   id: string;
   projekt: Projekt;
@@ -1009,10 +1000,8 @@ export interface ProjektDb {
   workflowVersion?: 2;
 }
 
-const WORKFLOW_VERSION = 2 as const;
-
 /** Alte Schritte 0/1/2/3 auf Projekt / Dach & Belegung / Export abbilden. */
-function migriereWorkflowSchritt(schritt: number): number {
+export function migriereWorkflowSchritt(schritt: number): number {
   if (schritt <= 0) return 0;
   if (schritt >= 3) return 2;
   return 1;
@@ -1027,13 +1016,25 @@ export function eintragName(e: ProjektEintrag): string {
   return e.projekt.kunde.trim() || e.projekt.adresse.trim() || 'Unbenanntes Projekt';
 }
 
-/** kurzes Datum dd.mm.jj für die Projektliste */
+/** Änderungszeit für die Projektliste. */
 export function eintragDatum(e: ProjektEintrag): string {
   return new Date(e.geaendertAm).toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: '2-digit',
-  });
+    hour: '2-digit',
+    minute: '2-digit',
+  }).replace(',', '');
+}
+
+/** Gleichnamige Projekte mit stabiler laufender Nummer unterscheidbar machen. */
+export function eintragListenName(e: ProjektEintrag, alle: readonly ProjektEintrag[]): string {
+  const name = eintragName(e);
+  const gleiche = alle
+    .filter((kandidat) => eintragName(kandidat) === name)
+    .sort((a, b) => a.erstelltAm - b.erstelltAm || a.id.localeCompare(b.id));
+  const nummer = gleiche.length > 1 ? ` #${gleiche.findIndex((kandidat) => kandidat.id === e.id) + 1}` : '';
+  return `${name}${nummer} · ${eintragDatum(e)}`;
 }
 
 /**
@@ -1189,7 +1190,7 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
 }
 
 /** Katalog-Migration eines geladenen Projekts (Modul-/WR-ids nach Updates veraltet). */
-function migriereProjekt(roh: Projekt): Projekt {
+export function migriereProjekt(roh: Projekt): Projekt {
   const projekt: Projekt = { ...neuesProjekt(), ...roh };
   migriereFotoModell(roh, projekt);
   const flaechenIds = new Set(projekt.flaechen.map((f) => f.id));
@@ -1241,92 +1242,6 @@ function migriereProjekt(roh: Projekt): Projekt {
     };
   });
   return projekt;
-}
-
-/** Alt-Key (Einzelprojekt) lesen — nur für die einmalige Migration. */
-function ladeAltStand(): { projekt: Projekt; schritt: number } | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const roh = window.localStorage.getItem(STORAGE_KEY);
-    if (!roh) return null;
-    const stand = JSON.parse(roh) as { projekt?: Projekt; schritt?: number };
-    if (!stand.projekt || !Array.isArray(stand.projekt.flaechen)) return null;
-    return { projekt: migriereProjekt(stand.projekt), schritt: stand.schritt ?? 0 };
-  } catch {
-    return null;
-  }
-}
-
-export type SpeicherStatus = 'gespeichert' | 'speicher_voll';
-
-export function speichereProjekte(db: ProjektDb): SpeicherStatus {
-  if (typeof window === 'undefined') return 'gespeichert';
-  try {
-    window.localStorage.setItem(
-      PROJEKTE_KEY,
-      JSON.stringify({ ...db, workflowVersion: WORKFLOW_VERSION }),
-    );
-    return 'gespeichert';
-  } catch {
-    // Den letzten vollständigen Stand niemals durch eine Version ohne Fotos
-    // überschreiben. Die UI warnt, bis ein kompletter Speichervorgang gelingt.
-    return 'speicher_voll';
-  }
-}
-
-export function ladeProjekte(): ProjektDb {
-  if (typeof window === 'undefined') {
-    return { aktivId: null, projekte: [], workflowVersion: WORKFLOW_VERSION };
-  }
-  try {
-    const roh = window.localStorage.getItem(PROJEKTE_KEY);
-    if (roh) {
-      const db = JSON.parse(roh) as Partial<ProjektDb>;
-      if (Array.isArray(db.projekte)) {
-        const bereitsNeu = db.workflowVersion === WORKFLOW_VERSION;
-        const projekte = db.projekte
-          .filter((e): e is ProjektEintrag => !!e?.projekt && Array.isArray(e.projekt.flaechen))
-          .map((e) => ({
-            ...e,
-            schritt: bereitsNeu
-              ? Math.max(0, Math.min(2, e.schritt ?? 0))
-              : migriereWorkflowSchritt(e.schritt ?? 0),
-            projekt: migriereProjekt(e.projekt),
-          }));
-        const aktivId = projekte.some((e) => e.id === db.aktivId)
-          ? db.aktivId!
-          : (projekte[0]?.id ?? null);
-        return { aktivId, projekte, workflowVersion: WORKFLOW_VERSION };
-      }
-    }
-  } catch {
-    // fällt weiter zur Migration/Neuanlage
-  }
-  // Einmalige Migration vom Alt-Key (genau ein Projekt)
-  const alt = ladeAltStand();
-  if (alt) {
-    const jetzt = Date.now();
-    const eintrag: ProjektEintrag = {
-      id: neueProjektId(),
-      projekt: migriereProjekt(alt.projekt),
-      schritt: migriereWorkflowSchritt(alt.schritt),
-      erstelltAm: jetzt,
-      geaendertAm: jetzt,
-    };
-    const db: ProjektDb = {
-      aktivId: eintrag.id,
-      projekte: [eintrag],
-      workflowVersion: WORKFLOW_VERSION,
-    };
-    speichereProjekte(db);
-    try {
-      window.localStorage.removeItem(STORAGE_KEY); // Alt-Key freigeben (Fotos = groß)
-    } catch {
-      // egal
-    }
-    return db;
-  }
-  return { aktivId: null, projekte: [], workflowVersion: WORKFLOW_VERSION };
 }
 
 /** Neuer, leerer Eintrag (Zeitstempel jetzt). */
