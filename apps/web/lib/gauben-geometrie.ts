@@ -6,16 +6,33 @@ import {
   type Punkt,
 } from './foto-geometrie';
 import {
+  fotoZuordnungenVon,
   perspektiveQuelle,
   rahmenBreiteVon,
   type Flaeche,
+  type FotoZuordnung,
   type GaubenAussparung,
+  type Projekt,
   type RechteckM,
 } from './model';
 
 const distanz = (a: Punkt, b: Punkt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const rundeCm = (wert: number) => Math.round(wert * 100) / 100;
 const positivesMass = (wert: number) => Math.max(0.1, rundeCm(wert));
+
+export interface GaubenMarkierung {
+  aussen: Ecken;
+  seiten?: { links: Ecken; rechts: Ecken };
+  aussparung: RechteckM;
+}
+
+export type RekonstruierteGaubenPunkte =
+  | { ok: true; punkte: Punkt[] }
+  | { ok: false; grund: string };
+
+export type GaubenMarkierungAngewendet =
+  | { ok: true; projekt: Projekt }
+  | { ok: false; grund: string };
 
 /** Foto-Punkte lokal und deterministisch in die Ebene des Hauptdachs zurückrechnen. */
 export function gaubenPunkteAufElternflaeche(
@@ -88,6 +105,152 @@ export function aktualisiereGaubenAussparungen(
     const rechteck = gaubenAussparungAusFoto(eltern, a.fotoEckenPx);
     return rechteck ? { ...a, rechteck } : a;
   });
+}
+
+const gleicherPunkt = (a: Punkt, b: Punkt, toleranzPx = 1) => distanz(a, b) <= toleranzPx;
+
+const eindeutigePunkte = (punkte: readonly Punkt[], toleranzPx = 1) => {
+  const ergebnis: Punkt[] = [];
+  for (const punkt of punkte) {
+    if (!ergebnis.some((x) => gleicherPunkt(x, punkt, toleranzPx))) {
+      ergebnis.push([punkt[0], punkt[1]]);
+    }
+  }
+  return ergebnis;
+};
+
+/**
+ * Gespeicherte Flachdach-/Satteldach-Markierungen wieder in ihre gemeinsamen
+ * vier bzw. sechs Kontrollpunkte zerlegen. Die beiden Firstpunkte einer
+ * Satteldachgaube werden als Schnittmenge beider Seiten rekonstruiert.
+ */
+export function rekonstruiereGaubenPunkte(
+  eltern: Flaeche,
+  flaechen: readonly Flaeche[],
+  gruppenId: string,
+): RekonstruierteGaubenPunkte {
+  const gruppe = flaechen.filter((f) => (f.gaubenGruppeId ?? f.id) === gruppenId && !!f.gaubenTyp);
+  const erste = gruppe[0];
+  if (!erste) return { ok: false, grund: 'Die Gaubengruppe enthält keine Dachfläche.' };
+  const fotoId = fotoZuordnungenVon(eltern)[0]?.fotoId;
+  const aussparung = eltern.gaubenAussparungen?.find((a) => a.gaubenGruppeId === gruppenId);
+  const gespeichertesAussen = aussparung?.fotoEckenPx;
+
+  if (erste.gaubenTyp === 'flachdach') {
+    const ecken = gespeichertesAussen ?? fotoZuordnungenVon(erste).find((z) => !fotoId || z.fotoId === fotoId)?.eckenPx;
+    return ecken
+      ? { ok: true, punkte: ecken.map(([x, y]) => [x, y]) }
+      : { ok: false, grund: 'Die vier gespeicherten Gaubenecken fehlen.' };
+  }
+
+  const links = gruppe.find((f) => f.gaubenSeite === 'links');
+  const rechts = gruppe.find((f) => f.gaubenSeite === 'rechts');
+  const linksEcken = links && fotoZuordnungenVon(links).find((z) => !fotoId || z.fotoId === fotoId)?.eckenPx;
+  const rechtsEcken = rechts && fotoZuordnungenVon(rechts).find((z) => !fotoId || z.fotoId === fotoId)?.eckenPx;
+  if (!linksEcken || !rechtsEcken) {
+    return { ok: false, grund: 'Mindestens eine gespeicherte Gaubenseite ist unvollständig.' };
+  }
+  const gemeinsam = eindeutigePunkte(
+    linksEcken.filter((p) => rechtsEcken.some((q) => gleicherPunkt(p, q))),
+  );
+  if (gemeinsam.length < 2) {
+    return { ok: false, grund: 'Die gemeinsame Firstlinie beider Gaubenseiten fehlt.' };
+  }
+  let first: [Punkt, Punkt] = [gemeinsam[0]!, gemeinsam[1]!];
+  for (let i = 0; i < gemeinsam.length; i++) {
+    for (let j = i + 1; j < gemeinsam.length; j++) {
+      if (distanz(gemeinsam[i]!, gemeinsam[j]!) > distanz(first[0], first[1])) {
+        first = [gemeinsam[i]!, gemeinsam[j]!];
+      }
+    }
+  }
+  const aussen = gespeichertesAussen ?? (() => {
+    const einzigartig = eindeutigePunkte(
+      [...linksEcken, ...rechtsEcken].filter((p) => !first.some((r) => gleicherPunkt(p, r))),
+    );
+    return einzigartig.length === 4
+      ? sortiereEcken(einzigartig as [Punkt, Punkt, Punkt, Punkt])
+      : undefined;
+  })();
+  if (!aussen) {
+    return { ok: false, grund: 'Der gemeinsame Außenumriss der Satteldachgaube fehlt.' };
+  }
+  return {
+    ok: true,
+    punkte: [...aussen.map(([x, y]) => [x, y] as Punkt), [first[0][0], first[0][1]], [first[1][0], first[1][1]]],
+  };
+}
+
+/**
+ * Einziger Schreibpfad für eine korrigierte Gaubenmarkierung. Vorschau und
+ * endgültiges Speichern rufen dieselbe reine Funktion auf; Maße, Felder,
+ * abgeschaltete Module und Hindernisse bleiben unverändert.
+ */
+export function wendeGaubenMarkierungAn(
+  projekt: Projekt,
+  elternId: string,
+  gruppenId: string,
+  fotoId: string,
+  markierung: GaubenMarkierung,
+): GaubenMarkierungAngewendet {
+  const eltern = projekt.flaechen.find((f) => f.id === elternId);
+  const gruppe = projekt.flaechen.filter(
+    (f) => (f.gaubenGruppeId ?? f.id) === gruppenId && !!f.gaubenTyp,
+  );
+  if (!eltern) return { ok: false, grund: 'Das Hauptdach der Gaube fehlt.' };
+  if (gruppe.length === 0) return { ok: false, grund: 'Die Gaubengruppe fehlt.' };
+  if (gruppe.some((f) => f.gaubenTyp === 'satteldach') && !markierung.seiten) {
+    return { ok: false, grund: 'Die gemeinsame Firstlinie der Satteldachgaube ist ungültig.' };
+  }
+
+  return {
+    ok: true,
+    projekt: {
+      ...projekt,
+      flaechen: projekt.flaechen.map((f) => {
+        if (f.id === elternId) {
+          const bisher = f.gaubenAussparungen ?? [];
+          const vorhanden = bisher.some((a) => a.gaubenGruppeId === gruppenId);
+          return {
+            ...f,
+            gaubenAussparungen: vorhanden
+              ? bisher.map((a) =>
+                  a.gaubenGruppeId === gruppenId
+                    ? { ...a, rechteck: markierung.aussparung, fotoEckenPx: markierung.aussen }
+                    : a,
+                )
+              : [...bisher, {
+                  gaubenGruppeId: gruppenId,
+                  rechteck: markierung.aussparung,
+                  fotoEckenPx: markierung.aussen,
+                }],
+          };
+        }
+        if ((f.gaubenGruppeId ?? f.id) !== gruppenId || !f.gaubenTyp) return f;
+        const eckenPx =
+          f.gaubenTyp === 'satteldach' && f.gaubenSeite
+            ? markierung.seiten?.[f.gaubenSeite]
+            : markierung.aussen;
+        if (!eckenPx) return f;
+        const bisher = fotoZuordnungenVon(f);
+        const vorhanden = bisher.find((z) => z.fotoId === fotoId);
+        const z: FotoZuordnung = {
+          ...(vorhanden ?? { fotoId, traufePx: null }),
+          fotoId,
+          traufePx: null,
+          eckenPx,
+          markierungFertig: true,
+          perspektiveBestaetigt: true,
+        };
+        return {
+          ...f,
+          fotoZuordnungen: bisher.some((x) => x.fotoId === fotoId)
+            ? bisher.map((x) => (x.fotoId === fotoId ? z : x))
+            : [...bisher, z],
+        };
+      }),
+    },
+  };
 }
 
 const mittelX = (punkte: readonly Punkt[]) =>

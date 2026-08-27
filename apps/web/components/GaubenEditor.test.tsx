@@ -3,7 +3,7 @@ import React from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ecken } from '../lib/foto-geometrie';
-import { neueFlaeche, neueGaubenFlaeche } from '../lib/model';
+import { neueFlaeche, neueGaubenFlaeche, neuesProjekt } from '../lib/model';
 import { GaubenEditor } from './GaubenEditor';
 
 beforeEach(() => {
@@ -47,6 +47,7 @@ describe('Gauben-Serienworkflow', () => {
         <GaubenEditor
           eltern={eltern}
           gauben={[gaube]}
+          projekt={{ ...neuesProjekt(), flaechen: [eltern, gaube] }}
           onErstellen={onErstellen}
           onLoeschen={vi.fn()}
           onMasseAendern={vi.fn()}
@@ -76,9 +77,19 @@ describe('Gauben-Serienworkflow', () => {
     for (const [clientX, clientY] of [[200, 500], [400, 500], [380, 300], [220, 300]]) {
       fireEvent.click(foto, { clientX, clientY });
     }
+    const ersterGriff = getByRole('button', { name: 'Gaubenpunkt 1' });
+    const pointer = (art: string, clientX: number, clientY: number) => {
+      const event = new MouseEvent(art, { bubbles: true, clientX, clientY });
+      Object.defineProperty(event, 'pointerId', { value: 7 });
+      fireEvent(ersterGriff, event);
+    };
+    pointer('pointerdown', 200, 500);
+    pointer('pointermove', 180, 520);
+    pointer('pointerup', 180, 520);
     fireEvent.click(getByRole('button', { name: 'Anlegen & nächste gleiche markieren' }));
 
     expect(onErstellen).toHaveBeenCalledTimes(1);
+    expect(onErstellen.mock.calls[0]![0].aussen[0]).toEqual([180, 520]);
     expect(getByText(/Gaubenumriss: 4 Ecke/)).toBeTruthy();
 
     fireEvent.click(getByRole('button', { name: 'Belegung bearbeiten' }));
@@ -100,6 +111,7 @@ describe('Gauben-Serienworkflow', () => {
       <GaubenEditor
         eltern={eltern}
         gauben={[]}
+        projekt={{ ...neuesProjekt(), flaechen: [eltern] }}
         onErstellen={vi.fn()}
         onLoeschen={vi.fn()}
         onMasseAendern={vi.fn()}

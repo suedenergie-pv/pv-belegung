@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { homographie, projiziere, type Ecken } from './foto-geometrie';
+import { homographie, projiziere, type Ecken, type Punkt } from './foto-geometrie';
 import {
   aktualisiereGaubenAussparungen,
   gaubenAussparungAusFoto,
   gaubenMasseAusElternfoto,
   gaubenPunkteAufElternflaeche,
+  rekonstruiereGaubenPunkte,
   satteldachMasseAusElternfoto,
   satteldachSeitenEcken,
+  wendeGaubenMarkierungAn,
 } from './gauben-geometrie';
-import { neueFlaeche, type DachFoto } from './model';
+import { neueFlaeche, neueGaubenFlaeche, neuesProjekt, type DachFoto } from './model';
 
 const foto: DachFoto = {
   dataUrl: 'data:image/jpeg;base64,test',
@@ -115,5 +117,69 @@ describe('Gaubengeometrie im Elternfoto', () => {
     const mittel = (punkte: typeof linksM) =>
       punkte.reduce((summe, punkt) => summe + punkt[0], 0) / punkte.length;
     expect(mittel(linksM)).toBeLessThan(mittel(rechtsM));
+  });
+
+  it('rekonstruiert sechs gemeinsame Satteldachpunkte und wendet sie ohne Datenverlust an', () => {
+    const first: [Punkt, Punkt] = [[400, 180], [400, 520]];
+    const seiten = satteldachSeitenEcken(gaube, first, eltern)!;
+    const links = {
+      ...neueGaubenFlaeche(2, 'B', 'satteldach', eltern.id, 'links', 'g1'),
+      felder: [{ xM: 0.2, yM: 0.2, breiteM: 1, hoeheM: 1, quer: false, leer: ['0-0'] }],
+      inaktiv: ['0-0'],
+      hindernisse: [{ xM: 0.4, yM: 0.4, breiteM: 0.2, hoeheM: 0.2 }],
+      fotoZuordnungen: [{ fotoId: 'foto-1', traufePx: null, eckenPx: seiten.links, markierungFertig: true }],
+    };
+    const rechts = {
+      ...neueGaubenFlaeche(3, 'C', 'satteldach', eltern.id, 'rechts', 'g1'),
+      fotoZuordnungen: [{ fotoId: 'foto-1', traufePx: null, eckenPx: seiten.rechts, markierungFertig: true }],
+    };
+    const mutter = {
+      ...eltern,
+      fotoZuordnungen: [{ fotoId: 'foto-1', traufePx: null, eckenPx: foto.eckenPx, markierungFertig: true }],
+      gaubenAussparungen: [{ gaubenGruppeId: 'g1', rechteck: { xM: 2, yM: 2, breiteM: 4, hoeheM: 3 }, fotoEckenPx: gaube }],
+    };
+    const rekonstruiert = rekonstruiereGaubenPunkte(mutter, [links, rechts], 'g1');
+    expect(rekonstruiert).toMatchObject({ ok: true });
+    if (!rekonstruiert.ok) return;
+    expect(rekonstruiert.punkte).toHaveLength(6);
+
+    const basis = neuesProjekt();
+    const projekt = { ...basis, flaechen: [mutter, links, rechts] };
+    const neueAussen = rekonstruiert.punkte.slice(0, 4) as Ecken;
+    neueAussen[0] = [210, 510];
+    const neueSeiten = satteldachSeitenEcken(neueAussen, [rekonstruiert.punkte[4]!, rekonstruiert.punkte[5]!], mutter)!;
+    const aussparung = gaubenAussparungAusFoto(mutter, neueAussen)!;
+    const angewendet = wendeGaubenMarkierungAn(projekt, mutter.id, 'g1', 'foto-1', {
+      aussen: neueAussen,
+      seiten: neueSeiten,
+      aussparung,
+    });
+    expect(angewendet.ok).toBe(true);
+    if (!angewendet.ok) return;
+    const neuLinks = angewendet.projekt.flaechen.find((f) => f.id === links.id)!;
+    expect(neuLinks.felder).toEqual(links.felder);
+    expect(neuLinks.inaktiv).toEqual(links.inaktiv);
+    expect(neuLinks.hindernisse).toEqual(links.hindernisse);
+    expect(neuLinks.fotoZuordnungen![0]!.perspektiveBestaetigt).toBe(true);
+  });
+
+  it('rekonstruiert eine Flachdachgaube aus exakt vier gespeicherten Punkten', () => {
+    const kind = {
+      ...neueGaubenFlaeche(2, 'B', 'flachdach', eltern.id, undefined, 'g-flach'),
+      fotoZuordnungen: [{ fotoId: 'foto-1', traufePx: null, eckenPx: gaube, markierungFertig: true }],
+    };
+    const mutter = {
+      ...eltern,
+      fotoZuordnungen: [{ fotoId: 'foto-1', traufePx: null, eckenPx: foto.eckenPx, markierungFertig: true }],
+      gaubenAussparungen: [{
+        gaubenGruppeId: 'g-flach',
+        rechteck: { xM: 2, yM: 2, breiteM: 4, hoeheM: 3 },
+        fotoEckenPx: gaube,
+      }],
+    };
+    expect(rekonstruiereGaubenPunkte(mutter, [kind], 'g-flach')).toEqual({
+      ok: true,
+      punkte: gaube,
+    });
   });
 });

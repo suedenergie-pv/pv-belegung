@@ -37,7 +37,10 @@ import {
 import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FlaechenInlineEditor } from './FlaechenInlineEditor';
 import { FotoHintergrund } from './FotoHintergrund';
-import { aktualisiereGaubenAussparungen } from '../lib/gauben-geometrie';
+import {
+  aktualisiereGaubenAussparungen,
+  wendeGaubenMarkierungAn,
+} from '../lib/gauben-geometrie';
 import {
   pruefePerspektive,
   traufeWechseln,
@@ -298,6 +301,8 @@ export function SchrittBelegung({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [historie, setHistorie] = useState<GeometrieStand[]>([]);
   const [perspektivEntwurf, setPerspektivEntwurf] = useState<PerspektivEntwurf | null>(null);
+  const [gaubenBearbeitung, setGaubenBearbeitung] = useState<{ elternId: string; gruppenId: string } | null>(null);
+  const [gaubenStatus, setGaubenStatus] = useState('');
   const legacyFotoDaten = useRef(new Map<string, string>());
   /**
    * Läuft gerade eine Geste? Als Ref, damit `onUpM` doppelt aufgerufen werden darf
@@ -391,6 +396,8 @@ export function SchrittBelegung({
     setZeichnung(null);
     setModus(null);
     setPerspektivEntwurf(null);
+    setGaubenBearbeitung(null);
+    setGaubenStatus('Letzte Geometrieänderung wurde vollständig zurückgenommen.');
     onChange(neu);
   };
 
@@ -780,7 +787,23 @@ export function SchrittBelegung({
   };
 
   const loescheGaube = (elternId: string, gruppeId: string) => {
-    if (!window.confirm('Gaube und ihre Modulbelegung entfernen?')) return;
+    const stand = projektRef.current;
+    const gruppe = stand.flaechen.filter(
+      (f) => (f.gaubenGruppeId ?? f.id) === gruppeId && !!f.gaubenTyp,
+    );
+    if (gruppe.length === 0) return;
+    const satteldach = gruppe.some((f) => f.gaubenTyp === 'satteldach');
+    const modulzahl = gruppe.reduce(
+      (summe, f) => summe + aktiveModule(f, rasterFuer(f, modul)),
+      0,
+    );
+    const stringzahl = stand.mppts
+      .flat()
+      .filter((s) => gruppe.some((f) => f.id === s.flaecheId)).length;
+    const text = satteldach
+      ? `Satteldachgaube vollständig löschen? Beide Dachseiten, ${modulzahl} aktive Module, Belegungsfelder, die gekoppelte Aussparung im Hauptdach und ${stringzahl} Stringzuordnung${stringzahl === 1 ? '' : 'en'} werden entfernt. Das gemeinsame Foto bleibt erhalten. Rückgängig ist danach möglich.`
+      : `Flachdachgaube vollständig löschen? ${modulzahl} aktive Module, Belegungsfelder, die gekoppelte Aussparung im Hauptdach und ${stringzahl} Stringzuordnung${stringzahl === 1 ? '' : 'en'} werden entfernt. Das gemeinsame Foto bleibt erhalten. Rückgängig ist danach möglich.`;
+    if (!window.confirm(text)) return;
     aendereProjekt((p) => {
       const ids = new Set(
         p.flaechen
@@ -798,7 +821,6 @@ export function SchrittBelegung({
                   gaubenAussparungen: f.gaubenAussparungen?.filter(
                     (a) => a.gaubenGruppeId !== gruppeId,
                   ),
-                  inaktiv: [],
                 }
               : f,
           ),
@@ -815,46 +837,20 @@ export function SchrittBelegung({
     aendereProjekt((p) => {
       const eltern = p.flaechen.find((f) => f.id === elternId);
       const fotoId = eltern ? fotoZuordnungenVon(eltern)[0]?.fotoId : undefined;
-      return {
-        ...p,
-        flaechen: p.flaechen.map((f) => {
-          if (f.id === elternId) {
-            return {
-              ...f,
-              gaubenAussparungen: f.gaubenAussparungen?.map((a) =>
-                a.gaubenGruppeId === gruppeId
-                  ? {
-                      ...a,
-                      rechteck: markierung.aussparung,
-                      fotoEckenPx: markierung.aussen,
-                    }
-                  : a,
-              ),
-              inaktiv: [],
-            };
-          }
-          if ((f.gaubenGruppeId ?? f.id) !== gruppeId || !f.gaubenTyp) return f;
-          const eckenPx =
-            f.gaubenTyp === 'satteldach' && f.gaubenSeite
-              ? markierung.seiten?.[f.gaubenSeite]
-              : markierung.aussen;
-          if (!eckenPx || !fotoId) return f;
-          const bisher = fotoZuordnungenVon(f);
-          const z: FotoZuordnung = {
-            fotoId,
-            traufePx: null,
-            eckenPx,
-            markierungFertig: true,
-          };
-          return {
-            ...f,
-            fotoZuordnungen: bisher.some((x) => x.fotoId === fotoId)
-              ? bisher.map((x) => (x.fotoId === fotoId ? z : x))
-              : [...bisher, z],
-          };
-        }),
-      };
+      if (!fotoId) return p;
+      const angewendet = wendeGaubenMarkierungAn(p, elternId, gruppeId, fotoId, markierung);
+      return angewendet.ok ? angewendet.projekt : p;
     });
+  };
+
+  const starteGaubenBearbeitung = (elternId: string, gruppenId: string) => {
+    setGaubenBearbeitung({ elternId, gruppenId });
+    window.setTimeout(() => {
+      document.getElementById(`gauben-editor-${elternId}`)?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    }, 0);
   };
 
   const aendereGaubenMasse = (
@@ -973,6 +969,8 @@ export function SchrittBelegung({
           pruefung.status === 'fehler' ? alt.letzteGueltige : kopiereEcken(roh),
       };
     });
+    setGaubenBearbeitung(null);
+    setGaubenStatus('Gaube gelöscht. Mit Rückgängig kann die vollständige Gaubengruppe wiederhergestellt werden.');
   };
 
   const speicherePerspektivEntwurf = () => {
@@ -1355,6 +1353,7 @@ export function SchrittBelegung({
 
   return (
     <div id="belegung-start" className="space-y-4">
+      <p className="sr-only" aria-live="polite">{gaubenStatus}</p>
       <Karte className="border-akzent/30 bg-gradient-to-r from-white to-akzent/5">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <div>
@@ -2053,6 +2052,11 @@ export function SchrittBelegung({
               <GaubenEditor
                 eltern={fMitFoto}
                 gauben={gaubenAufFlaeche}
+                projekt={projekt}
+                bearbeiteGruppenId={
+                  gaubenBearbeitung?.elternId === f.id ? gaubenBearbeitung.gruppenId : null
+                }
+                onBearbeitungGestartet={() => setGaubenBearbeitung(null)}
                 onErstellen={(daten) => erstelleGaube(f, fotoId, daten)}
                 onLoeschen={(gruppenId) => loescheGaube(f.id, gruppenId)}
                 onMasseAendern={aendereGaubenMasse}
@@ -2105,23 +2109,54 @@ export function SchrittBelegung({
           ),
         );
         const gaubenNummer = Math.max(1, gaubenGruppen.indexOf(gruppeId) + 1);
+        const titel = `${
+          ersteSeite
+            ? `Gaube ${gaubenNummer} belegen · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
+            : `Gaube ${gaubenNummer} · zweite Dachseite`
+        } · ${aktiv} ${aktiv === 1 ? 'Modul' : 'Module'} · ${fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp Fläche · ${fmtDe(kwp, 2)} kWp Gesamt`;
         return (
-          <details
+          <div
             key={f.id}
-            data-gauben-gruppe={gruppeId}
-            className={`rounded-xl border border-sky-200 bg-sky-50/60 p-2 ${
-              ersteSeite ? 'mt-2' : '-mt-3'
-            }`}
+            className={`rounded-xl border border-sky-200 bg-sky-50/60 p-2 ${ersteSeite ? 'mt-2' : '-mt-3'}`}
           >
-            <summary className="cursor-pointer rounded-lg bg-sky-50 px-2 py-2 text-sm font-semibold text-sky-900">
-              {ersteSeite
-                ? `Gaube ${gaubenNummer} belegen · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
-                : `Gaube ${gaubenNummer} · zweite Dachseite`}{' '}
-              · {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} ·{' '}
-              {fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp Fläche · {fmtDe(kwp, 2)} kWp Gesamt
-            </summary>
-            <div className="mt-2">{karte}</div>
-          </details>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-2">
+              <button
+                type="button"
+                className="min-h-11 min-w-0 flex-1 text-left text-sm font-semibold text-sky-900"
+                aria-label={`${titel} öffnen oder schließen`}
+                onClick={() => {
+                  const details = document.getElementById(`gauben-karte-${f.id}`) as HTMLDetailsElement | null;
+                  if (details) details.open = !details.open;
+                }}
+              >
+                {titel}
+              </button>
+              <button
+                type="button"
+                className="touch-target h-11 rounded-lg border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-900 hover:bg-sky-100"
+                aria-label={`Perspektive von Gaube ${gaubenNummer}${ersteSeite ? '' : ', zweite Dachseite'} bearbeiten`}
+                onClick={() => {
+                  if (f.elternFlaecheId) starteGaubenBearbeitung(f.elternFlaecheId, gruppeId);
+                }}
+              >
+                Perspektive bearbeiten
+              </button>
+              <button
+                type="button"
+                className="touch-target h-11 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 hover:bg-red-50"
+                aria-label={`Gaube ${gaubenNummer}${ersteSeite ? '' : ', zweite Dachseite'} löschen`}
+                onClick={() => {
+                  if (f.elternFlaecheId) loescheGaube(f.elternFlaecheId, gruppeId);
+                }}
+              >
+                Gaube löschen
+              </button>
+            </div>
+            <details id={`gauben-karte-${f.id}`} data-gauben-gruppe={gruppeId}>
+              <summary className="sr-only">{titel}</summary>
+              <div className="mt-2">{karte}</div>
+            </details>
+          </div>
         );
       })}
     </div>
