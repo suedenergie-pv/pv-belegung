@@ -63,6 +63,16 @@ interface Zeichnung {
   punkte: PunktM[];
 }
 
+/** Kompakter Undo-Stand: bewusst ohne die großen Foto-Data-URLs. */
+type GeometrieFlaeche = Omit<Flaeche, 'foto'> & {
+  foto?: Omit<NonNullable<Flaeche['foto']>, 'dataUrl'>;
+};
+
+interface GeometrieStand {
+  flaechen: GeometrieFlaeche[];
+  mppts: Projekt['mppts'];
+}
+
 /**
  * Werkzeuge der Belegung (16.07.2026, Genrih: „Belegungsautomatismus mildern").
  * null = FELDER (Standard): Felder aufziehen, auswählen, verschieben.
@@ -73,6 +83,12 @@ type WerkzeugArt = 'zellen';
 type FotoUploadZiel =
   | { art: 'ersetzen'; fotoId: string }
   | { art: 'perspektive'; flaecheId: string };
+
+type FotoUploadStatus =
+  | { status: 'bereit' }
+  | { status: 'laden'; ziel: FotoUploadZiel }
+  | { status: 'fehler'; ziel: FotoUploadZiel; grund: string }
+  | { status: 'erfolg'; meldung: string };
 
 /** Laufende Zeiger-Geste — lebt nur im State, wird erst beim Loslassen committet. */
 type Drag =
@@ -260,6 +276,8 @@ export function SchrittBelegung({
   const [auswahl, setAuswahl] = useState<{ flaecheId: string; indices: number[] } | null>(null);
   // Laufende Zeiger-Geste (Aufziehen/Verschieben) — NICHT im Projekt, s. mitDrag()
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [historie, setHistorie] = useState<GeometrieStand[]>([]);
+  const legacyFotoDaten = useRef(new Map<string, string>());
   /**
    * Läuft gerade eine Geste? Als Ref, damit `onUpM` doppelt aufgerufen werden darf
    * (SVG-Handler + Sicherheitsnetz unten) und trotzdem genau EINMAL committet — ein
@@ -268,6 +286,7 @@ export function SchrittBelegung({
   const dragAktiv = useRef(false);
   const fotoInputRef = useRef<HTMLInputElement>(null);
   const fotoZielRef = useRef<FotoUploadZiel | null>(null);
+  const [fotoUpload, setFotoUpload] = useState<FotoUploadStatus>({ status: 'bereit' });
 
   const gesamt = projekt.flaechen.reduce(
     (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
@@ -284,8 +303,36 @@ export function SchrittBelegung({
    */
   const projektRef = useRef(projekt);
   projektRef.current = projekt;
+  for (const flaeche of projekt.flaechen) {
+    if (flaeche.foto?.dataUrl) legacyFotoDaten.current.set(flaeche.id, flaeche.foto.dataUrl);
+  }
+
+  const merkeGeometrie = (stand: Projekt) => {
+    const kompakt: GeometrieStand = structuredClone({
+      flaechen: stand.flaechen.map(({ foto, ...flaeche }) => ({
+        ...flaeche,
+        ...(foto
+          ? {
+              foto: {
+                breitePx: foto.breitePx,
+                hoehePx: foto.hoehePx,
+                traufePx: foto.traufePx,
+                ...(foto.eckenPx ? { eckenPx: foto.eckenPx } : {}),
+                ...(foto.perspektiveBestaetigt !== undefined
+                  ? { perspektiveBestaetigt: foto.perspektiveBestaetigt }
+                  : {}),
+                ...(foto.pxProM !== undefined ? { pxProM: foto.pxProM } : {}),
+              },
+            }
+          : {}),
+      })),
+      mppts: stand.mppts,
+    });
+    setHistorie((alt) => [...alt.slice(-19), kompakt]);
+  };
 
   const patchFlaeche = (id: string, patch: Partial<Flaeche>) => {
+    merkeGeometrie(projektRef.current);
     const neu = {
       ...projektRef.current,
       flaechen: projektRef.current.flaechen.map((x) => (x.id === id ? { ...x, ...patch } : x)),
@@ -295,9 +342,33 @@ export function SchrittBelegung({
   };
 
   /** Projektänderung ebenfalls über den aktuellen Ref-Stand, nicht über alte Render-Closures. */
-  const aendereProjekt = (fn: (p: Projekt) => Projekt) => {
-    const neu = fn(projektRef.current);
+  const aendereProjekt = (fn: (p: Projekt) => Projekt, mitHistorie = true) => {
+    const vorher = projektRef.current;
+    const neu = fn(vorher);
+    if (mitHistorie) merkeGeometrie(vorher);
     projektRef.current = neu;
+    onChange(neu);
+  };
+
+  const rueckgaengig = () => {
+    const stand = historie[historie.length - 1];
+    if (!stand) return;
+    const neu: Projekt = {
+      ...projektRef.current,
+      flaechen: structuredClone(stand.flaechen).map((flaeche) => {
+        if (!flaeche.foto) return flaeche as Flaeche;
+        const dataUrl = legacyFotoDaten.current.get(flaeche.id);
+        const { foto, ...rest } = flaeche;
+        return dataUrl ? { ...rest, foto: { ...foto, dataUrl } } : (rest as Flaeche);
+      }),
+      mppts: structuredClone(stand.mppts),
+    };
+    projektRef.current = neu;
+    setHistorie((alt) => alt.slice(0, -1));
+    setAuswahl(null);
+    setDrag(null);
+    setZeichnung(null);
+    setModus(null);
     onChange(neu);
   };
 
@@ -374,15 +445,27 @@ export function SchrittBelegung({
   };
 
   const waehleFotoDatei = (ziel: FotoUploadZiel) => {
+    if (fotoUpload.status === 'laden') return;
     fotoZielRef.current = ziel;
     fotoInputRef.current?.click();
   };
 
   const fotoDateiGewaehlt = async (file: File) => {
-    const bild = await dateiZuBild(file);
     const ziel = fotoZielRef.current;
-    fotoZielRef.current = null;
     if (!ziel) return;
+    setFotoUpload({ status: 'laden', ziel });
+    let bild: Awaited<ReturnType<typeof dateiZuBild>>;
+    try {
+      bild = await dateiZuBild(file);
+    } catch (fehler) {
+      setFotoUpload({
+        status: 'fehler',
+        ziel,
+        grund: fehler instanceof Error ? fehler.message : 'Das Foto konnte nicht geladen werden.',
+      });
+      return;
+    }
+    fotoZielRef.current = null;
     const neueId = ziel.art === 'perspektive' ? neueFotoId() : null;
     aendereProjekt((p) => {
       if (ziel.art === 'ersetzen') {
@@ -449,7 +532,7 @@ export function SchrittBelegung({
           return neu;
         }),
       };
-    });
+    }, false);
     if (ziel.art === 'perspektive' && neueId) {
       setAnsichtJeFlaeche((alt) => ({ ...alt, [ziel.flaecheId]: neueId }));
       setAuswahl(null);
@@ -457,6 +540,7 @@ export function SchrittBelegung({
       setZeichnung(null);
       setModus(null);
     }
+    setFotoUpload({ status: 'erfolg', meldung: 'Foto wurde verarbeitet und lokal gespeichert.' });
   };
 
   /** Eine weitere Perspektive derselben Fläche anlegen. */
@@ -485,7 +569,7 @@ export function SchrittBelegung({
         delete neu.markierungFertig;
         return neu;
       }),
-    }));
+    }), false);
     setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: fotoId }));
   };
 
@@ -506,7 +590,7 @@ export function SchrittBelegung({
         delete neu.markierungFertig;
         return neu;
       }),
-    }));
+    }), false);
     setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: '' }));
   };
 
@@ -535,7 +619,7 @@ export function SchrittBelegung({
         delete neu.markierungFertig;
         return neu;
       }),
-    }));
+    }), false);
   };
 
   /** FotoHintergrund arbeitet weiter mit DachFoto; hier zurück ins neue Modell übersetzen. */
@@ -636,7 +720,11 @@ export function SchrittBelegung({
           }],
         };
         // Sofortige Vorschau: ein Feld über die ganze neue Gaubenfläche.
-        kind.felder = [vollFeldFuer(kind, modul)];
+        const feld = vollFeldFuer(kind, modul);
+        kind.felder =
+          feld.breiteM > 0 && feld.hoeheM > 0 && rasterFuer({ ...kind, felder: [feld] }, modul).positionen.length > 0
+            ? [feld]
+            : [];
         mitZonen.push(kind);
       };
 
@@ -838,9 +926,9 @@ export function SchrittBelegung({
 
   /**
    * Fläche mit laufender Zieh-Geste (nur zum Rendern). Während des Ziehens wird
-   * NICHT ins Projekt geschrieben: jede Projekt-Änderung serialisiert das ganze
-   * Projekt inkl. Foto-DataURLs nach localStorage — das würde bei jedem
-   * Mausschritt ruckeln. Commit passiert einmalig beim Loslassen.
+   * NICHT ins Projekt geschrieben: so entstehen weder Speicherarbeit noch ein
+   * eigener Rückgängig-Schritt für jedes Pointer-Event. Der Commit passiert
+   * einmalig beim Loslassen.
    */
   const mitDrag = (f: Flaeche): Flaeche => {
     if (!drag || drag.flaecheId !== f.id) return f;
@@ -900,32 +988,24 @@ export function SchrittBelegung({
     });
   };
 
-  /**
-   * Pfeiltasten der Tastatur bewegen die Auswahl. Gedrückthalten wiederholt sich
-   * über den nativen Key-Repeat des Systems — jedes Event ist ein sichtbarer
-   * Schritt, deshalb bewusst KEIN Debounce. Ohne Dep-Array registriert (wie im
-   * Rest der Datei), damit die Closures immer frisch sind.
-   */
-  useEffect(() => {
-    const f = projekt.flaechen.find((x) => x.id === auswahl?.flaecheId);
-    if (!f || modusArt(f) !== null || auswahlVon(f).length === 0) return;
-    const richtung: Record<string, [number, number]> = {
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-    };
-    const handler = (e: KeyboardEvent) => {
-      const v = richtung[e.key];
-      if (!v) return;
-      const ziel = e.target as HTMLElement | null;
-      if (ziel && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ziel.tagName)) return;
-      e.preventDefault();
-      bewegeAuswahl(f, v[0], v[1]);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  });
+  /** Shift + Pfeil ändert die rechte/untere Kante der ausgewählten Felder. */
+  const skaliereAuswahl = (fArg: Flaeche, sx: number, sy: number) => {
+    const f = frisch(fArg);
+    const indices = auswahlVon(f);
+    if (indices.length === 0) return;
+    const step = Math.max(0.01, schrittCm / 100);
+    patchFlaeche(f.id, {
+      felder: felderVon(f).map((feld, index) => {
+        if (!indices.includes(index)) return feld;
+        const rect = begrenzeFeld(f, {
+          ...feld,
+          breiteM: Math.max(MIN_FELD_M, feld.breiteM + sx * step),
+          hoeheM: Math.max(MIN_FELD_M, feld.hoeheM + sy * step),
+        });
+        return { ...feld, ...rect };
+      }),
+    });
+  };
 
   // ---- Zeiger-Gesten im Felder-Werkzeug ----
 
@@ -1190,6 +1270,14 @@ export function SchrittBelegung({
           <div className="ml-auto flex flex-wrap gap-2">
             <button
               type="button"
+              className="touch-target h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 disabled:opacity-40"
+              disabled={historie.length === 0}
+              onClick={rueckgaengig}
+            >
+              ↶ Rückgängig{historie.length > 0 ? ` (${historie.length})` : ''}
+            </button>
+            <button
+              type="button"
               className="h-11 rounded-xl border border-akzent/40 bg-white px-4 text-sm font-semibold text-akzent hover:bg-akzent/5"
               onClick={fuegeHauptflaecheHinzu}
             >
@@ -1206,7 +1294,8 @@ export function SchrittBelegung({
       <input
         ref={fotoInputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp"
+        aria-label="Drohnenfoto auswählen"
         className="hidden"
         onChange={async (e) => {
           const file = e.target.files?.[0];
@@ -1214,6 +1303,23 @@ export function SchrittBelegung({
           if (file) await fotoDateiGewaehlt(file);
         }}
       />
+
+      <div aria-live="polite" aria-atomic="true">
+        {fotoUpload.status === 'laden' && (
+          <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            Foto wird geprüft und verkleinert …
+          </p>
+        )}
+        {fotoUpload.status === 'fehler' && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+            <span className="mr-auto"><strong>Foto nicht geladen:</strong> {fotoUpload.grund}</span>
+            <button type="button" className="h-11 rounded-lg border border-red-300 bg-white px-4 font-semibold" onClick={() => waehleFotoDatei(fotoUpload.ziel)}>
+              Andere Datei wählen
+            </button>
+          </div>
+        )}
+        {fotoUpload.status === 'erfolg' && <span className="sr-only">{fotoUpload.meldung}</span>}
+      </div>
 
       <Karte className={projekt.fotos.length === 0 ? '!p-3' : ''}>
         <div
@@ -1254,7 +1360,7 @@ export function SchrittBelegung({
                         aendereProjekt((p) => ({
                           ...p,
                           fotos: p.fotos.map((x) => (x.id === foto.id ? { ...x, name } : x)),
-                        }));
+                        }), false);
                       }}
                       className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800"
                     />
@@ -1335,6 +1441,7 @@ export function SchrittBelegung({
                 flaeche={f}
                 index={i}
                 onProjektChange={(neu) => {
+                  merkeGeometrie(projektRef.current);
                   projektRef.current = neu;
                   onChange(neu);
                   setAuswahl(null);
@@ -1361,7 +1468,7 @@ export function SchrittBelegung({
             <div
               role="toolbar"
               aria-label={`Werkzeuge für ${f.name}`}
-              className={`${belegungZeigen ? 'sticky top-16 z-30 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:mb-0 lg:self-start' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
+              className={`${belegungZeigen ? 'relative z-10 lg:sticky lg:top-44 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:mb-0 lg:self-start' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
             >
               <div className={`min-w-0 flex flex-wrap items-center gap-2 ${belegungZeigen ? 'lg:flex-col lg:items-stretch' : ''}`}>
                 {f.gaubenTyp && (
@@ -1450,7 +1557,7 @@ export function SchrittBelegung({
                       onClick={() => setzeModus(f, null)}
                     >
                       <IconFeld />
-                      Bereiche
+                      Bereich zeichnen/auswählen
                     </WerkzeugKnopf>
                     <WerkzeugKnopf
                       aktiv={modusArt(f) === 'zellen'}
@@ -1462,6 +1569,11 @@ export function SchrittBelegung({
                       Module
                     </WerkzeugKnopf>
                   </div>
+                  <p className="text-xs text-slate-500 lg:text-center">
+                    {modusArt(f) === 'zellen'
+                      ? 'Aktiver Modus: einzelne Module an- oder ausschalten.'
+                      : 'Aktiver Modus: Bereich aufziehen, antippen oder verschieben.'}
+                  </p>
 
                   {artVon(f) === 'flachdach' ? (
                     <span className="whitespace-nowrap text-sm text-slate-500 lg:text-center">
@@ -1699,6 +1811,18 @@ export function SchrittBelegung({
                         }
                       : undefined
                   }
+                  tastatur={{
+                    onPfeil:
+                      felderWerkzeug && gewaehlt.length > 0
+                        ? (sx, sy, skalieren) =>
+                            skalieren ? skaliereAuswahl(f, sx, sy) : bewegeAuswahl(f, sx, sy)
+                        : undefined,
+                    onEscape: () => {
+                      setAuswahl(null);
+                      setDrag(null);
+                      setZeichnung(null);
+                    },
+                  }}
                   zeichnen={
                     zeichneHier
                       ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
@@ -1736,10 +1860,25 @@ export function SchrittBelegung({
             )}
 
             {belegungZeigen && felder.length === 0 && !zeichneHier && (
-              <p className="mb-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                Ziehe einen Belegungsbereich direkt auf dem Dach auf oder nutze oben in der
-                Werkzeugleiste „Automatisch belegen“.
-              </p>
+              <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                <strong className="block">Noch kein Belegungsbereich angelegt.</strong>
+                <p className="mt-1">Du kannst einen Bereich direkt im Foto aufziehen oder die nutzbare Fläche automatisch füllen.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="touch-target h-11 rounded-lg bg-akzent px-4 font-semibold text-white"
+                    onClick={() => {
+                      setzeModus(f, null);
+                      document.querySelector<SVGSVGElement>(`#belegung-${f.id} svg`)?.focus();
+                    }}
+                  >
+                    + Belegungsbereich zeichnen
+                  </button>
+                  <button type="button" className={`${aktionKlasse} h-11`} onClick={() => automatischFuellen(f)}>
+                    Automatisch belegen
+                  </button>
+                </div>
+              </div>
             )}
 
             {foto && !f.gaubenTyp && fotoZuordnungen[0]?.fotoId === fotoId && (
@@ -1806,7 +1945,7 @@ export function SchrittBelegung({
               ersteSeite ? 'mt-2' : '-mt-3'
             }`}
           >
-            <summary className="sticky top-16 z-20 cursor-pointer rounded-lg bg-sky-50 px-2 py-2 text-sm font-semibold text-sky-900">
+            <summary className="cursor-pointer rounded-lg bg-sky-50 px-2 py-2 text-sm font-semibold text-sky-900">
               {ersteSeite
                 ? `Gaube ${gaubenNummer} belegen · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
                 : `Gaube ${gaubenNummer} · zweite Dachseite`}{' '}

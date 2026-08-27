@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   artVon,
   fmtDe,
+  fotoZuordnungenVon,
   type Dachform,
   type Flaeche,
   type Projekt,
@@ -28,6 +29,18 @@ function KompaktZahl({
   min?: number;
   max?: number;
 }) {
+  const [eingabe, setEingabe] = useState(String(value));
+  const fehlerId = useId();
+  useEffect(() => setEingabe(Number.isFinite(value) ? String(value) : ''), [value]);
+  const pruefe = (roh: string): { wert?: number; fehler?: string } => {
+    if (roh.trim() === '') return { fehler: `${label} ist erforderlich.` };
+    const wert = Number(roh);
+    if (!Number.isFinite(wert)) return { fehler: `${label} muss eine Zahl sein.` };
+    if (min !== undefined && wert < min) return { fehler: `${label} muss mindestens ${min} sein.` };
+    if (max !== undefined && wert > max) return { fehler: `${label} darf höchstens ${max} sein.` };
+    return { wert };
+  };
+  const ergebnis = pruefe(eingabe);
   return (
     <label className="min-w-0">
       <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
@@ -38,19 +51,20 @@ function KompaktZahl({
           min={min}
           max={max}
           step={0.1}
-          value={Number.isFinite(value) ? value : ''}
+          value={eingabe}
+          aria-invalid={!!ergebnis.fehler}
+          aria-describedby={ergebnis.fehler ? fehlerId : undefined}
           onChange={(e) => {
-            const wert = Number.parseFloat(e.target.value);
-            if (
-              Number.isFinite(wert) &&
-              (min === undefined || wert >= min) &&
-              (max === undefined || wert <= max)
-            ) onChange(wert);
+            const roh = e.target.value;
+            setEingabe(roh);
+            const neu = pruefe(roh);
+            if (neu.wert !== undefined) onChange(neu.wert);
           }}
-          className={inputKlasse}
+          className={`${inputKlasse} ${ergebnis.fehler ? 'border-red-400' : ''}`}
         />
         <span className="text-sm text-slate-500">m</span>
       </span>
+      {ergebnis.fehler && <span id={fehlerId} className="mt-1 block max-w-36 text-xs text-red-600">{ergebnis.fehler}</span>}
     </label>
   );
 }
@@ -83,13 +97,29 @@ export function FlaechenInlineEditor({
   const form = flaeche.dachform ?? 'rechteck';
 
   const setForm = (dachform: Dachform) => {
-    if (
-      dachform !== form &&
-      flaeche.umrissM &&
-      !window.confirm('Die Dachform ändern? Der manuell gezeichnete Umriss wird entfernt.')
-    ) return;
+    if (dachform === form) return;
+    const felder = flaeche.felder?.length ?? 0;
+    const inaktive = flaeche.felder?.reduce((summe, feld) => summe + (feld.leer?.length ?? 0), 0) ?? 0;
+    const perspektiven = fotoZuordnungenVon(flaeche).length;
+    const folgen = [
+      felder > 0 ? `${felder} Belegungsbereich${felder === 1 ? '' : 'e'} wird zurückgesetzt` : '',
+      inaktive > 0 ? `${inaktive} einzeln abgeschaltete Module werden zurückgesetzt` : '',
+      flaeche.umrissM ? 'der manuelle Umriss wird entfernt' : '',
+      perspektiven > 0 ? `die ${perspektiven === 1 ? 'Fotoperspektive bleibt zugeordnet, muss' : 'Fotoperspektiven bleiben zugeordnet, müssen'} neu bestätigt werden` : '',
+    ].filter(Boolean);
+    if (folgen.length > 0 && !window.confirm(`Dachform ändern? ${folgen.join('; ')}.`)) return;
+    const wechselReset: Partial<Flaeche> = {
+      felder: [],
+      inaktiv: [],
+      fotoZuordnungen: fotoZuordnungenVon(flaeche).map((zuordnung) => ({
+        ...zuordnung,
+        perspektiveBestaetigt: false,
+        markierungFertig: false,
+      })),
+    };
     if (dachform === 'rechteck') {
       onPatch({
+        ...wechselReset,
         dachform,
         firstBreiteM: undefined,
         firstVersatzM: undefined,
@@ -97,6 +127,7 @@ export function FlaechenInlineEditor({
       });
     } else if (dachform === 'trapez') {
       onPatch({
+        ...wechselReset,
         dachform,
         firstBreiteM:
           flaeche.firstBreiteM ?? Math.round(flaeche.breiteM * 0.6 * 10) / 10,
@@ -105,6 +136,7 @@ export function FlaechenInlineEditor({
       });
     } else {
       onPatch({
+        ...wechselReset,
         dachform,
         firstBreiteM: flaeche.firstBreiteM ?? flaeche.breiteM,
         firstVersatzM: flaeche.firstVersatzM ?? 1,
@@ -120,7 +152,7 @@ export function FlaechenInlineEditor({
     <>
       <div
         id={`flaechen-masse-${flaeche.id}`}
-        className="sticky top-16 z-20 mb-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur"
+        className="relative z-20 mb-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur lg:sticky lg:top-16"
       >
         <div className="flex flex-wrap items-end gap-3">
           <div className="mr-1 flex min-w-40 items-center gap-2 self-center">

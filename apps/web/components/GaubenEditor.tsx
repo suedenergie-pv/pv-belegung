@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   gaubenAussparungAusFoto,
   gaubenMasseAusElternfoto,
@@ -110,6 +110,17 @@ function ZahlenEingabe({
   einheit: string;
   min?: number;
 }) {
+  const [eingabe, setEingabe] = useState(String(value));
+  const fehlerId = useId();
+  useEffect(() => setEingabe(Number.isFinite(value) ? String(value) : ''), [value]);
+  const pruefe = (roh: string): { wert?: number; fehler?: string } => {
+    if (!roh.trim()) return { fehler: `${label} ist erforderlich.` };
+    const wert = Number(roh);
+    if (!Number.isFinite(wert)) return { fehler: `${label} muss eine Zahl sein.` };
+    if (wert < min) return { fehler: `${label} muss mindestens ${min} sein.` };
+    return { wert };
+  };
+  const ergebnis = pruefe(eingabe);
   return (
     <label className="block text-sm text-slate-600">
       <span className="mb-1 block font-medium">{label}</span>
@@ -119,15 +130,24 @@ function ZahlenEingabe({
           inputMode="decimal"
           min={min}
           step={einheit === 'm' ? 0.1 : 1}
-          value={value}
+          value={eingabe}
+          aria-invalid={!!ergebnis.fehler}
+          aria-describedby={ergebnis.fehler ? fehlerId : undefined}
           onChange={(e) => {
-            const n = Number.parseFloat(e.target.value);
-            if (Number.isFinite(n) && n >= min) onChange(n);
+            const roh = e.target.value;
+            setEingabe(roh);
+            const neu = pruefe(roh);
+            if (neu.wert !== undefined) onChange(neu.wert);
           }}
           className="h-11 w-full min-w-0 rounded-lg border border-slate-300 px-3 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
         />
         <span>{einheit}</span>
       </span>
+      {ergebnis.fehler && (
+        <span id={fehlerId} className="mt-1 block text-xs text-red-600">
+          {ergebnis.fehler}
+        </span>
+      )}
     </label>
   );
 }
@@ -169,6 +189,10 @@ export function GaubenEditor({
   const [markieren, setMarkieren] = useState(false);
   const [punkte, setPunkte] = useState<Punkt[]>([]);
   const [bearbeiteId, setBearbeiteId] = useState<string | null>(null);
+  const [tastaturPunkt, setTastaturPunkt] = useState<Punkt>([
+    foto?.breitePx ? foto.breitePx / 2 : 0,
+    foto?.hoehePx ? foto.hoehePx / 2 : 0,
+  ]);
 
   const gruppen = useMemo(() => {
     const map = new Map<string, Flaeche[]>();
@@ -478,8 +502,39 @@ export function GaubenEditor({
               </p>
               <svg
                 viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-                className="block w-full cursor-crosshair rounded-xl border border-slate-200 bg-slate-100"
+                className="block w-full cursor-crosshair rounded-xl border border-slate-200 bg-slate-100 focus:outline-none focus:ring-4 focus:ring-akzent/40"
                 style={{ aspectRatio: `${foto.breitePx} / ${foto.hoehePx}` }}
+                tabIndex={0}
+                aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
+                onFocus={() => {
+                  if (!Number.isFinite(tastaturPunkt[0]) || !Number.isFinite(tastaturPunkt[1])) {
+                    setTastaturPunkt([foto.breitePx / 2, foto.hoehePx / 2]);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  const richtung: Record<string, Punkt> = {
+                    ArrowLeft: [-1, 0],
+                    ArrowRight: [1, 0],
+                    ArrowUp: [0, -1],
+                    ArrowDown: [0, 1],
+                  };
+                  const v = richtung[e.key];
+                  if (v) {
+                    e.preventDefault();
+                    const schritt = e.shiftKey ? 10 : Math.max(1, Math.min(foto.breitePx, foto.hoehePx) / 100);
+                    setTastaturPunkt(([x, y]) => [
+                      Math.max(0, Math.min(foto.breitePx, x + v[0] * schritt)),
+                      Math.max(0, Math.min(foto.hoehePx, y + v[1] * schritt)),
+                    ]);
+                  } else if (e.key === 'Enter' && punkte.length < erwartet) {
+                    e.preventDefault();
+                    setPunkte([...punkte, tastaturPunkt]);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setPunkte([]);
+                    setMarkieren(false);
+                  }
+                }}
                 onClick={(e) => {
                   if (punkte.length >= erwartet) return;
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -496,6 +551,10 @@ export function GaubenEditor({
                 aria-label="Gaube im Dachfoto markieren"
               >
                 <image href={foto.dataUrl} x="0" y="0" width={foto.breitePx} height={foto.hoehePx} />
+                <g aria-hidden="true" pointerEvents="none">
+                  <line x1={tastaturPunkt[0]} y1="0" x2={tastaturPunkt[0]} y2={foto.hoehePx} stroke="#e8603a" strokeWidth="2" strokeDasharray="8 8" />
+                  <line x1="0" y1={tastaturPunkt[1]} x2={foto.breitePx} y2={tastaturPunkt[1]} stroke="#e8603a" strokeWidth="2" strokeDasharray="8 8" />
+                </g>
                 {punkte.length >= 2 && (
                   <polyline
                     points={punkte.slice(0, 4).map((p) => p.join(',')).join(' ')}

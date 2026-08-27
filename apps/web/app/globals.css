@@ -6,11 +6,23 @@ body {
   @apply bg-grund text-slate-900 antialiased;
 }
 
-/* Tablet-/Touch-Bedienung: PC-Abmessungen bleiben unverändert; nur der primäre
-   Grobzeiger bekommt die empfohlenen 44-px-Ziele. */
-@media (pointer: coarse) {
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
-  }
+/* Bedienbare Flächen bleiben auch dort groß genug, wo die kompakte Desktop-UI
+   weiterhin h-9/h-10 verwendet. Die Höhe darf optisch kompakt sein; die
+   Trefferfläche unterschreitet trotzdem nie 44 px. */
+button,
+select,
+input[type='text'],
+input[type='number'],
+input[type='date'] {
+  min-height: 44px;
+}
+
+button {
+  min-width: 44px;
+}
+
+/* Wesentliche Interaktionen bleiben auf Maus, Stift und Touch mindestens 44 px. */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
 }

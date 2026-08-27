@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useId, useState } from 'react';
+
 import {
   AZIMUT_PRESETS,
   artVon,
@@ -7,6 +9,7 @@ import {
   flachdachPitchDefault,
   flachdachRichtungsLabel,
   flachdachSuedRichtung,
+  fotoZuordnungenVon,
   naechsteZone,
   neueFlaeche,
   patchFlaechenGeometrie,
@@ -43,6 +46,18 @@ function KompaktZahl({
   einheit?: string;
   breite?: string;
 }) {
+  const [eingabe, setEingabe] = useState(String(value));
+  const fehlerId = useId();
+  useEffect(() => setEingabe(Number.isFinite(value) ? String(value) : ''), [value]);
+  const pruefe = (roh: string): { wert?: number; fehler?: string } => {
+    if (!roh.trim()) return { fehler: `${label} ist erforderlich.` };
+    const wert = Number(roh);
+    if (!Number.isFinite(wert)) return { fehler: `${label} muss eine Zahl sein.` };
+    if (min !== undefined && wert < min) return { fehler: `${label} muss mindestens ${min} sein.` };
+    if (max !== undefined && wert > max) return { fehler: `${label} darf höchstens ${max} sein.` };
+    return { wert };
+  };
+  const ergebnis = pruefe(eingabe);
   return (
     <label className="min-w-0">
       <span className="mb-1 block whitespace-nowrap text-xs font-medium text-slate-500">{label}</span>
@@ -51,14 +66,22 @@ function KompaktZahl({
           type="number"
           inputMode="decimal"
           className={`${kompaktInput} ${breite}`}
-          value={Number.isFinite(value) ? value : ''}
+          value={eingabe}
           min={min}
           max={max}
           step={step}
-          onChange={(e) => onChange(Number.parseFloat(e.target.value))}
+          aria-invalid={!!ergebnis.fehler}
+          aria-describedby={ergebnis.fehler ? fehlerId : undefined}
+          onChange={(e) => {
+            const roh = e.target.value;
+            setEingabe(roh);
+            const neu = pruefe(roh);
+            if (neu.wert !== undefined) onChange(neu.wert);
+          }}
         />
         {einheit && <span className="text-sm text-slate-500">{einheit}</span>}
       </span>
+      {ergebnis.fehler && <span id={fehlerId} className="mt-1 block max-w-40 text-xs text-red-600">{ergebnis.fehler}</span>}
     </label>
   );
 }
@@ -87,12 +110,33 @@ export function SchrittFlaechen({
   const formAendern = (f: Flaeche, dachform: Dachform) => {
     const altForm = f.dachform ?? 'rechteck';
     if (dachform === altForm) return;
-    if (
-      f.umrissM &&
-      !window.confirm('Die Dachform ändern? Der manuell gezeichnete Umriss wird entfernt.')
-    ) return;
+    const felder = f.felder?.length ?? 0;
+    const inaktive = f.felder?.reduce(
+      (summe, feld) => summe + (feld.leer?.length ?? 0),
+      0,
+    ) ?? 0;
+    const perspektiven = fotoZuordnungenVon(f).length;
+    const folgen = [
+      felder ? `${felder} Belegungsbereich${felder === 1 ? '' : 'e'} wird zurückgesetzt` : '',
+      inaktive ? `${inaktive} einzeln abgeschaltete Module werden zurückgesetzt` : '',
+      f.umrissM ? 'der manuelle Umriss wird entfernt' : '',
+      perspektiven
+        ? `die ${perspektiven === 1 ? 'Fotoperspektive bleibt zugeordnet, muss' : 'Fotoperspektiven bleiben zugeordnet, müssen'} neu bestätigt werden`
+        : '',
+    ].filter(Boolean);
+    if (folgen.length && !window.confirm(`Dachform ändern? ${folgen.join('; ')}.`)) return;
+    const wechselReset: Partial<Flaeche> = {
+      felder: [],
+      inaktiv: [],
+      fotoZuordnungen: fotoZuordnungenVon(f).map((zuordnung) => ({
+        ...zuordnung,
+        perspektiveBestaetigt: false,
+        markierungFertig: false,
+      })),
+    };
     if (dachform === 'rechteck') {
       setFlaeche(f.id, {
+        ...wechselReset,
         dachform,
         firstBreiteM: undefined,
         firstVersatzM: undefined,
@@ -100,6 +144,7 @@ export function SchrittFlaechen({
       });
     } else if (dachform === 'trapez') {
       setFlaeche(f.id, {
+        ...wechselReset,
         dachform,
         firstBreiteM: f.firstBreiteM ?? Math.round(f.breiteM * 6) / 10,
         firstVersatzM: undefined,
@@ -107,6 +152,7 @@ export function SchrittFlaechen({
       });
     } else {
       setFlaeche(f.id, {
+        ...wechselReset,
         dachform,
         firstBreiteM: f.firstBreiteM ?? f.breiteM,
         firstVersatzM: f.firstVersatzM ?? 1,
@@ -117,7 +163,34 @@ export function SchrittFlaechen({
 
   const setArt = (f: Flaeche, art: FlaechenArt) => {
     if (artVon(f) === art) return;
-    const patch: Partial<Flaeche> = { art, randM: undefined, dachform: 'rechteck' };
+    const felder = f.felder?.length ?? 0;
+    const inaktive = f.felder?.reduce(
+      (summe, feld) => summe + (feld.leer?.length ?? 0),
+      0,
+    ) ?? 0;
+    const perspektiven = fotoZuordnungenVon(f).length;
+    const folgen = [
+      felder ? `${felder} Belegungsbereich${felder === 1 ? '' : 'e'} wird zurückgesetzt` : '',
+      inaktive ? `${inaktive} einzeln abgeschaltete Module werden zurückgesetzt` : '',
+      f.umrissM ? 'der manuelle Umriss wird entfernt' : '',
+      perspektiven
+        ? `die ${perspektiven === 1 ? 'Fotoperspektive bleibt zugeordnet, muss' : 'Fotoperspektiven bleiben zugeordnet, müssen'} neu bestätigt werden`
+        : '',
+    ].filter(Boolean);
+    if (folgen.length && !window.confirm(`Flächenart ändern? ${folgen.join('; ')}.`)) return;
+    const patch: Partial<Flaeche> = {
+      art,
+      randM: undefined,
+      dachform: 'rechteck',
+      umrissM: undefined,
+      felder: [],
+      inaktiv: [],
+      fotoZuordnungen: fotoZuordnungenVon(f).map((zuordnung) => ({
+        ...zuordnung,
+        perspektiveBestaetigt: false,
+        markierungFertig: false,
+      })),
+    };
     if (art === 'flachdach') {
       patch.neigungDeg = 0;
       patch.flachdach = f.flachdach ?? {

@@ -68,7 +68,12 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.click(getByRole('button', { name: 'Projekt duplizieren' }));
     await waitFor(() => expect(getAllByRole('option')).toHaveLength(2));
     fireEvent.click(getByRole('button', { name: 'Projekt löschen' }));
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(1));
+    expect(getByRole('button', { name: 'Rückgängig' })).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Rückgängig' }));
+    await waitFor(() => expect(getAllByRole('option')).toHaveLength(2));
     fireEvent.click(getByRole('button', { name: 'Projekt löschen' }));
+    fireEvent.click(getByRole('button', { name: 'Endgültig löschen' }));
     await waitFor(() => expect(getAllByRole('option')).toHaveLength(1));
     expect((getByRole('combobox', { name: 'Aktuelles Projekt' }) as HTMLSelectElement).value).not.toBe('');
   });

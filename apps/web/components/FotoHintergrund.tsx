@@ -861,9 +861,49 @@ export function FotoHintergrund({
           >
             <svg
               viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-              className={`block h-full w-full ${greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
+              tabIndex={0}
+              role="img"
+              aria-label={`${flaechenName} im Foto markieren. Pfeiltasten bewegen das Fadenkreuz, Enter setzt einen Punkt, Escape bricht die laufende Markierung ab.`}
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape"
+              className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
               preserveAspectRatio="xMidYMid meet"
               style={{ touchAction: fadenkreuzAktiv ? 'none' : undefined }}
+              onFocus={() => {
+                if (!touchCursorPx) {
+                  setTouchCursorPx([foto.breitePx / 2, foto.hoehePx / 2]);
+                }
+                setFadenkreuzAktiv(true);
+              }}
+              onKeyDown={(e) => {
+                const richtung: Record<string, Punkt> = {
+                  ArrowLeft: [-1, 0],
+                  ArrowRight: [1, 0],
+                  ArrowUp: [0, -1],
+                  ArrowDown: [0, 1],
+                };
+                const v = richtung[e.key];
+                if (v) {
+                  e.preventDefault();
+                  const step = Math.max(1, foto.breitePx / 200);
+                  setTouchCursorPx((aktuell) => {
+                    const [x, y] = aktuell ?? [foto.breitePx / 2, foto.hoehePx / 2];
+                    return [
+                      Math.max(0, Math.min(foto.breitePx, x + v[0] * step)),
+                      Math.max(0, Math.min(foto.hoehePx, y + v[1] * step)),
+                    ];
+                  });
+                  setFadenkreuzAktiv(true);
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  fadenkreuzAktion();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setPunkte([]);
+                  setTouchGriff(null);
+                  setFadenkreuzAktiv(false);
+                  setMarkierungsFehler(null);
+                }
+              }}
               onClick={klick}
               onMouseDown={(e) => {
                 if (fadenkreuzAktiv) return;

@@ -18,9 +18,16 @@ import {
   komplettExportDateiname,
   komplettExportJson,
   ladeProjekte,
+  loescheProjektFotos,
   speichereProjekte,
   type SpeicherErgebnis,
 } from '../lib/speicher';
+
+interface GeloeschtesProjekt {
+  eintrag: ProjektEintrag;
+  index: number;
+  ersatzId?: string;
+}
 
 // „Stringcheck" ist seit 13.07.2026 ausgeblendet (Genrih: kein Main-Feature, soll
 // im finalen Programm nicht zu sehen sein). Die Rechenlogik (Engine R1–R12,
@@ -43,6 +50,13 @@ export default function Home() {
   const importRef = useRef<HTMLInputElement>(null);
   const speicherGeneration = useRef(0);
   const speicherKette = useRef<Promise<void>>(Promise.resolve());
+  const [geloeschteProjekte, setGeloeschteProjekte] = useState<GeloeschtesProjekt[]>([]);
+  const loeschTimer = useRef(new Map<string, number>());
+
+  useEffect(() => () => {
+    loeschTimer.current.forEach((timer) => clearTimeout(timer));
+    loeschTimer.current.clear();
+  }, []);
 
   const ladeNeu = async () => {
     setGeladen(false);
@@ -156,12 +170,57 @@ export default function Home() {
 
   const loescheAktiv = () => {
     if (!aktiv) return;
-    if (!window.confirm(`Projekt „${eintragName(aktiv)}" löschen?`)) return;
-    setDb((d) => {
-      const rest = d.projekte.filter((e) => e.id !== d.aktivId);
-      if (rest.length > 0) return { ...d, aktivId: rest[0]!.id, projekte: rest };
-      const e = neuerEintrag(); // nie ohne aktives Projekt dastehen
-      return { ...d, aktivId: e.id, projekte: [e] };
+    const index = db.projekte.findIndex((eintrag) => eintrag.id === aktiv.id);
+    const rest = db.projekte.filter((eintrag) => eintrag.id !== aktiv.id);
+    const ersatz = rest.length === 0 ? neuerEintrag() : null;
+    setDb({
+      ...db,
+      aktivId: rest[0]?.id ?? ersatz!.id,
+      projekte: rest.length > 0 ? rest : [ersatz!],
+    });
+    setGeloeschteProjekte((alt) => [
+      ...alt,
+      { eintrag: aktiv, index, ...(ersatz ? { ersatzId: ersatz.id } : {}) },
+    ]);
+    const timer = window.setTimeout(() => {
+      setGeloeschteProjekte((alt) => alt.filter((wert) => wert.eintrag.id !== aktiv.id));
+      loeschTimer.current.delete(aktiv.id);
+      void loescheProjektFotos(aktiv.id).catch(() => {
+        setDateiStatus('Projekt gelöscht; verwaiste Fotodaten konnten noch nicht bereinigt werden.');
+      });
+    }, 12_000);
+    loeschTimer.current.set(aktiv.id, timer);
+  };
+
+  const loeschungRueckgaengig = (geloescht: GeloeschtesProjekt) => {
+    const timer = loeschTimer.current.get(geloescht.eintrag.id);
+    if (timer) clearTimeout(timer);
+    loeschTimer.current.delete(geloescht.eintrag.id);
+    setDb((aktuell) => {
+      let liste = aktuell.projekte;
+      if (
+        geloescht.ersatzId &&
+        liste.length === 1 &&
+        liste[0]?.id === geloescht.ersatzId &&
+        !liste[0].projekt.kunde &&
+        !liste[0].projekt.adresse
+      ) {
+        liste = [];
+      }
+      const neu = [...liste];
+      neu.splice(Math.min(geloescht.index, neu.length), 0, geloescht.eintrag);
+      return { ...aktuell, aktivId: geloescht.eintrag.id, projekte: neu };
+    });
+    setGeloeschteProjekte((alt) => alt.filter((wert) => wert.eintrag.id !== geloescht.eintrag.id));
+  };
+
+  const loeschungEndgueltig = (geloescht: GeloeschtesProjekt) => {
+    const timer = loeschTimer.current.get(geloescht.eintrag.id);
+    if (timer) clearTimeout(timer);
+    loeschTimer.current.delete(geloescht.eintrag.id);
+    setGeloeschteProjekte((alt) => alt.filter((wert) => wert.eintrag.id !== geloescht.eintrag.id));
+    void loescheProjektFotos(geloescht.eintrag.id).catch(() => {
+      setDateiStatus('Projekt gelöscht; verwaiste Fotodaten konnten noch nicht bereinigt werden.');
     });
   };
 
@@ -334,6 +393,25 @@ export default function Home() {
             : 'Die Speicherung ist beschädigt oder nicht verfügbar. Bitte einen Komplettexport sichern und die Seite neu laden.'}
         </div>
       )}
+
+      {geloeschteProjekte.map((geloescht) => (
+        <div
+          key={geloescht.eintrag.id}
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <span className="mr-auto">
+            Projekt „{eintragName(geloescht.eintrag)}“ wurde aus der Liste entfernt. Die Fotos bleiben noch 12 Sekunden erhalten.
+          </span>
+          <button type="button" className="h-11 rounded-lg bg-slate-900 px-4 font-semibold text-white" onClick={() => loeschungRueckgaengig(geloescht)}>
+            Rückgängig
+          </button>
+          <button type="button" className="h-11 rounded-lg border border-red-300 px-3 font-medium text-red-700" onClick={() => loeschungEndgueltig(geloescht)}>
+            Endgültig löschen
+          </button>
+        </div>
+      ))}
 
       <nav className="flex flex-wrap items-center gap-2" aria-label="Schritte">
         {SCHRITTE.map((name, i) => {

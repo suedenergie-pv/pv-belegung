@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ecken } from '../lib/foto-geometrie';
 import { neueFlaeche, neueGaubenFlaeche } from '../lib/model';
@@ -13,7 +13,10 @@ beforeEach(() => {
     value: vi.fn(),
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('Gauben-Serienworkflow', () => {
   it('übernimmt Typ und Maße einer Gaube direkt für die nächste Markierung', () => {
@@ -80,5 +83,37 @@ describe('Gauben-Serienworkflow', () => {
 
     fireEvent.click(getByRole('button', { name: 'Belegung bearbeiten' }));
     expect(container.querySelector<HTMLDetailsElement>('details[data-gauben-gruppe="gaube-1"]')?.open).toBe(true);
+  });
+
+  it('setzt Markierungspunkte per Tastatur und bricht mit Escape ab', () => {
+    const eltern = {
+      ...neueFlaeche(1, 'A'),
+      foto: {
+        dataUrl: 'data:image/png;base64,AA==',
+        breitePx: 1000,
+        hoehePx: 700,
+        traufePx: null,
+        eckenPx: [[50, 650], [950, 650], [850, 50], [150, 50]] as Ecken,
+      },
+    };
+    const { getByRole, getByText, queryByRole } = render(
+      <GaubenEditor
+        eltern={eltern}
+        gauben={[]}
+        onErstellen={vi.fn()}
+        onLoeschen={vi.fn()}
+        onMasseAendern={vi.fn()}
+        onMarkierungAendern={vi.fn()}
+      />,
+    );
+    fireEvent.click(getByRole('button', { name: '+ Gaube' }));
+    fireEvent.click(getByRole('button', { name: 'Im Foto markieren →' }));
+    const foto = getByRole('img', { name: 'Gaube im Dachfoto markieren' });
+    fireEvent.keyDown(foto, { key: 'ArrowRight' });
+    fireEvent.keyDown(foto, { key: 'Enter' });
+    expect(getByText(/Gaubenumriss: 3 Ecke/)).toBeTruthy();
+    fireEvent.keyDown(foto, { key: 'Escape' });
+    expect(queryByRole('img', { name: 'Gaube im Dachfoto markieren' })).toBeNull();
+    expect(getByText('Wie kommen die Maße zustande?')).toBeTruthy();
   });
 });

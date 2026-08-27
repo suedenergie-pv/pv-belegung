@@ -126,4 +126,20 @@ describe('DachSvg', () => {
     expect(clips).toHaveLength(raster.positionen.length * 6 * 10 * 2);
     expect(clips.every((punkte) => punkte.length === 3)).toBe(true);
   });
+
+  it('bietet für die Zeichenfläche eine beschriftete Tastaturbedienung an', () => {
+    const flaeche = neueFlaeche(1, 'A');
+    const modul = modulById('jw-hd96n-r2-460');
+    const html = renderToStaticMarkup(
+      <DachSvg
+        flaeche={flaeche}
+        raster={rasterFuer(flaeche, modul)}
+        modul={modul}
+        tastatur={{ onPfeil: () => undefined, onEscape: () => undefined }}
+      />,
+    );
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('aria-label="Belegungsfläche Dachfläche 1');
+    expect(html).toContain('aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight');
+  });
 });

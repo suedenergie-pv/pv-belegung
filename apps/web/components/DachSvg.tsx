@@ -1,7 +1,7 @@
 'use client';
 
 import { posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
-import React, { useId, type ReactNode } from 'react';
+import React, { useId, useState, type ReactNode } from 'react';
 import {
   homographie,
   inverseHomographie,
@@ -124,6 +124,12 @@ export interface PointerProps {
   /** null = Zeiger hat die Fläche verlassen / Geste abgebrochen */
   onMoveM: (p: PunktM | null) => void;
   onUpM: (p: PunktM) => void;
+}
+
+export interface TastaturProps {
+  /** Pfeile bewegen; mit Shift skaliert der Belegungseditor die Auswahl. */
+  onPfeil?: (x: number, y: number, skalieren: boolean) => void;
+  onEscape?: () => void;
 }
 
 /**
@@ -395,6 +401,7 @@ export function DachSvg({
   feldVorschau,
   geister,
   pointer,
+  tastatur,
   fotoOverlay,
   maxHoehe,
 }: {
@@ -419,6 +426,7 @@ export function DachSvg({
   geister?: GeistPosition[];
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
+  tastatur?: TastaturProps;
   /** Weitere Flächen desselben Projektfotos, hinter der aktiven Fläche. */
   fotoOverlay?: (clipIdPrefix: string) => ReactNode;
   /** Maximale Editorhöhe in px; der Belegungsschritt darf den verfügbaren Platz ausnutzen. */
@@ -431,6 +439,51 @@ export function DachSvg({
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
   const B = rahmenBreiteVon(flaeche);
   const H = flaeche.hoeheM;
+  const [tastaturCursorM, setTastaturCursorM] = useState<PunktM>([B / 2, H / 2]);
+  const [hatTastaturFokus, setHatTastaturFokus] = useState(false);
+  const interaktiv = !!(pointer || zeichnen?.aktiv || onToggle || tastatur?.onPfeil);
+  const tastaturTaste = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    const richtung: Record<string, PunktM> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
+    const v = richtung[e.key];
+    if (v) {
+      e.preventDefault();
+      if (!zeichnen?.aktiv && tastatur?.onPfeil) {
+        tastatur.onPfeil(v[0], v[1], e.shiftKey);
+      } else {
+        setTastaturCursorM(([x, y]) => [
+          Math.max(0, Math.min(B, x + v[0] * Math.max(0.01, B / 100))),
+          Math.max(0, Math.min(H, y + v[1] * Math.max(0.01, H / 100))),
+        ]);
+      }
+      return;
+    }
+    if (e.key === 'Enter' && zeichnen?.aktiv) {
+      e.preventDefault();
+      zeichnen.onKlickM(tastaturCursorM);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      tastatur?.onEscape?.();
+    }
+  };
+  const tastaturAttribute = interaktiv
+    ? {
+        tabIndex: 0,
+        role: 'img' as const,
+        'aria-label': `Belegungsfläche ${flaeche.name}. Pfeiltasten bewegen das Fadenkreuz oder die Auswahl; Umschalt plus Pfeil ändert die Größe.`,
+        'aria-keyshortcuts': 'ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Enter Escape',
+        onFocus: () => setHatTastaturFokus(true),
+        onBlur: () => setHatTastaturFokus(false),
+        onKeyDown: tastaturTaste,
+      }
+    : {
+        role: 'img' as const,
+        'aria-label': `Belegungsfläche ${flaeche.name}`,
+      };
   const farbe = DACHFARBEN.find((d) => d.id === flaeche.dachfarbe) ?? DACHFARBEN[1];
   const assetId = `modul-${flaeche.id}`;
   const patId = `pat-${flaeche.id}-${farbe.id}`;
@@ -592,18 +645,27 @@ export function DachSvg({
           {/* Griffe: nur am ausgewählten Feld — daran zieht man die Größe */}
           {fa.ausgewaehlt &&
             griffPunkte(fa.rect).map(({ id, p }) => (
-              <rect
-                key={id}
-                x={p[0] - 0.11}
-                y={p[1] - 0.11}
-                width={0.22}
-                height={0.22}
-                rx={0.04}
-                fill="#ffffff"
-                stroke="#0284c7"
-                strokeWidth={0.05}
-                {...overlayZeiger(GRIFF_CURSOR[id])}
-              />
+              <g key={id}>
+                <rect
+                  x={p[0] - 0.35}
+                  y={p[1] - 0.35}
+                  width={0.7}
+                  height={0.7}
+                  fill="transparent"
+                  {...overlayZeiger(GRIFF_CURSOR[id])}
+                />
+                <rect
+                  x={p[0] - 0.11}
+                  y={p[1] - 0.11}
+                  width={0.22}
+                  height={0.22}
+                  rx={0.04}
+                  fill="#ffffff"
+                  stroke="#0284c7"
+                  strokeWidth={0.05}
+                  style={{ pointerEvents: 'none' }}
+                />
+              </g>
             ))}
         </g>
       ))}
@@ -768,18 +830,28 @@ export function DachSvg({
         >
           <svg
             viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-            className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
+            className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
             preserveAspectRatio="xMidYMid meet"
             style={pointer ? { touchAction: 'none' } : undefined}
             onClick={klickM}
             onMouseMove={moveM}
             onMouseLeave={moveM ? () => zeichnen!.onMoveM!(null) : undefined}
             {...zeiger}
+            {...tastaturAttribute}
           >
             <defs>
               <ModulAsset id={assetId} modul={modul} />
             </defs>
             <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+            {hatTastaturFokus && interaktiv && (() => {
+              const [x, y] = projiziere(h, tastaturCursorM);
+              return (
+                <g aria-hidden="true" style={{ pointerEvents: 'none' }}>
+                  <line x1={0} y1={y} x2={foto.breitePx} y2={y} stroke="#e8603a" strokeWidth={Math.max(2, foto.breitePx * 0.0015)} strokeDasharray="8 6" />
+                  <line x1={x} y1={0} x2={x} y2={foto.hoehePx} stroke="#e8603a" strokeWidth={Math.max(2, foto.breitePx * 0.0015)} strokeDasharray="8 6" />
+                </g>
+              );
+            })()}
             {fotoOverlay?.(`${svgInstanzId}-overlay`)}
             {moduleAufHomographie({
               h,
@@ -836,19 +908,29 @@ export function DachSvg({
                       griffPunkte(fa.rect).map(({ id, p }) => {
                         const [gx, gy] = projiziere(h, [p[0], p[1]]);
                         const r = foto.breitePx * 0.008;
+                        const hit = Math.max(r * 2, foto.breitePx * 0.03);
                         return (
-                          <rect
-                            key={id}
-                            x={gx - r}
-                            y={gy - r}
-                            width={r * 2}
-                            height={r * 2}
-                            rx={r * 0.3}
-                            fill="#ffffff"
-                            stroke="#0284c7"
-                            strokeWidth={foto.breitePx * 0.002}
-                            {...overlayZeiger(GRIFF_CURSOR[id])}
-                          />
+                          <g key={id}>
+                            <rect
+                              x={gx - hit / 2}
+                              y={gy - hit / 2}
+                              width={hit}
+                              height={hit}
+                              fill="transparent"
+                              {...overlayZeiger(GRIFF_CURSOR[id])}
+                            />
+                            <rect
+                              x={gx - r}
+                              y={gy - r}
+                              width={r * 2}
+                              height={r * 2}
+                              rx={r * 0.3}
+                              fill="#ffffff"
+                              stroke="#0284c7"
+                              strokeWidth={foto.breitePx * 0.002}
+                              style={{ pointerEvents: 'none' }}
+                            />
+                          </g>
                         );
                       })}
                   </g>;
@@ -977,8 +1059,9 @@ export function DachSvg({
       >
         <svg
           viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-          className="block h-full w-full"
+          className="block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40"
           preserveAspectRatio="xMidYMid meet"
+          {...tastaturAttribute}
         >
           <defs>
             <ModulAsset id={assetId} modul={modul} />
@@ -1023,7 +1106,7 @@ export function DachSvg({
     >
       <svg
         viewBox={`0 0 ${B} ${H}`}
-        className={`block h-full w-full ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
+        className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
         preserveAspectRatio="xMidYMid meet"
         style={pointer ? { touchAction: 'none' } : undefined}
         onClick={
@@ -1041,12 +1124,19 @@ export function DachSvg({
         }
         onMouseLeave={zeichnen?.aktiv && zeichnen.onMoveM ? () => zeichnen.onMoveM!(null) : undefined}
         {...zeigerDraufsicht}
+        {...tastaturAttribute}
       >
         <defs>
           <ModulAsset id={assetId} modul={modul} />
           <DachPattern id={patId} farbe={farbe} />
         </defs>
         <rect width={B} height={H} fill={`url(#${patId})`} />
+        {hatTastaturFokus && interaktiv && (
+          <g aria-hidden="true" style={{ pointerEvents: 'none' }}>
+            <line x1={0} y1={tastaturCursorM[1]} x2={B} y2={tastaturCursorM[1]} stroke="#e8603a" strokeWidth={0.03} strokeDasharray="0.12 0.08" />
+            <line x1={tastaturCursorM[0]} y1={0} x2={tastaturCursorM[0]} y2={H} stroke="#e8603a" strokeWidth={0.03} strokeDasharray="0.12 0.08" />
+          </g>
+        )}
         {belegung}
         {!druck && masse && renderMasse(0.3, (p) => p)}
       </svg>
