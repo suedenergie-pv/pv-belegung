@@ -80,7 +80,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     expect(patch.hindernisse![0]!.hoeheM).toBeCloseTo(2);
   });
 
-  it('behält beim Neuausrichten einer Zusatzperspektive die gemeinsame Geometrie', () => {
+  it('ändert bei „Markierung ändern“ weder Perspektive noch gemeinsame Geometrie', () => {
     vi.stubGlobal('matchMedia', matchMedia(false));
     const onPatch = vi.fn();
     const { getByRole } = render(
@@ -92,8 +92,9 @@ describe('Foto-Markierung auf Tablet und PC', () => {
       />,
     );
 
-    fireEvent.click(getByRole('button', { name: 'Ausrichtung neu (First + 4 Ecken)' }));
+    fireEvent.click(getByRole('button', { name: '✎ Markierung ändern' }));
     expect('umrissM' in onPatch.mock.calls[0]![0]).toBe(false);
+    expect('foto' in onPatch.mock.calls[0]![0]).toBe(false);
   });
 
   it('speichert den vierten Eckpunkt erst nach ausdrücklichem Übernehmen', async () => {

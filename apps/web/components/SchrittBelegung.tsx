@@ -20,6 +20,7 @@ import {
   neueFotoId,
   patchFlaechenGeometrie,
   projektFotoVon,
+  perspektiveQuelle,
   rahmenBreiteVon,
   randVon,
   rasterFuer,
@@ -37,6 +38,12 @@ import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
 import { FlaechenInlineEditor } from './FlaechenInlineEditor';
 import { FotoHintergrund } from './FotoHintergrund';
 import { aktualisiereGaubenAussparungen } from '../lib/gauben-geometrie';
+import {
+  pruefePerspektive,
+  traufeWechseln,
+  type Ecken,
+  type PerspektivPruefung,
+} from '../lib/foto-geometrie';
 import {
   GaubenEditor,
   type AktualisierteGaubenMarkierung,
@@ -89,6 +96,19 @@ type FotoUploadStatus =
   | { status: 'laden'; ziel: FotoUploadZiel }
   | { status: 'fehler'; ziel: FotoUploadZiel; grund: string }
   | { status: 'erfolg'; meldung: string };
+
+/** Nicht gespeicherter Hauptdach-Entwurf; Module verwenden nur `letzteGueltige`. */
+interface PerspektivEntwurf {
+  flaecheId: string;
+  fotoId: string;
+  roh: Ecken;
+  letzteGueltige: Ecken;
+  pruefung: PerspektivPruefung;
+  ausgewaehlt: number;
+}
+
+const kopiereEcken = (ecken: Ecken): Ecken =>
+  ecken.map(([x, y]) => [x, y] as [number, number]) as Ecken;
 
 /** Laufende Zeiger-Geste — lebt nur im State, wird erst beim Loslassen committet. */
 type Drag =
@@ -277,6 +297,7 @@ export function SchrittBelegung({
   // Laufende Zeiger-Geste (Aufziehen/Verschieben) — NICHT im Projekt, s. mitDrag()
   const [drag, setDrag] = useState<Drag | null>(null);
   const [historie, setHistorie] = useState<GeometrieStand[]>([]);
+  const [perspektivEntwurf, setPerspektivEntwurf] = useState<PerspektivEntwurf | null>(null);
   const legacyFotoDaten = useRef(new Map<string, string>());
   /**
    * Läuft gerade eine Geste? Als Ref, damit `onUpM` doppelt aufgerufen werden darf
@@ -369,6 +390,7 @@ export function SchrittBelegung({
     setDrag(null);
     setZeichnung(null);
     setModus(null);
+    setPerspektivEntwurf(null);
     onChange(neu);
   };
 
@@ -910,6 +932,81 @@ export function SchrittBelegung({
     };
   };
 
+  const perspektivePruefen = (flaeche: Flaeche, ecken: Ecken) =>
+    pruefePerspektive(
+      rahmenBreiteVon(flaeche),
+      flaeche.hoeheM,
+      ecken,
+      perspektiveQuelle(flaeche),
+    );
+
+  const startePerspektivBearbeitung = (flaeche: Flaeche, fotoId: string) => {
+    const ecken = fotoZuordnungVon(flaeche, fotoId)?.eckenPx;
+    if (!ecken) return;
+    const roh = kopiereEcken(ecken);
+    setPerspektivEntwurf({
+      flaecheId: flaeche.id,
+      fotoId,
+      roh,
+      letzteGueltige: kopiereEcken(ecken),
+      pruefung: perspektivePruefen(flaeche, roh),
+      ausgewaehlt: 0,
+    });
+    setAuswahl(null);
+    setDrag(null);
+    setZeichnung(null);
+    setModus(null);
+  };
+
+  const aenderePerspektivEntwurf = (ecken: Ecken) => {
+    setPerspektivEntwurf((alt) => {
+      if (!alt) return alt;
+      const flaeche = projektRef.current.flaechen.find((f) => f.id === alt.flaecheId);
+      if (!flaeche) return null;
+      const roh = kopiereEcken(ecken);
+      const pruefung = perspektivePruefen(flaeche, roh);
+      return {
+        ...alt,
+        roh,
+        pruefung,
+        letzteGueltige:
+          pruefung.status === 'fehler' ? alt.letzteGueltige : kopiereEcken(roh),
+      };
+    });
+  };
+
+  const speicherePerspektivEntwurf = () => {
+    const entwurf = perspektivEntwurf;
+    if (!entwurf || entwurf.pruefung.status === 'fehler') return;
+    const flaeche = projektRef.current.flaechen.find((f) => f.id === entwurf.flaecheId);
+    const foto = flaeche ? dachFotoVon(projektRef.current, flaeche, entwurf.fotoId) : undefined;
+    const zuordnung = flaeche ? fotoZuordnungVon(flaeche, entwurf.fotoId) : undefined;
+    if (!flaeche || !foto || !zuordnung) return;
+    patchFotoFlaeche(flaeche, entwurf.fotoId, {
+      foto: {
+        ...foto,
+        eckenPx: kopiereEcken(entwurf.roh),
+        perspektiveBestaetigt: true,
+      },
+      markierungFertig: zuordnung.markierungFertig,
+    });
+    setPerspektivEntwurf(null);
+  };
+
+  const markierePerspektiveKomplettNeu = () => {
+    const entwurf = perspektivEntwurf;
+    if (!entwurf) return;
+    if (!window.confirm('Perspektive komplett neu markieren? Die aktuelle Vierpunkt-Markierung wird erst jetzt entfernt; Belegungsfelder und Hindernisse bleiben erhalten.')) return;
+    const flaeche = projektRef.current.flaechen.find((f) => f.id === entwurf.flaecheId);
+    const foto = flaeche ? dachFotoVon(projektRef.current, flaeche, entwurf.fotoId) : undefined;
+    if (!flaeche || !foto) return;
+    setPerspektivEntwurf(null);
+    patchFotoFlaeche(flaeche, entwurf.fotoId, {
+      foto: { ...foto, eckenPx: undefined, perspektiveBestaetigt: false },
+      markierungFertig: false,
+    });
+  };
+
   /** Größe und Lage eines Felds auf den Dachrahmen begrenzen. */
   const begrenzeFeld = (f: Flaeche, rect: RechteckM): RechteckM => {
     const B = rahmenBreiteVon(f);
@@ -1413,10 +1510,26 @@ export function SchrittBelegung({
         const fMitFoto: Flaeche = foto
           ? { ...f, foto, markierungFertig: fotoZuordnung?.markierungFertig }
           : f;
+        const perspektiveHier =
+          perspektivEntwurf?.flaecheId === f.id && perspektivEntwurf.fotoId === fotoId
+            ? perspektivEntwurf
+            : null;
+        const fotoEff = foto && perspektiveHier
+          ? { ...foto, eckenPx: perspektiveHier.letzteGueltige, perspektiveBestaetigt: true }
+          : foto;
         const fEffBasis = mitDrag(f);
-        const fEff: Flaeche = foto
-          ? { ...fEffBasis, foto, markierungFertig: fotoZuordnung?.markierungFertig }
+        let fEff: Flaeche = fotoEff
+          ? { ...fEffBasis, foto: fotoEff, markierungFertig: fotoZuordnung?.markierungFertig }
           : fEffBasis;
+        if (perspektiveHier && !f.gaubenTyp) {
+          fEff = {
+            ...fEff,
+            gaubenAussparungen: aktualisiereGaubenAussparungen(
+              fEff,
+              f.gaubenAussparungen,
+            ),
+          };
+        }
         const raster = rasterFuer(fEff, modul);
         const aktiv = aktiveModule(fEff, raster);
         const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
@@ -1430,7 +1543,7 @@ export function SchrittBelegung({
           (x) => x.elternFlaecheId === f.id && !!x.gaubenTyp,
         );
         // Felder-Werkzeug: aktiv, solange kein anderes Werkzeug und nichts gezeichnet wird
-        const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen;
+        const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen && !perspektiveHier;
         const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
 
         const karte = (
@@ -1477,6 +1590,48 @@ export function SchrittBelegung({
                   </span>
                 )}
                 {f.gaubenTyp && <span className="text-sm font-semibold text-slate-800">{f.name}</span>}
+                {!f.gaubenTyp && belegungZeigen && fotoZuordnung?.eckenPx && !perspektiveHier && (
+                  <button
+                    type="button"
+                    className={`${aktionKlasse} h-11`}
+                    onClick={() => startePerspektivBearbeitung(f, fotoId!)}
+                  >
+                    Perspektive bearbeiten
+                  </button>
+                )}
+                {perspektiveHier && (
+                  <div className="w-full rounded-lg border border-orange-200 bg-orange-50 p-2 text-sm text-slate-800" data-testid="perspektiv-editor-steuerung">
+                    <strong className="block">Perspektive bearbeiten</strong>
+                    <p className={`mt-1 text-xs ${perspektiveHier.pruefung.status === 'fehler' ? 'text-red-700' : perspektiveHier.pruefung.status === 'warnung' ? 'text-amber-700' : 'text-slate-600'}`} role="status">
+                      {perspektiveHier.pruefung.status === 'ok'
+                        ? 'Ecken ziehen oder per Pfeiltaste verschieben. Module und Aussparungen folgen live.'
+                        : perspektiveHier.pruefung.meldungen.join(' ')}
+                    </p>
+                    <div className="mt-2 grid gap-2">
+                      <button
+                        type="button"
+                        className="touch-target h-11 rounded-lg bg-emerald-600 px-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={perspektiveHier.pruefung.status === 'fehler'}
+                        onClick={speicherePerspektivEntwurf}
+                      >
+                        Speichern
+                      </button>
+                      <button type="button" className={`${aktionKlasse} h-11`} onClick={() => setPerspektivEntwurf(null)}>
+                        Abbrechen
+                      </button>
+                      <button
+                        type="button"
+                        className={`${aktionKlasse} h-11`}
+                        onClick={() => aenderePerspektivEntwurf(traufeWechseln(perspektiveHier.roh))}
+                      >
+                        Traufe wechseln
+                      </button>
+                      <button type="button" className="h-11 rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-700" onClick={markierePerspektiveKomplettNeu}>
+                        Komplett neu markieren
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {!f.gaubenTyp && fotoZuordnungen.length > 0 && <label className="min-w-0 flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
                   Ansicht
                   <select
@@ -1808,6 +1963,19 @@ export function SchrittBelegung({
                               !d || d.flaecheId !== f.id ? d : p ? { ...d, aktuell: p } : null,
                             ),
                           onUpM: (p) => onUpM(f, p),
+                        }
+                      : undefined
+                  }
+                  perspektivEditor={
+                    perspektiveHier
+                      ? {
+                          ecken: perspektiveHier.roh,
+                          pruefung: perspektiveHier.pruefung,
+                          ausgewaehlt: perspektiveHier.ausgewaehlt,
+                          onAuswaehlen: (ausgewaehlt) =>
+                            setPerspektivEntwurf((alt) => alt ? { ...alt, ausgewaehlt } : alt),
+                          onAendern: aenderePerspektivEntwurf,
+                          onAbbrechen: () => setPerspektivEntwurf(null),
                         }
                       : undefined
                   }

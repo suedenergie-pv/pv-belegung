@@ -8,7 +8,9 @@ import {
   pruefePerspektive,
   projiziere,
   projPfad,
+  type Ecken,
   type Homographie,
+  type PerspektivPruefung,
   type Punkt,
 } from '../lib/foto-geometrie';
 import {
@@ -130,6 +132,20 @@ export interface TastaturProps {
   /** Pfeile bewegen; mit Shift skaliert der Belegungseditor die Auswahl. */
   onPfeil?: (x: number, y: number, skalieren: boolean) => void;
   onEscape?: () => void;
+}
+
+/**
+ * Nicht gespeicherter Vierpunkt-Entwurf für die Foto-Perspektive. Das Dach selbst
+ * wird mit dem letzten gültigen Entwurf gerendert; diese Rohpunkte dürfen deshalb
+ * auch kurzzeitig konkav oder überkreuzt sein und werden dann rot dargestellt.
+ */
+export interface PerspektivEditorProps {
+  ecken: Ecken;
+  pruefung: PerspektivPruefung;
+  ausgewaehlt: number;
+  onAuswaehlen: (index: number) => void;
+  onAendern: (ecken: Ecken) => void;
+  onAbbrechen: () => void;
 }
 
 /**
@@ -402,6 +418,7 @@ export function DachSvg({
   geister,
   pointer,
   tastatur,
+  perspektivEditor,
   fotoOverlay,
   maxHoehe,
 }: {
@@ -427,6 +444,8 @@ export function DachSvg({
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
   tastatur?: TastaturProps;
+  /** Vier sichtbare, per Maus/Touch/Tastatur verschiebbare Perspektivgriffe. */
+  perspektivEditor?: PerspektivEditorProps;
   /** Weitere Flächen desselben Projektfotos, hinter der aktiven Fläche. */
   fotoOverlay?: (clipIdPrefix: string) => ReactNode;
   /** Maximale Editorhöhe in px; der Belegungsschritt darf den verfügbaren Platz ausnutzen. */
@@ -439,9 +458,10 @@ export function DachSvg({
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
   const B = rahmenBreiteVon(flaeche);
   const H = flaeche.hoeheM;
+  const foto = flaeche.foto;
   const [tastaturCursorM, setTastaturCursorM] = useState<PunktM>([B / 2, H / 2]);
   const [hatTastaturFokus, setHatTastaturFokus] = useState(false);
-  const interaktiv = !!(pointer || zeichnen?.aktiv || onToggle || tastatur?.onPfeil);
+  const interaktiv = !!(pointer || zeichnen?.aktiv || onToggle || tastatur?.onPfeil || perspektivEditor);
   const tastaturTaste = (e: React.KeyboardEvent<SVGSVGElement>) => {
     const richtung: Record<string, PunktM> = {
       ArrowLeft: [-1, 0],
@@ -450,6 +470,25 @@ export function DachSvg({
       ArrowDown: [0, 1],
     };
     const v = richtung[e.key];
+    if (perspektivEditor) {
+      if (v) {
+        e.preventDefault();
+        const schritt = e.shiftKey ? 10 : 1;
+        if (!foto) return;
+        const index = perspektivEditor.ausgewaehlt;
+        const ecken = perspektivEditor.ecken.map((p) => [...p] as Punkt) as Ecken;
+        const bisher = ecken[index]!;
+        ecken[index] = [
+          Math.max(0, Math.min(foto.breitePx, bisher[0] + v[0] * schritt)),
+          Math.max(0, Math.min(foto.hoehePx, bisher[1] + v[1] * schritt)),
+        ];
+        perspektivEditor.onAendern(ecken);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        perspektivEditor.onAbbrechen();
+      }
+      return;
+    }
     if (v) {
       e.preventDefault();
       if (!zeichnen?.aktiv && tastatur?.onPfeil) {
@@ -474,7 +513,9 @@ export function DachSvg({
     ? {
         tabIndex: 0,
         role: 'img' as const,
-        'aria-label': `Belegungsfläche ${flaeche.name}. Pfeiltasten bewegen das Fadenkreuz oder die Auswahl; Umschalt plus Pfeil ändert die Größe.`,
+        'aria-label': perspektivEditor
+          ? `Perspektive von ${flaeche.name} bearbeiten. Pfeiltasten bewegen die gewählte Ecke um 1 Pixel, mit Umschalt um 10 Pixel. Escape bricht ab.`
+          : `Belegungsfläche ${flaeche.name}. Pfeiltasten bewegen das Fadenkreuz oder die Auswahl; Umschalt plus Pfeil ändert die Größe.`,
         'aria-keyshortcuts': 'ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Enter Escape',
         onFocus: () => setHatTastaturFokus(true),
         onBlur: () => setHatTastaturFokus(false),
@@ -493,6 +534,106 @@ export function DachSvg({
   const umriss = umrissEff && umrissEff.length >= 3 ? umrissEff : null;
   const hindernisse = hindernisseVon(flaeche) ?? [];
   const draft = zeichnen?.punkteM ?? [];
+
+  const perspektivGriffe = foto?.eckenPx && perspektivEditor ? (() => {
+    const fehler = perspektivEditor.pruefung.status === 'fehler';
+    const linienFarbe = fehler ? '#dc2626' : '#e8603a';
+    const punktAusEvent = (e: React.PointerEvent<SVGCircleElement>): Punkt | null => {
+      const svg = e.currentTarget.ownerSVGElement;
+      if (!svg) return null;
+      const rect = svg.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return [
+        Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
+        Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
+      ];
+    };
+    const setzePunkt = (index: number, p: Punkt) => {
+      const ecken = perspektivEditor.ecken.map((x) => [...x] as Punkt) as Ecken;
+      ecken[index] = p;
+      perspektivEditor.onAendern(ecken);
+    };
+    return (
+      <g data-testid="perspektiv-griffe">
+        <polygon
+          points={perspektivEditor.ecken.map(([x, y]) => `${x},${y}`).join(' ')}
+          fill={fehler ? 'rgba(220,38,38,0.10)' : 'rgba(232,96,58,0.08)'}
+          stroke={linienFarbe}
+          strokeWidth={Math.max(2, foto.breitePx * 0.0025)}
+          strokeDasharray={`${foto.breitePx * 0.009} ${foto.breitePx * 0.005}`}
+          style={{ pointerEvents: 'none' }}
+        />
+        {perspektivEditor.ecken.map(([x, y], index) => (
+          <g key={index}>
+            <circle
+              cx={x}
+              cy={y}
+              r={Math.max(5, foto.breitePx * 0.006)}
+              fill="transparent"
+              stroke="transparent"
+              strokeWidth={44}
+              vectorEffect="non-scaling-stroke"
+              style={{ cursor: 'grab', touchAction: 'none' }}
+              role="button"
+              tabIndex={0}
+              aria-label={`Perspektive Ecke ${index + 1}`}
+              aria-pressed={index === perspektivEditor.ausgewaehlt}
+              onFocus={() => perspektivEditor.onAuswaehlen(index)}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                perspektivEditor.onAuswaehlen(index);
+                e.currentTarget.ownerSVGElement?.focus();
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // Der Griff bleibt auch ohne Capture per Tastatur korrigierbar.
+                }
+                const p = punktAusEvent(e);
+                if (p) setzePunkt(index, p);
+              }}
+              onPointerMove={(e) => {
+                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                const p = punktAusEvent(e);
+                if (p) setzePunkt(index, p);
+              }}
+              onPointerUp={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+              onPointerCancel={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+            />
+            <circle
+              cx={x}
+              cy={y}
+              r={Math.max(7, foto.breitePx * 0.007)}
+              fill={fehler ? '#dc2626' : index === perspektivEditor.ausgewaehlt ? '#0f172a' : '#e8603a'}
+              stroke="#ffffff"
+              strokeWidth={Math.max(2, foto.breitePx * 0.002)}
+              style={{ pointerEvents: 'none' }}
+            />
+            <text
+              x={x}
+              y={y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#ffffff"
+              fontSize={Math.max(10, foto.breitePx * 0.011)}
+              fontWeight={700}
+              style={{ pointerEvents: 'none' }}
+            >
+              {index + 1}
+            </text>
+          </g>
+        ))}
+      </g>
+    );
+  })() : null;
 
   /**
    * Maßketten (Genrih 07.07.): Kantenlängen einblenden, damit die digitale Fläche
@@ -767,7 +908,6 @@ export function DachSvg({
     </>
   );
 
-  const foto = flaeche.foto;
   if (foto?.eckenPx) {
     // Perspektivischer Modus: 4 markierte Ecken → Homographie Fläche→Foto.
     // Jedes Modul wird als projiziertes Viereck gezeichnet (LoD vereinfacht,
@@ -1033,6 +1173,7 @@ export function DachSvg({
                 );
               })}
             {!druck && masse && renderMasse(foto.breitePx * 0.02, (p) => projiziere(h, [p[0], p[1]]))}
+            {!druck && perspektivGriffe}
           </svg>
         </div>
       );

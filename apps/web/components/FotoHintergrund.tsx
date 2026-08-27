@@ -461,33 +461,12 @@ export function FotoHintergrund({
                 ✎ Markierung ändern
               </button>
             )}
-            {markiert && (
+            {modus === 'perspektive' && punkte.length === 4 && (
               <button
                 type="button"
                 className={knopfKlasse}
-                title={`Ausrichtung neu: ${istSchraegdach ? 'First-/Trauflinie' : `${kantenName} als Referenz`} setzen, dann die 4 Ecken`}
-                onClick={() => {
-                  const { eckenPx: _e, ...rest } = foto;
-                  onPatch({
-                    foto: { ...rest, traufePx: null, perspektiveBestaetigt: false },
-                    ...(geometrieBehalten ? {} : { umrissM: undefined }),
-                    markierungFertig: false,
-                    inaktiv: [],
-                  });
-                  setPunkte([]);
-                  setFirstLinie(null);
-                  setModus('first');
-                }}
-              >
-                Ausrichtung neu ({istSchraegdach ? 'First' : kantenName} + 4 Ecken)
-              </button>
-            )}
-            {foto.eckenPx && (
-              <button
-                type="button"
-                className={knopfKlasse}
-                title={`Falls die falsche Kante als ${kantenName} angenommen wurde: Zuordnung weiterdrehen`}
-                onClick={() => onFoto({ ...foto, eckenPx: traufeWechseln(foto.eckenPx!) })}
+                title={`Nur den noch nicht gespeicherten Entwurf drehen: andere Kante als ${kantenName} verwenden`}
+                onClick={() => setPunkte(traufeWechseln(punkte as Ecken))}
               >
                 ↻ {kantenName} wechseln
               </button>
@@ -1036,7 +1015,7 @@ export function FotoHintergrund({
 
               {/* Ziehbare Ecken-Griffe: nur im Perspektive-Modus, zum exakten Nachjustieren */}
               {modus === 'perspektive' &&
-                foto.eckenPx?.map((p, i) => (
+                (punkte.length === 4 ? punkte : foto.eckenPx)?.map((p, i) => (
                   <g key={i} style={{ cursor: 'grab' }}>
                     <circle cx={p[0]} cy={p[1]} r={px(0.018)} fill="rgba(249,115,22,0.18)" />
                     <circle
