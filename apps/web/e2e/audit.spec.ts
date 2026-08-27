@@ -72,6 +72,26 @@ async function fotoKalibrieren(page: Page) {
   await expect(page.getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeVisible();
 }
 
+async function satteldachGaubeAnlegen(page: Page) {
+  await page.getByRole('button', { name: '+ Gaube' }).click();
+  await page.getByRole('button', { name: 'Satteldachgaube' }).click();
+  await page.getByRole('button', { name: 'Im Foto markieren →' }).click();
+  const foto = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
+  const box = await foto.boundingBox();
+  if (!box) throw new Error('Das Gaubenfoto ist nicht sichtbar.');
+  const punkte = [
+    [0.25, 0.80], [0.75, 0.80], [0.75, 0.30], [0.25, 0.30],
+    [0.50, 0.22], [0.50, 0.88],
+  ];
+  for (const [x, y] of punkte) {
+    await foto.click({ position: { x: box.width * x!, y: box.height * y! } });
+  }
+  const anlegen = page.getByRole('button', { name: 'Gaube anlegen & fertig' });
+  await expect(anlegen).toBeEnabled();
+  await anlegen.click();
+  await expect(page.getByRole('button', { name: 'Perspektive von Gaube 1, zweite Dachseite bearbeiten' })).toBeVisible();
+}
+
 test('responsive Ebenen und Touch-Ziele überdecken sich nicht', async ({ page }, testInfo) => {
   await page.goto('/');
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
@@ -176,4 +196,69 @@ test('Exportsperre springt zum konkreten Pflichtfehler', async ({ page }) => {
   await page.getByRole('button', { name: 'Zum Fehler' }).first().click();
   await expect(page.getByRole('button', { name: '1. Projekt' })).toHaveAttribute('aria-current', 'step');
   await expect(page.getByLabel('Kunde')).toBeFocused();
+});
+
+test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschbar', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const browserFehler: string[] = [];
+  page.on('console', (meldung) => {
+    if (meldung.type() === 'error') browserFehler.push(meldung.text());
+  });
+  page.on('pageerror', (fehler) => browserFehler.push(fehler.message));
+
+  await page.goto('/');
+  await projektPflichtfelder(page);
+  await fotoKalibrieren(page);
+
+  const perspektiveStarten = page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true });
+  await perspektiveStarten.click();
+  const hauptSvg = page.getByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ });
+  const vorher = await page.getByTestId('perspektiv-griffe').locator('polygon').getAttribute('points');
+  await hauptSvg.press('ArrowRight');
+  const entwurf = await page.getByTestId('perspektiv-griffe').locator('polygon').getAttribute('points');
+  expect(entwurf).not.toBe(vorher);
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+
+  await perspektiveStarten.click();
+  const nachAbbruch = await page.getByTestId('perspektiv-griffe').locator('polygon').getAttribute('points');
+  expect(nachAbbruch).toBe(vorher);
+  await hauptSvg.press('ArrowRight');
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.getByRole('button', { name: /Rückgängig/ }).click();
+
+  await satteldachGaubeAnlegen(page);
+  await page.getByRole('button', { name: 'Perspektive von Gaube 1, zweite Dachseite bearbeiten' }).click();
+  const gaubenSvg = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
+  const griffe = page.getByRole('button', { name: /Gaubenpunkt/ });
+  await expect(griffe).toHaveCount(6);
+  const trefferflaechen = await griffe.evaluateAll((elemente) =>
+    elemente.map((element) => ({
+      breite: element.getBoundingClientRect().width,
+      hoehe: element.getBoundingClientRect().height,
+      strich: Number.parseFloat(getComputedStyle(element).strokeWidth),
+    })),
+  );
+  expect(trefferflaechen.every((x) => x.breite >= 44 || x.hoehe >= 44 || x.strich >= 44)).toBe(true);
+  await gaubenSvg.press('ArrowRight');
+  await page.getByRole('button', { name: 'Markierung übernehmen' }).click();
+
+  const loeschen = page.getByRole('button', { name: 'Gaube 1, zweite Dachseite löschen' });
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await loeschen.click();
+  await expect(loeschen).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await loeschen.click();
+  await expect(page.getByRole('button', { name: /Gaube 1.*löschen/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /Rückgängig/ }).click();
+  await expect(page.getByRole('button', { name: 'Gaube 1, zweite Dachseite löschen' })).toBeVisible();
+  if (testInfo.project.name === 'desktop') {
+    await page.getByRole('button', { name: '3. Export' }).click();
+    const pdf = page.getByRole('button', { name: 'PDF herunterladen' });
+    await expect(pdf).toBeEnabled();
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    const download = page.waitForEvent('download');
+    await pdf.click();
+    await (await download).saveAs(resolve('.debug-shots', 'browser-audit-satteldachgaube.pdf'));
+  }
+  expect(browserFehler).toEqual([]);
 });
