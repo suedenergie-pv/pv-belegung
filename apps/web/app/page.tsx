@@ -442,7 +442,9 @@ export default function Home() {
           onSpringeZu={(zielSchritt, sprungziel) => {
             setSchritt(zielSchritt);
             window.setTimeout(() => {
-              document.getElementById(sprungziel)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              const ziel = document.getElementById(sprungziel);
+              ziel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (ziel instanceof HTMLElement) ziel.focus({ preventScroll: true });
             }, 0);
           }}
         />

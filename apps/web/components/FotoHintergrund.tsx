@@ -868,7 +868,10 @@ export function FotoHintergrund({
               className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
               preserveAspectRatio="xMidYMid meet"
               style={{ touchAction: fadenkreuzAktiv ? 'none' : undefined }}
-              onFocus={() => {
+              onFocus={(e) => {
+                // Ein Mausklick fokussiert das SVG ebenfalls. Nur echter
+                // Tastaturfokus darf deshalb in den Fadenkreuzmodus wechseln.
+                if (!e.currentTarget.matches(':focus-visible')) return;
                 if (!touchCursorPx) {
                   setTouchCursorPx([foto.breitePx / 2, foto.hoehePx / 2]);
                 }
