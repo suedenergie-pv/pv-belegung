@@ -1,7 +1,7 @@
 /**
  * Gemeinsames Foto-Einlesen: Datei → verkleinertes JPEG (Data-URL) + Pixelmaße.
  * Fotos bleiben lokal im Browser (SPEC §8.1). Genutzt vom Einzelflächen-Foto
- * (FotoHintergrund) und vom Gesamtansicht-Foto (SchrittGesamt) — eine Quelle,
+ * (FotoHintergrund) und von projektweiten Belegungsfotos — eine Quelle,
  * damit Verkleinerung/Qualität überall identisch sind.
  */
 

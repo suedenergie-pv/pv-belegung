@@ -1,12 +1,16 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = localFont({
+  src: './fonts/InterVariable.woff2',
+  display: 'swap',
+  weight: '100 900',
+});
 
 export const metadata: Metadata = {
   title: 'Belegungsplaner · SüdEnergie',
-  description: 'Interne Dachbelegung & Stringplan-Vorplanung für den Vertrieb',
+  description: 'Interne Dachbelegung und Vorplanung für den Vertrieb',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -29,9 +29,8 @@ interface GeloeschtesProjekt {
   ersatzId?: string;
 }
 
-// „Stringcheck" ist seit 13.07.2026 ausgeblendet (Genrih: kein Main-Feature, soll
-// im finalen Programm nicht zu sehen sein). Die Rechenlogik (Engine R1–R12,
-// SchrittStrings, pruefeStringplan) bleibt vollständig im Projekt.
+// Der Stringcheck bleibt bis zur PV*SOL-Gegenrechnung aus der Oberfläche entfernt.
+// Gespeicherte Stringdaten und die Engine R1–R12 bleiben für Migration und Export erhalten.
 const SCHRITTE = ['Projekt', 'Dach & Belegung', 'Export'] as const;
 
 export default function Home() {

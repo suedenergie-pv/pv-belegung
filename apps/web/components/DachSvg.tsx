@@ -267,9 +267,9 @@ export function ModulAsset({ id, modul }: { id: string; modul: ModuleType }) {
 /**
  * Zeichnet die Module eines Rasters perspektivisch über eine Homographie
  * (Fläche→Foto-Pixel) — jedes Modul als in zwei Dreiecke geteiltes, exakt
- * eingepasstes Asset (kein CSS-3D). Herausgelöst aus dem Einzelfoto-Zweig, damit
- * die Gesamtansicht (mehrere Flächen auf EINEM Foto) exakt dieselbe Darstellung
- * nutzt. Erwartet ein `<ModulAsset id={assetId}>` in den <defs> des umgebenden SVG.
+ * eingepasstes Asset (kein CSS-3D). Einzelfläche, Fotoübersicht und PDF verwenden
+ * dadurch exakt dieselbe Darstellung. Erwartet ein `<ModulAsset id={assetId}>`
+ * in den <defs> des umgebenden SVG.
  */
 export function moduleAufHomographie({
   h,

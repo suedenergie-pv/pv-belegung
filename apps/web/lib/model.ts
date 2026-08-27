@@ -119,9 +119,8 @@ export interface DachFoto {
 }
 
 /**
- * Projektweites Gesamt-Drohnenfoto (ein Bild vom ganzen Dach) für die
- * Gesamtansicht: jede Fläche wird über ihre eigenen Anker-Ecken (Flaeche.gesamtEckenPx)
- * perspektivisch daraufgelegt. Bleibt lokal im Browser (SPEC §8.1).
+ * @deprecated Altformat vor den gemeinsamen Projektfotos. Wird nur noch bei
+ * Migrationen eingelesen und anschließend ins aktuelle Fotomodell überführt.
  */
 export interface GesamtFoto {
   dataUrl: string;
@@ -131,8 +130,8 @@ export interface GesamtFoto {
 
 /**
  * Ein projektweites Drohnenfoto. Mehrere Flächen dürfen demselben Foto
- * zugeordnet sein; das Bild selbst wird dadurch nur EINMAL im localStorage
- * gespeichert. Die flächenspezifische Perspektive liegt in FotoZuordnung.
+ * zugeordnet sein; der Bild-Blob liegt einmalig in IndexedDB. Die
+ * flächenspezifische Perspektive liegt in FotoZuordnung.
  */
 export interface ProjektFoto extends GesamtFoto {
   id: string;
@@ -225,9 +224,9 @@ export interface Flaeche {
   /** @deprecated Nur zum Einlesen von Altprojekten (Foto-Modell v2). */
   fotoZuordnung?: FotoZuordnung;
   /**
-   * Lage dieser Fläche auf dem projektweiten Gesamtfoto (4 Anker-Ecken in
+   * @deprecated Lage dieser Fläche im früheren Gesamtfoto (4 Anker-Ecken in
    * Foto-Pixeln, gleiche Konvention wie foto.eckenPx: Traufe links/rechts, First
-   * rechts/links). Nur für die Gesamtansicht — unabhängig vom Einzelflächen-Foto.
+   * rechts/links). Wird ausschließlich bei Altprojekt-Migrationen gelesen.
    */
   gesamtEckenPx?: Ecken;
   /** @deprecated Markierungsstatus liegt seit Foto-Modell v3 an der Zuordnung. */
@@ -431,14 +430,14 @@ export interface Projekt {
   fotos: ProjektFoto[];
   /** Migrationsmarker für mehrere Perspektiven je Fläche (04.08.2026). */
   fotoModellVersion?: 2 | 3;
-  /** Projektweites Gesamt-Drohnenfoto für die Gesamtansicht (optional). */
+  /** @deprecated Altformat; wird beim Laden in `fotos` migriert. */
   gesamtFoto?: GesamtFoto;
   /** Komplexes Dach bewusst an die Projektleitung übergeben. */
   eskaliert?: boolean;
   eskalationsgrund?: string;
 }
 
-/** Kurzes Zonen-Kürzel A/B/C/… für die Gesamtansicht (0-basiert). */
+/** Kurzes Zonen-Kürzel A/B/C/… (0-basiert). */
 export function zonenLabel(i: number): string {
   let n = Math.max(0, Math.floor(i)) + 1;
   let label = '';
