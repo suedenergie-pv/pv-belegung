@@ -7,11 +7,13 @@ import {
   hindernisAusKlicks,
   homographie,
   orientiereEcken,
+  pruefePerspektive,
+  pruefeUmrissAusKlicks,
   projiziere,
   sortiereEcken,
   traufeWechseln,
-  umrissAusKlicks,
   verschiebeFotoPunkt,
+  type Ecken,
   type Punkt,
 } from '../lib/foto-geometrie';
 import { artVon, DACHFARBEN, fmtDe, perspektiveQuelle, rahmenBreiteVon, type DachFoto, type Flaeche } from '../lib/model';
@@ -34,7 +36,7 @@ import { IconFoto } from './icons';
 
 async function dateiZuFoto(file: File): Promise<DachFoto> {
   const bild = await dateiZuBild(file);
-  return { ...bild, traufePx: null };
+  return { ...bild, traufePx: null, perspektiveBestaetigt: false };
 }
 
 function deckbreiteDefaultCm(f: Flaeche): number {
@@ -44,8 +46,8 @@ function deckbreiteDefaultCm(f: Flaeche): number {
 
 type Modus = 'first' | 'perspektive' | 'umriss' | 'hindernis' | 'ziegel';
 
-/** Ziehbarer Griff: eine Foto-Ecke, ein Trauflinien-Punkt oder ein Draft-Punkt. */
-type Griff = { art: 'punkt' | 'ecke' | 'first'; i: number };
+/** Ziehbarer Griff: ein noch nicht bestätigter Punkt oder ein Trauflinien-Punkt. */
+type Griff = { art: 'punkt' | 'first'; i: number };
 
 const knopfKlasse =
   'touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400';
@@ -131,7 +133,7 @@ export function FotoHintergrund({
   const [firstLinie, setFirstLinie] = useState<[Punkt, Punkt] | null>(null);
   // Gerade gezogener Punkt (Ecke/Trauflinie/Draft) — freies Nachjustieren per Drag.
   // In einem Ref, damit das Ziehen sofort greift (nicht erst nach dem Re-Render).
-  const ziehtRef = useRef<{ art: 'punkt' | 'ecke' | 'first'; i: number } | null>(null);
+  const ziehtRef = useRef<Griff | null>(null);
   const [greift, setGreift] = useState(false); // nur für den Cursor
   // Startete der Maus-Druck auf einem Griff? Dann den folgenden Klick NICHT als „neuen Punkt" werten.
   const aufHandle = useRef(false);
@@ -139,6 +141,7 @@ export function FotoHintergrund({
   const [fadenkreuzAktiv, setFadenkreuzAktiv] = useState(false);
   const [touchCursorPx, setTouchCursorPx] = useState<Punkt | null>(null);
   const [touchGriff, setTouchGriff] = useState<Griff | null>(null);
+  const [markierungsFehler, setMarkierungsFehler] = useState<string | null>(null);
   const touchSwipeRef = useRef<{
     pointerId: number;
     clientX: number;
@@ -163,6 +166,7 @@ export function FotoHintergrund({
     setFadenkreuzAktiv(false);
     setTouchCursorPx(null);
     setTouchGriff(null);
+    setMarkierungsFehler(null);
     touchSwipeRef.current = null;
     setModus(foto?.eckenPx ? 'hindernis' : 'first');
   }, [foto?.dataUrl, zustandsKey]);
@@ -197,6 +201,17 @@ export function FotoHintergrund({
           flaechenArt,
         )
       : null;
+  const perspektivCheck = foto?.eckenPx
+    ? pruefePerspektive(rahmenB, H, foto.eckenPx, quelle)
+    : null;
+  const perspektivVorschau: Ecken | null = (() => {
+    if (modus !== 'perspektive' || punkte.length !== 4) return null;
+    const vier = [punkte[0]!, punkte[1]!, punkte[2]!, punkte[3]!] as [Punkt, Punkt, Punkt, Punkt];
+    return firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
+  })();
+  const vorschauCheck = perspektivVorschau
+    ? pruefePerspektive(rahmenB, H, perspektivVorschau, quelle)
+    : null;
 
   // Fadenkreuz-Vorschau nur in den Punkt-Setz-Modi
   const zeigtKreuz =
@@ -204,8 +219,13 @@ export function FotoHintergrund({
 
   const wechsleModus = (m: Modus) => {
     setModus(m);
-    setPunkte([]);
+    setPunkte(
+      m === 'perspektive' && foto?.eckenPx
+        ? foto.eckenPx.map((p) => [p[0], p[1]] as Punkt)
+        : [],
+    );
     setTouchGriff(null);
+    setMarkierungsFehler(null);
   };
 
   const perspektiveAbschliessen = (pts: Punkt[]) => {
@@ -213,22 +233,37 @@ export function FotoHintergrund({
     const vier: [Punkt, Punkt, Punkt, Punkt] = [pts[0]!, pts[1]!, pts[2]!, pts[3]!];
     // Firstlinie (falls gezogen) legt die Traufe-Achse fest; sonst alter Heuristik-Fallback
     const ecken = firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
+    const pruefung = pruefePerspektive(rahmenB, H, ecken, quelle);
+    if (pruefung.status === 'fehler') {
+      setMarkierungsFehler(pruefung.meldungen.join(' '));
+      return;
+    }
     onPatch({
-      foto: { ...foto, eckenPx: ecken, traufePx: null },
+      foto: {
+        ...foto,
+        eckenPx: ecken,
+        traufePx: null,
+        perspektiveBestaetigt: true,
+      },
       ...(geometrieBehalten ? {} : { umrissM: undefined }),
       markierungFertig: false,
       inaktiv: [],
     });
     setPunkte([]);
+    setMarkierungsFehler(null);
     setModus(geometrieBehalten ? 'hindernis' : 'umriss');
   };
 
   const umrissAbschliessen = (pts: Punkt[]) => {
     if (!foto?.eckenPx) return;
-    const umrissM = umrissAusKlicks(pts, rahmenB, H, foto.eckenPx, quelle);
-    if (!umrissM) return;
-    onPatch({ umrissM, inaktiv: [] });
+    const ergebnis = pruefeUmrissAusKlicks(pts, rahmenB, H, foto.eckenPx, quelle);
+    if (!ergebnis.ok) {
+      setMarkierungsFehler(ergebnis.grund);
+      return;
+    }
+    onPatch({ umrissM: ergebnis.punkte, inaktiv: [] });
     setPunkte([]);
+    setMarkierungsFehler(null);
     setModus('hindernis');
   };
 
@@ -259,7 +294,6 @@ export function FotoHintergrund({
     const arr: { x: number; y: number; z: Griff }[] = [];
     if (modus === 'perspektive') {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
-      if (foto.eckenPx) foto.eckenPx.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'ecke', i } }));
     } else if (modus === 'first') {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
       if (firstLinie) firstLinie.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'first', i } }));
@@ -277,9 +311,6 @@ export function FotoHintergrund({
     if (!foto) return;
     if (z.art === 'punkt') {
       setPunkte(punkte.map((p, i) => (i === z.i ? [k[0], k[1]] : p)));
-    } else if (z.art === 'ecke' && foto.eckenPx) {
-      const e = foto.eckenPx.map((p, i) => (i === z.i ? [k[0], k[1]] : p)) as typeof foto.eckenPx;
-      onFoto({ ...foto, eckenPx: e });
     } else if (z.art === 'first' && firstLinie) {
       setFirstLinie(firstLinie.map((p, i) => (i === z.i ? [k[0], k[1]] : p)) as [Punkt, Punkt]);
     }
@@ -319,9 +350,8 @@ export function FotoHintergrund({
     if (modus === 'perspektive') {
       // Sind die 4 Ecken schon gesetzt, fügt ein Klick KEINE neue an — man justiert
       // dann nur noch per Ziehen. Neu setzen geht über „Ecken neu".
-      if (foto.eckenPx) return;
+      if (punkte.length >= 4) return;
       const neu: Punkt[] = [...punkte, [x, y]];
-      if (neu.length >= 4) return perspektiveAbschliessen(neu);
       return setPunkte(neu);
     }
 
@@ -398,7 +428,13 @@ export function FotoHintergrund({
             e.target.value = '';
             if (!file) return;
             zurueckAufAnfang();
-            onFoto(await dateiZuFoto(file));
+            try {
+              onFoto(await dateiZuFoto(file));
+            } catch (fehler) {
+              setMarkierungsFehler(
+                fehler instanceof Error ? fehler.message : 'Das Foto konnte nicht geladen werden.',
+              );
+            }
           }}
         />
       )}
@@ -433,7 +469,7 @@ export function FotoHintergrund({
                 onClick={() => {
                   const { eckenPx: _e, ...rest } = foto;
                   onPatch({
-                    foto: { ...rest, traufePx: null },
+                    foto: { ...rest, traufePx: null, perspektiveBestaetigt: false },
                     ...(geometrieBehalten ? {} : { umrissM: undefined }),
                     markierungFertig: false,
                     inaktiv: [],
@@ -463,7 +499,7 @@ export function FotoHintergrund({
                 title="Alle 4 Ecken verwerfen und neu anklicken"
                 onClick={() => {
                   setPunkte([]);
-                  onFoto({ ...foto, eckenPx: undefined });
+                  setMarkierungsFehler(null);
                 }}
               >
                 Ecken neu
@@ -486,9 +522,10 @@ export function FotoHintergrund({
               <button
                 type="button"
                 className={knopfKlasse}
-                onClick={() =>
-                  onPatch({ breiteM: check.vorschlag!.breiteM, hoeheM: check.vorschlag!.hoeheM, inaktiv: [] })
-                }
+                onClick={() => onPatch({
+                  breiteM: check.vorschlag!.breiteM,
+                  hoeheM: check.vorschlag!.hoeheM,
+                })}
               >
                 Maße aus Foto übernehmen ({fmtDe(check.vorschlag.breiteM, 1)} ×{' '}
                 {fmtDe(check.vorschlag.hoeheM, 1)} m)
@@ -527,12 +564,25 @@ export function FotoHintergrund({
         </div>
       )}
 
+      {perspektivCheck?.status === 'warnung' && (
+        <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <strong>Starke Perspektive:</strong> {perspektivCheck.meldungen.join(' ')}
+        </div>
+      )}
+
+      {(perspektivCheck?.status === 'fehler' || vorschauCheck?.status === 'fehler' || markierungsFehler) && (
+        <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          <strong>Markierung prüfen:</strong>{' '}
+          {markierungsFehler ?? vorschauCheck?.meldungen.join(' ') ?? perspektivCheck?.meldungen.join(' ')}
+        </div>
+      )}
+
       {foto && inMarkierung && (
         <div className="mt-3">
           <div
             role="toolbar"
             aria-label="Werkzeuge für die Foto-Markierung"
-            className="sticky top-16 z-40 -mx-2 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur"
+            className="-mx-2 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-300 bg-white p-2 shadow-sm"
           >
             {touchGeraet && (
               <button
@@ -616,6 +666,16 @@ export function FotoHintergrund({
                 ↶ Punkt zurück
               </button>
             )}
+            {modus === 'perspektive' && punkte.length === 4 && (
+              <button
+                type="button"
+                disabled={vorschauCheck?.status === 'fehler'}
+                className="touch-target h-9 rounded-lg bg-akzent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => perspektiveAbschliessen(punkte)}
+              >
+                4 Ecken übernehmen
+              </button>
+            )}
             {modus === 'umriss' && (
               <>
                 <button
@@ -670,7 +730,9 @@ export function FotoHintergrund({
                 </label>
               </>
             )}
-            {foto.eckenPx && (
+            {foto.eckenPx &&
+              foto.perspektiveBestaetigt !== false &&
+              perspektivCheck?.status !== 'fehler' && (
               <button
                 type="button"
                 className="ml-auto h-9 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -917,6 +979,18 @@ export function FotoHintergrund({
                 />
               )}
 
+              {/* Sortierte Vorschau: Rohpunkte bleiben separat sichtbar und werden
+                  erst über den ausdrücklichen Übernehmen-Knopf gespeichert. */}
+              {perspektivVorschau && (
+                <polygon
+                  points={perspektivVorschau.map(([qx, qy]) => `${qx},${qy}`).join(' ')}
+                  fill="rgba(2,132,199,0.08)"
+                  stroke={vorschauCheck?.status === 'fehler' ? '#dc2626' : '#0284c7'}
+                  strokeWidth={px(0.003)}
+                  strokeDasharray={`${px(0.01)} ${px(0.005)}`}
+                />
+              )}
+
               {/* Ziehbare Ecken-Griffe: nur im Perspektive-Modus, zum exakten Nachjustieren */}
               {modus === 'perspektive' &&
                 foto.eckenPx?.map((p, i) => (
@@ -1044,7 +1118,9 @@ export function FotoHintergrund({
                 ? `Anfang der ${istSchraegdach ? 'First-/Trauflinie' : kantenName} anklicken.`
                 : 'Ende der Linie anklicken.'
               : modus === 'perspektive'
-              ? `Ecke ${punkte.length + 1} von 4 anklicken (${flaechenName}).`
+              ? punkte.length < 4
+                ? `Ecke ${punkte.length + 1} von 4 anklicken (${flaechenName}).`
+                : 'Vorschau prüfen, einzelne Punkte bei Bedarf ziehen und dann „4 Ecken übernehmen".'
               : modus === 'umriss'
                 ? punkte.length < 3
                   ? `Ecke ${punkte.length + 1} anklicken (mind. 3) — oder „${flaechenName} belegen“ für ein Rechteck.`

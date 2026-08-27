@@ -5,6 +5,7 @@ import React, { useId, type ReactNode } from 'react';
 import {
   homographie,
   inverseHomographie,
+  pruefePerspektive,
   projiziere,
   projPfad,
   type Homographie,
@@ -311,6 +312,10 @@ export function moduleAufHomographie({
     const TR = projiziere(h, [p.xM + mB, p.yM]);
     const BR = projiziere(h, [p.xM + mB, p.yM + mH]);
     const BL = projiziere(h, [p.xM, p.yM + mH]);
+    const pfad = projPfad(h, rechteck(p.xM, p.yM, mB, mH));
+    // Eine einzelne instabile Projektion darf weder SVG noch Modulmatrix erzeugen.
+    // Die zentrale Perspektivprüfung meldet den Grund bereits an der Oberfläche.
+    if (!pfad.ok) return null;
     // Gauben sind laut Datenmodell eigenständige Ebenen. Ihre meist stärkere
     // Perspektive wird mit einem feineren Netz gerendert; normale Dachflächen
     // benötigen nur die beiden exakt aneinanderliegenden Dreiecke.
@@ -326,7 +331,7 @@ export function moduleAufHomographie({
       >
         {flaeche.gaubenTyp && (
           <path
-            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            d={pfad.d}
             fill="#08090b"
             style={{ pointerEvents: 'none' }}
           />
@@ -349,15 +354,15 @@ export function moduleAufHomographie({
         {/* Ost-West-Zelt: Westhälfte leicht abschatten, damit man die Kippung sieht */}
         {p.seite === 'west' && (
           <path
-            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            d={pfad.d}
             fill="rgba(0,0,0,0.22)"
             style={{ pointerEvents: 'none' }}
           />
         )}
-        <path d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))} fill="transparent" />
+        <path d={pfad.d} fill="transparent" />
         {aus && (
           <path
-            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            d={pfad.d}
             fill="none"
             stroke="#ffffff"
             strokeWidth={fotoBreitePx * 0.0015}
@@ -366,7 +371,7 @@ export function moduleAufHomographie({
         )}
         {hervorheben?.keys.includes(key) && (
           <path
-            d={projPfad(h, rechteck(p.xM, p.yM, mB, mH))}
+            d={pfad.d}
             fill="none"
             stroke={hervorheben.farbe ?? '#e8603a'}
             strokeWidth={fotoBreitePx * 0.004}
@@ -705,7 +710,16 @@ export function DachSvg({
     // Perspektivischer Modus: 4 markierte Ecken → Homographie Fläche→Foto.
     // Jedes Modul wird als projiziertes Viereck gezeichnet (LoD vereinfacht,
     // SPEC §11.2) — Maße weiterhin aus dem Engine-Raster, nie aus dem Foto.
-    const h = homographie(B, H, foto.eckenPx, perspektiveQuelle(flaeche));
+    const quelle = perspektiveQuelle(flaeche);
+    const perspektive = pruefePerspektive(B, H, foto.eckenPx, quelle);
+    if (perspektive.status === 'fehler') {
+      return (
+        <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">
+          <strong>Perspektive fehlerhaft:</strong> {perspektive.meldungen.join(' ')}
+        </div>
+      );
+    }
+    const h = homographie(B, H, foto.eckenPx, quelle);
     if (h) {
       const rechteck = (x: number, y: number, w: number, hh: number): Punkt[] => [
         [x, y],
@@ -718,19 +732,17 @@ export function DachSvg({
         clientY: number;
         currentTarget: SVGSVGElement;
       }): PunktM | null => {
-        const inv = inverseHomographie(B, H, foto.eckenPx!, perspektiveQuelle(flaeche));
+        const inv = inverseHomographie(B, H, foto.eckenPx!, quelle);
         if (!inv) return null;
         const rect = e.currentTarget.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return null;
         const px = ((e.clientX - rect.left) / rect.width) * foto.breitePx;
         const py = ((e.clientY - rect.top) / rect.height) * foto.hoehePx;
         const [xM, yM] = projiziere(inv, [px, py]);
-        return [xM, yM];
+        return Number.isFinite(xM) && Number.isFinite(yM) ? [xM, yM] : null;
       };
-      // Geklemmt NUR fürs Zeichnen (Umriss-/Hindernis-Punkte gehören auf die Fläche).
-      // Zieh-GESTEN brauchen die rohe Position: geklemmt könnte man ein randnahes
-      // Feld nie über den Rand ziehen — der Zug „endete" an der Dachkante und das
-      // Einrasten der linken/oberen Kante kam nie über einen halben Pitch (Bug 16.07.).
+      // Alle Interaktionen bleiben im metrischen Rahmen. Rand- und Rastereinrasten
+      // erfolgt explizit im Belegungseditor; ein notwendiges „Überziehen" gibt es nicht.
       const eventZuM = (e: Parameters<typeof eventZuMRoh>[0]): PunktM | null => {
         const p = eventZuMRoh(e);
         return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
@@ -744,7 +756,7 @@ export function DachSvg({
       const moveM = zeichnen?.aktiv && zeichnen.onMoveM
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
-      const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh) : undefined;
+      const zeiger = pointer ? pointerHandler(pointer, eventZuM) : undefined;
       return (
         <div
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -782,28 +794,33 @@ export function DachSvg({
             })}
             {/* Abgeschaltete Module (Geister) — klickbar zum einzelnen Zurückholen */}
             {!druck &&
-              (geister ?? []).map((g) => (
-                <path
-                  key={g.key}
-                  d={projPfad(h, rechteck(g.xM, g.yM, g.wM, g.hM))}
-                  fill="rgba(15,23,42,0.18)"
-                  stroke="#ffffff"
-                  strokeWidth={foto.breitePx * 0.002}
-                  strokeDasharray={`${foto.breitePx * 0.006} ${foto.breitePx * 0.004}`}
-                  className={toggle ? 'cursor-pointer' : undefined}
-                  onClick={toggle ? () => toggle(g.key) : undefined}
-                />
-              ))}
+              (geister ?? []).map((g) => {
+                const pfad = projPfad(h, rechteck(g.xM, g.yM, g.wM, g.hM));
+                return pfad.ok ? (
+                  <path
+                    key={g.key}
+                    d={pfad.d}
+                    fill="rgba(15,23,42,0.18)"
+                    stroke="#ffffff"
+                    strokeWidth={foto.breitePx * 0.002}
+                    strokeDasharray={`${foto.breitePx * 0.006} ${foto.breitePx * 0.004}`}
+                    className={toggle ? 'cursor-pointer' : undefined}
+                    onClick={toggle ? () => toggle(g.key) : undefined}
+                  />
+                ) : null;
+              })}
             {/* Belegungsfelder perspektivisch (gleiche Homographie wie die Module) */}
             {!druck && (
               <g>
-                {(felderAnzeige ?? []).map((fa, i) => (
-                  <g key={i}>
+                {(felderAnzeige ?? []).map((fa, i) => {
+                  const pfad = projPfad(
+                    h,
+                    rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
+                  );
+                  if (!pfad.ok) return null;
+                  return <g key={i}>
                     <path
-                      d={projPfad(
-                        h,
-                        rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
-                      )}
+                      d={pfad.d}
                       fill="rgba(2,132,199,0.06)"
                       stroke="#0284c7"
                       strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
@@ -834,20 +851,22 @@ export function DachSvg({
                           />
                         );
                       })}
-                  </g>
-                ))}
-                {feldVorschau && (
-                  <g style={{ pointerEvents: 'none' }}>
+                  </g>;
+                })}
+                {feldVorschau && (() => {
+                  const pfad = projPfad(
+                    h,
+                    rechteck(
+                      feldVorschau.rect.xM,
+                      feldVorschau.rect.yM,
+                      feldVorschau.rect.breiteM,
+                      feldVorschau.rect.hoeheM,
+                    ),
+                  );
+                  if (!pfad.ok) return null;
+                  return <g style={{ pointerEvents: 'none' }}>
                     <path
-                      d={projPfad(
-                        h,
-                        rechteck(
-                          feldVorschau.rect.xM,
-                          feldVorschau.rect.yM,
-                          feldVorschau.rect.breiteM,
-                          feldVorschau.rect.hoeheM,
-                        ),
-                      )}
+                      d={pfad.d}
                       fill="rgba(2,132,199,0.15)"
                       stroke="#0284c7"
                       strokeWidth={foto.breitePx * 0.003}
@@ -875,30 +894,36 @@ export function DachSvg({
                         </text>
                       );
                     })()}
-                  </g>
-                )}
+                  </g>;
+                })()}
               </g>
             )}
             {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
-            {!druck && umriss && (
-              <path
-                d={projPfad(h, umriss.map(([x, y]) => [x, y] as Punkt))}
-                fill="none"
-                stroke="#f97316"
-                strokeWidth={foto.breitePx * 0.002}
-                strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
-              />
-            )}
-            {!druck &&
-              hindernisse.map((hi, i) => (
+            {!druck && umriss && (() => {
+              const pfad = projPfad(h, umriss.map(([x, y]) => [x, y] as Punkt));
+              return pfad.ok ? (
                 <path
-                  key={i}
-                  d={projPfad(h, rechteck(hi.xM, hi.yM, hi.breiteM, hi.hoeheM))}
-                  fill="rgba(239,68,68,0.35)"
-                  stroke="#ef4444"
-                  strokeWidth={foto.breitePx * 0.0015}
+                  d={pfad.d}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth={foto.breitePx * 0.002}
+                  strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
                 />
-              ))}
+              ) : null;
+            })()}
+            {!druck &&
+              hindernisse.map((hi, i) => {
+                const pfad = projPfad(h, rechteck(hi.xM, hi.yM, hi.breiteM, hi.hoeheM));
+                return pfad.ok ? (
+                  <path
+                    key={i}
+                    d={pfad.d}
+                    fill="rgba(239,68,68,0.35)"
+                    stroke="#ef4444"
+                    strokeWidth={foto.breitePx * 0.0015}
+                  />
+                ) : null;
+              })}
             {!druck && draft.length >= 2 && (
               <polyline
                 points={draft
@@ -980,13 +1005,12 @@ export function DachSvg({
     if (rect.width === 0 || rect.height === 0) return null; // 0×0-Viewport (Preview-Falle)
     return [((e.clientX - rect.left) / rect.width) * B, ((e.clientY - rect.top) / rect.height) * H];
   };
-  // Geklemmt nur fürs ZEICHNEN; Zieh-Gesten brauchen die rohe Position (sonst kann
-  // ein randnahes Feld nie über den Flächenrand gezogen/vergrößert werden, 16.07.).
+  // Zeichnen und Ziehen bleiben im metrischen Rahmen; Einrasten ist explizit.
   const draufsichtZuM = (e: Parameters<typeof draufsichtZuMRoh>[0]): PunktM | null => {
     const p = draufsichtZuMRoh(e);
     return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
   };
-  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuMRoh) : undefined;
+  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuM) : undefined;
 
   return (
     <div

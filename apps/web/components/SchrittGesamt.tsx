@@ -405,20 +405,23 @@ export function SchrittGesamt({
                     kein oranger Umriss (der Umriss ist an den Modulen/an der Zeichenvorschau
                     ablesbar). */}
                 {platHom && platF && phase === 'hindernis' &&
-                  (platF.hindernisse ?? []).map((r, i) => (
-                    <path
-                      key={i}
-                      d={projPfad(platHom, [
+                  (platF.hindernisse ?? []).map((r, i) => {
+                    const pfad = projPfad(platHom, [
                         [r.xM, r.yM],
                         [r.xM + r.breiteM, r.yM],
                         [r.xM + r.breiteM, r.yM + r.hoeheM],
                         [r.xM, r.yM + r.hoeheM],
-                      ] as Punkt[])}
-                      fill="rgba(239,68,68,0.4)"
-                      stroke="#ef4444"
-                      strokeWidth={px(0.002)}
-                    />
-                  ))}
+                      ] as Punkt[]);
+                    return pfad.ok ? (
+                      <path
+                        key={i}
+                        d={pfad.d}
+                        fill="rgba(239,68,68,0.4)"
+                        stroke="#ef4444"
+                        strokeWidth={px(0.002)}
+                      />
+                    ) : null;
+                  })}
 
                 {/* Gezogene First-/Trauflinie als Achs-Guide */}
                 {firstLinie && (

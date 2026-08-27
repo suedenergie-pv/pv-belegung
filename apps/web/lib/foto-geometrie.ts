@@ -17,6 +17,7 @@
 import type { PunktM, RechteckM } from '@pv-belegung/engine';
 
 export type Punkt = [number, number];
+type PunktLesbar = readonly [number, number];
 
 /** Relatives Tablet-Fadenkreuz bewegen und sicher im Foto halten. */
 export function verschiebeFotoPunkt(
@@ -40,6 +41,62 @@ type M3 = [number, number, number, number, number, number, number, number, numbe
 
 /** Öffentlicher Alias für eine Homographie-Matrix (Rückgabe von `homographie`). */
 export type Homographie = M3;
+
+export interface PerspektivPruefung {
+  status: 'ok' | 'warnung' | 'fehler';
+  meldungen: string[];
+  /** Größter geteilt durch kleinsten lokalen Bildmaßstab im 5×5-Prüfraster. */
+  massstabVerhaeltnis: number | null;
+}
+
+export type SichererSvgPfad =
+  | { ok: true; d: string }
+  | { ok: false; grund: string };
+
+export type UmrissPruefung =
+  | { ok: true; punkte: PunktM[]; eingerasteteIndizes: number[] }
+  | { ok: false; grund: string; ungueltigeIndizes: number[] };
+
+function punktEndlich(p: PunktLesbar): boolean {
+  return Number.isFinite(p[0]) && Number.isFinite(p[1]);
+}
+
+function polygonFlaeche(punkte: readonly PunktLesbar[]): number {
+  let doppelt = 0;
+  for (let i = 0; i < punkte.length; i++) {
+    const a = punkte[i]!;
+    const b = punkte[(i + 1) % punkte.length]!;
+    doppelt += a[0] * b[1] - b[0] * a[1];
+  }
+  return Math.abs(doppelt) / 2;
+}
+
+function orientierung(a: PunktLesbar, b: PunktLesbar, c: PunktLesbar): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+function segmenteKreuzen(a: PunktLesbar, b: PunktLesbar, c: PunktLesbar, d: PunktLesbar): boolean {
+  const eps = 1e-9;
+  const o1 = orientierung(a, b, c);
+  const o2 = orientierung(a, b, d);
+  const o3 = orientierung(c, d, a);
+  const o4 = orientierung(c, d, b);
+  return o1 * o2 < -eps && o3 * o4 < -eps;
+}
+
+function polygonHatSelbstschnitt(punkte: readonly PunktLesbar[]): boolean {
+  for (let i = 0; i < punkte.length; i++) {
+    const a = punkte[i]!;
+    const b = punkte[(i + 1) % punkte.length]!;
+    for (let j = i + 1; j < punkte.length; j++) {
+      if (j === i || j === i + 1 || (i === 0 && j === punkte.length - 1)) continue;
+      const c = punkte[j]!;
+      const d = punkte[(j + 1) % punkte.length]!;
+      if (segmenteKreuzen(a, b, c, d)) return true;
+    }
+  }
+  return false;
+}
 
 function determinant(m: M3): number {
   return (
@@ -108,6 +165,8 @@ export function homographie(
     [breiteM, 0],
     [0, 0],
   ];
+  if (!ecken.every(punktEndlich) || !src.every(punktEndlich)) return null;
+  if (!eckenPlausibel(ecken) || !eckenPlausibel(src)) return null;
   const zielBasis = basisZu(ecken);
   const quellBasis = basisZu(src);
   // Kollineare oder zusammengefallene Punkte ergeben formal teils noch endliche
@@ -118,7 +177,136 @@ export function homographie(
   return h.every((n) => Number.isFinite(n)) && Math.abs(determinant(h)) >= 1e-9 ? h : null;
 }
 
-export function projiziere(h: M3, [x, y]: Punkt): Punkt {
+/**
+ * Zentrale Stabilitätsprüfung für jede Foto-Perspektive. Sie prüft nicht, ob das
+ * Foto „schön" aufgenommen ist, sondern ausschließlich, ob die projektive
+ * Abbildung im kompletten Dachrahmen mathematisch stabil und rückrechenbar ist.
+ */
+export function pruefePerspektive(
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  quelle?: Ecken,
+): PerspektivPruefung {
+  const fehler = (meldung: string): PerspektivPruefung => ({
+    status: 'fehler',
+    meldungen: [meldung],
+    massstabVerhaeltnis: null,
+  });
+  if (!Number.isFinite(breiteM) || !Number.isFinite(hoeheM) || breiteM <= 0 || hoeheM <= 0) {
+    return fehler('Die Dachmaße sind ungültig. Perspektive kann nicht berechnet werden.');
+  }
+  if (!ecken.every(punktEndlich) || !eckenPlausibel(ecken)) {
+    return fehler('Die 4 Ecken bilden kein konvexes, kreuzungsfreies Viereck.');
+  }
+
+  const src: Ecken = quelle ?? [[0, hoeheM], [breiteM, hoeheM], [breiteM, 0], [0, 0]];
+  if (!src.every(punktEndlich) || !eckenPlausibel(src)) {
+    return fehler('Die metrische Dachform ist entartet und kann nicht projiziert werden.');
+  }
+  const h = homographie(breiteM, hoeheM, ecken, src);
+  const inv = h ? inverseHomographie(breiteM, hoeheM, ecken, src) : null;
+  if (!h || !inv || !h.every(Number.isFinite) || !inv.every(Number.isFinite)) {
+    return fehler('Die Perspektive ist nicht invertierbar. Bitte mindestens eine Ecke korrigieren.');
+  }
+
+  const matrixNorm = Math.max(...h.map((n) => Math.abs(n)));
+  if (!Number.isFinite(matrixNorm) || matrixNorm <= 0) {
+    return fehler('Die Perspektive enthält keine endliche Abbildung.');
+  }
+  const raster: Punkt[][] = [];
+  const nenner: number[] = [];
+  const bild: Punkt[][] = [];
+  for (let yi = 0; yi < 5; yi++) {
+    const ty = yi / 4;
+    const zeile: Punkt[] = [];
+    const bildZeile: Punkt[] = [];
+    for (let xi = 0; xi < 5; xi++) {
+      const tx = xi / 4;
+      // Bilineares Prüfraster innerhalb des Quell-Vierecks. Die Homographie selbst
+      // bleibt projektiv; das Raster liefert nur robuste Stichproben bis an alle Kanten.
+      const unten: Punkt = [
+        src[0][0] + (src[1][0] - src[0][0]) * tx,
+        src[0][1] + (src[1][1] - src[0][1]) * tx,
+      ];
+      const oben: Punkt = [
+        src[3][0] + (src[2][0] - src[3][0]) * tx,
+        src[3][1] + (src[2][1] - src[3][1]) * tx,
+      ];
+      const p: Punkt = [
+        unten[0] + (oben[0] - unten[0]) * ty,
+        unten[1] + (oben[1] - unten[1]) * ty,
+      ];
+      const w = (h[6] * p[0] + h[7] * p[1] + h[8]) / matrixNorm;
+      const q = projiziere(h, p);
+      if (!Number.isFinite(w) || !punktEndlich(q)) {
+        return fehler('Die Perspektive läuft im Dachbereich gegen die projektive Fluchtgrenze.');
+      }
+      nenner.push(w);
+      zeile.push(p);
+      bildZeile.push(q);
+    }
+    raster.push(zeile);
+    bild.push(bildZeile);
+  }
+  const vorzeichen = Math.sign(nenner[0]!);
+  if (
+    vorzeichen === 0 ||
+    nenner.some((w) => Math.sign(w) !== vorzeichen || Math.abs(w) < 1e-8)
+  ) {
+    return fehler('Die Perspektive schneidet im Dachbereich die projektive Fluchtgrenze.');
+  }
+
+  let maxRueckFehlerPx = 0;
+  const lokaleMassstaebe: number[] = [];
+  for (let yi = 0; yi < 5; yi++) {
+    for (let xi = 0; xi < 5; xi++) {
+      const p = raster[yi]![xi]!;
+      const q = bild[yi]![xi]!;
+      const zurueckM = projiziere(inv, q);
+      const wiederPx = projiziere(h, zurueckM);
+      if (!punktEndlich(zurueckM) || !punktEndlich(wiederPx)) {
+        return fehler('Die Rückprojektion der Perspektive ist nicht endlich.');
+      }
+      maxRueckFehlerPx = Math.max(maxRueckFehlerPx, laenge(q, wiederPx));
+      if (xi < 4) {
+        const p2 = raster[yi]![xi + 1]!;
+        const q2 = bild[yi]![xi + 1]!;
+        const meter = laenge(p, p2);
+        if (meter > 1e-9) lokaleMassstaebe.push(laenge(q, q2) / meter);
+      }
+      if (yi < 4) {
+        const p2 = raster[yi + 1]![xi]!;
+        const q2 = bild[yi + 1]![xi]!;
+        const meter = laenge(p, p2);
+        if (meter > 1e-9) lokaleMassstaebe.push(laenge(q, q2) / meter);
+      }
+    }
+  }
+  if (maxRueckFehlerPx > 0.5) {
+    return fehler(`Die Rückprojektion weicht um ${maxRueckFehlerPx.toFixed(2)} Pixel ab.`);
+  }
+  const positiveMassstaebe = lokaleMassstaebe.filter((n) => Number.isFinite(n) && n > 1e-9);
+  if (positiveMassstaebe.length === 0) {
+    return fehler('Die Perspektive hat keinen messbaren lokalen Maßstab.');
+  }
+  const massstabVerhaeltnis = Math.max(...positiveMassstaebe) / Math.min(...positiveMassstaebe);
+  if (!Number.isFinite(massstabVerhaeltnis)) {
+    return fehler('Die Perspektive hat einen unendlichen lokalen Maßstab.');
+  }
+  if (massstabVerhaeltnis >= 25) {
+    return {
+      status: 'warnung',
+      meldungen: [
+        `Sehr starke Perspektive: lokale Maßstäbe unterscheiden sich um ${massstabVerhaeltnis.toFixed(1)}:1. Die Abbildung ist stabil, sollte aber optisch geprüft werden.`,
+      ],
+      massstabVerhaeltnis,
+    };
+  }
+  return { status: 'ok', meldungen: [], massstabVerhaeltnis };
+}
+
+export function projiziere(h: M3, [x, y]: PunktLesbar): Punkt {
   const w = h[6] * x + h[7] * y + h[8];
   if (!Number.isFinite(w) || Math.abs(w) < 1e-12) return [Number.NaN, Number.NaN];
   return [(h[0] * x + h[1] * y + h[2]) / w, (h[3] * x + h[4] * y + h[5]) / w];
@@ -206,29 +394,112 @@ export function vierEckenFuerHomographie(punkte: Punkt[]): [Punkt, Punkt, Punkt,
   return [q[0]!, q[1]!, q[2]!, q[3]!];
 }
 
-/** SVG-Pfad eines in Foto-Pixel projizierten Polygons (Flächen-Koordinaten in m). */
-export function projPfad(h: M3, punkte: Punkt[]): string {
-  return (
-    'M' +
-    punkte
-      .map((p) => {
-        const [x, y] = projiziere(h, p);
-        return `${x.toFixed(2)} ${y.toFixed(2)}`;
-      })
-      .join('L') +
-    'Z'
-  );
+/**
+ * SVG-Pfad eines projizierten Polygons. Unsichere Werte werden als Ergebnis
+ * zurückgegeben und dürfen weder gerendert noch gespeichert werden.
+ */
+export function projPfad(h: M3, punkte: Punkt[]): SichererSvgPfad {
+  if (punkte.length < 3 || punkte.some((p) => !punktEndlich(p))) {
+    return { ok: false, grund: 'Polygon enthält zu wenige oder ungültige Punkte.' };
+  }
+  const projiziert = punkte.map((p) => projiziere(h, p));
+  if (
+    projiziert.some(
+      (p) => !punktEndlich(p) || Math.abs(p[0]) > 1e7 || Math.abs(p[1]) > 1e7,
+    )
+  ) {
+    return { ok: false, grund: 'Projizierte Ecken sind unendlich oder extrem groß.' };
+  }
+  for (let i = 0; i < projiziert.length; i++) {
+    if (laenge(projiziert[i]!, projiziert[(i + 1) % projiziert.length]!) < 1e-6) {
+      return { ok: false, grund: 'Projizierte Ecken fallen zusammen.' };
+    }
+  }
+  if (polygonHatSelbstschnitt(projiziert)) {
+    return { ok: false, grund: 'Projizierter Pfad überkreuzt sich.' };
+  }
+  if (polygonFlaeche(projiziert) < 1e-4) {
+    return { ok: false, grund: 'Projizierter Pfad hat praktisch keine Fläche.' };
+  }
+  return {
+    ok: true,
+    d: 'M' + projiziert.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join('L') + 'Z',
+  };
 }
 
-function laenge(a: Punkt, b: Punkt): number {
+function laenge(a: PunktLesbar, b: PunktLesbar): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1]);
 }
 
 /**
  * Umriss aus Foto-Klicks: Pixel → Flächen-Koordinaten (Meter) via inverser
- * Homographie, geklemmt auf [0..breiteM]×[0..hoeheM]. Geteilt von Einzelfoto und
- * Gesamtfoto, damit beide identisch rechnen. null bei < 3 Punkten / entarteten Ecken.
+ * Homographie. Punkte werden nur innerhalb einer kleinen sichtbaren Bildtoleranz
+ * an den Dachrahmen eingerastet. Weiter außerhalb liegende Punkte, Selbstschnitte,
+ * Duplikate und praktisch flächenlose Polygone werden konkret zurückgewiesen.
  */
+export function pruefeUmrissAusKlicks(
+  pts: Punkt[],
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  quelle?: Ecken,
+  bildToleranzPx = 8,
+): UmrissPruefung {
+  if (pts.length < 3) {
+    return { ok: false, grund: 'Ein Umriss braucht mindestens 3 Punkte.', ungueltigeIndizes: [] };
+  }
+  const h = homographie(breiteM, hoeheM, ecken, quelle);
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, quelle);
+  if (!h || !hinv) {
+    return { ok: false, grund: 'Die Perspektive ist nicht rückrechenbar.', ungueltigeIndizes: [] };
+  }
+  const eingerasteteIndizes: number[] = [];
+  const ungueltigeIndizes: number[] = [];
+  const metrisch = pts.map((p, i) => {
+    const [x, y] = projiziere(hinv, p);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      ungueltigeIndizes.push(i);
+      return [Number.NaN, Number.NaN] as PunktM;
+    }
+    const eingerastet: PunktM = [
+      Math.max(0, Math.min(breiteM, x)),
+      Math.max(0, Math.min(hoeheM, y)),
+    ];
+    if (eingerastet[0] !== x || eingerastet[1] !== y) {
+      const bildpunkt = projiziere(h, eingerastet);
+      if (!punktEndlich(bildpunkt) || laenge(p, bildpunkt) > bildToleranzPx) {
+        ungueltigeIndizes.push(i);
+        return [x, y] as PunktM;
+      }
+      eingerasteteIndizes.push(i);
+    }
+    return eingerastet;
+  });
+  if (ungueltigeIndizes.length > 0) {
+    return {
+      ok: false,
+      grund: 'Mindestens ein Umrisspunkt liegt deutlich außerhalb des Dachrahmens.',
+      ungueltigeIndizes,
+    };
+  }
+  const eps = Math.max(breiteM, hoeheM) * 1e-4;
+  for (let i = 0; i < metrisch.length; i++) {
+    for (let j = i + 1; j < metrisch.length; j++) {
+      if (laenge(metrisch[i]!, metrisch[j]!) <= eps) {
+        return { ok: false, grund: 'Der Umriss enthält doppelte Punkte.', ungueltigeIndizes: [i, j] };
+      }
+    }
+  }
+  if (polygonHatSelbstschnitt(metrisch)) {
+    return { ok: false, grund: 'Der Umriss überkreuzt sich.', ungueltigeIndizes: [] };
+  }
+  if (polygonFlaeche(metrisch) < Math.max(1e-4, breiteM * hoeheM * 1e-4)) {
+    return { ok: false, grund: 'Der Umriss hat praktisch keine Fläche.', ungueltigeIndizes: [] };
+  }
+  return { ok: true, punkte: metrisch, eingerasteteIndizes };
+}
+
+/** Rückwärtskompatibler Kurzweg für alte Aufrufer; ohne stilles Rahmen-Clamping. */
 export function umrissAusKlicks(
   pts: Punkt[],
   breiteM: number,
@@ -236,13 +507,8 @@ export function umrissAusKlicks(
   ecken: Ecken,
   quelle?: Ecken,
 ): PunktM[] | null {
-  if (pts.length < 3) return null;
-  const hinv = inverseHomographie(breiteM, hoeheM, ecken, quelle);
-  if (!hinv) return null;
-  return pts.map((p) => {
-    const [x, y] = projiziere(hinv, p);
-    return [Math.max(0, Math.min(breiteM, x)), Math.max(0, Math.min(hoeheM, y))] as PunktM;
-  });
+  const ergebnis = pruefeUmrissAusKlicks(pts, breiteM, hoeheM, ecken, quelle);
+  return ergebnis.ok ? ergebnis.punkte : null;
 }
 
 /**

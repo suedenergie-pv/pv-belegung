@@ -1,4 +1,4 @@
-import type { Ecken } from './foto-geometrie';
+import { pruefePerspektive, type Ecken } from './foto-geometrie';
 import {
   MODULES,
   INVERTERS,
@@ -101,6 +101,8 @@ export interface DachFoto {
    * Homographie (foto-geometrie.ts), auch bei schräg aufgenommenen Fotos.
    */
   eckenPx?: Ecken;
+  /** Vier Ecken wurden nach sichtbarer Vorschau ausdrücklich übernommen. */
+  perspektiveBestaetigt?: boolean;
   /**
    * Alt-Variante (nur Traufkante, affine Platzierung) — wird weiter
    * gerendert, neue Markierungen erzeugen eckenPx.
@@ -141,6 +143,8 @@ export interface ProjektFoto extends GesamtFoto {
 export interface FotoZuordnung {
   fotoId: string;
   eckenPx?: Ecken;
+  /** Vier Ecken wurden nach sichtbarer Vorschau ausdrücklich übernommen. */
+  perspektiveBestaetigt?: boolean;
   /** Alt-/Zwischenmodus: nur Traufkante gesetzt, noch keine 4-Ecken-Homographie. */
   traufePx: [number, number, number, number] | null;
   /** Optionaler Maßstab aus der Ziegelzählung, flächenspezifisch. */
@@ -554,6 +558,9 @@ export function dachFotoVon(p: Projekt, f: Flaeche, fotoId?: string): DachFoto |
     hoehePx: asset.hoehePx,
     traufePx: z.traufePx,
     ...(z.eckenPx ? { eckenPx: z.eckenPx } : {}),
+    ...(z.perspektiveBestaetigt !== undefined
+      ? { perspektiveBestaetigt: z.perspektiveBestaetigt }
+      : {}),
     ...(z.pxProM !== undefined ? { pxProM: z.pxProM } : {}),
   };
 }
@@ -677,7 +684,17 @@ export function fertigeFotoFlaechen(
     .map((f, i) => ({ f, i }))
     .filter(({ f }) => {
       const z = fotoZuordnungVon(f, fotoId);
-      return !!z?.eckenPx && !!z.markierungFertig;
+      return (
+        !!z?.eckenPx &&
+        z.perspektiveBestaetigt !== false &&
+        !!z.markierungFertig &&
+        pruefePerspektive(
+          rahmenBreiteVon(f),
+          f.hoeheM,
+          z.eckenPx,
+          perspektiveQuelle(f),
+        ).status !== 'fehler'
+      );
     });
 }
 
@@ -689,7 +706,14 @@ export function belegteFlaechenOhneFoto(p: Projekt): Flaeche[] {
     return !fotoZuordnungenVon(f).some(
       (z) =>
         !!z.eckenPx &&
+        z.perspektiveBestaetigt !== false &&
         !!z.markierungFertig &&
+        pruefePerspektive(
+          rahmenBreiteVon(f),
+          f.hoeheM,
+          z.eckenPx,
+          perspektiveQuelle(f),
+        ).status !== 'fehler' &&
         p.fotos.some((foto) => foto.id === z.fotoId),
     );
   });
@@ -898,11 +922,25 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
           gesehen.add(z.fotoId);
           return true;
         })
-        .map((z) => ({
-          ...z,
-          markierungFertig:
-            z.markierungFertig ?? rest.markierungFertig ?? !!z.eckenPx,
-        }));
+        .map((z) => {
+          const gueltig = z.eckenPx
+            ? pruefePerspektive(
+                rahmenBreiteVon(rest),
+                rest.hoeheM,
+                z.eckenPx,
+                perspektiveQuelle(rest),
+              ).status !== 'fehler'
+            : false;
+          return {
+            ...z,
+            perspektiveBestaetigt:
+              z.perspektiveBestaetigt !== undefined
+                ? z.perspektiveBestaetigt && gueltig
+                : gueltig,
+            markierungFertig:
+              gueltig && (z.markierungFertig ?? rest.markierungFertig ?? !!z.eckenPx),
+          };
+        });
       delete rest.fotoZuordnung;
       delete rest.markierungFertig;
       if (fotoZuordnungen.length > 0) rest.fotoZuordnungen = fotoZuordnungen;
@@ -950,16 +988,40 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
       zuordnung = {
         fotoId: id,
         traufePx: f.foto.traufePx,
-        markierungFertig: f.markierungFertig ?? !!f.foto.eckenPx,
+        markierungFertig: false,
+        perspektiveBestaetigt: false,
       };
-      if (f.foto.eckenPx) zuordnung.eckenPx = f.foto.eckenPx;
+      if (f.foto.eckenPx) {
+        const gueltig = pruefePerspektive(
+          rahmenBreiteVon(f),
+          f.hoeheM,
+          f.foto.eckenPx,
+          perspektiveQuelle(f),
+        ).status !== 'fehler';
+        zuordnung.eckenPx = f.foto.eckenPx;
+        zuordnung.perspektiveBestaetigt = gueltig;
+        zuordnung.markierungFertig = gueltig && (f.markierungFertig ?? true);
+      }
       if (f.foto.pxProM !== undefined) zuordnung.pxProM = f.foto.pxProM;
     } else if (gesamtId && f.gesamtEckenPx) {
       zuordnung = {
         fotoId: gesamtId,
         eckenPx: f.gesamtEckenPx,
         traufePx: null,
-        markierungFertig: f.markierungFertig ?? true,
+        perspektiveBestaetigt:
+          pruefePerspektive(
+            rahmenBreiteVon(f),
+            f.hoeheM,
+            f.gesamtEckenPx,
+            perspektiveQuelle(f),
+          ).status !== 'fehler',
+        markierungFertig:
+          pruefePerspektive(
+            rahmenBreiteVon(f),
+            f.hoeheM,
+            f.gesamtEckenPx,
+            perspektiveQuelle(f),
+          ).status !== 'fehler' && (f.markierungFertig ?? true),
       };
     }
 

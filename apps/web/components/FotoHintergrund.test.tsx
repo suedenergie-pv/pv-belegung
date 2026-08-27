@@ -29,6 +29,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
       hoehePx: 600,
       traufePx: null,
       eckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]],
+      perspektiveBestaetigt: true,
     },
     markierungFertig: false,
   };
@@ -39,11 +40,11 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     expect(await findByRole('button', { name: 'Fadenkreuz bedienen' })).toBeTruthy();
   });
 
-  it('verändert auf dem PC weder Oberfläche noch bestehende Mausbedienung', async () => {
+  it('verwendet auf dem PC keinen konkurrierenden Sticky-Layer', async () => {
     vi.stubGlobal('matchMedia', matchMedia(false));
     const { findByRole, queryByRole } = render(<FotoHintergrund flaeche={flaeche} onPatch={vi.fn()} fotoVerwalten={false} />);
     await waitFor(() => expect(queryByRole('button', { name: 'Fadenkreuz bedienen' })).toBeNull());
-    expect((await findByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' })).className).toContain('sticky');
+    expect((await findByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' })).className).not.toContain('sticky');
   });
 
   it('setzt per simuliertem Klick nach einem Swipe ein Hindernis in Meterkoordinaten', async () => {
@@ -93,5 +94,36 @@ describe('Foto-Markierung auf Tablet und PC', () => {
 
     fireEvent.click(getByRole('button', { name: 'Ausrichtung neu (First + 4 Ecken)' }));
     expect('umrissM' in onPatch.mock.calls[0]![0]).toBe(false);
+  });
+
+  it('speichert den vierten Eckpunkt erst nach ausdrücklichem Übernehmen', async () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const ohneEcken: Flaeche = {
+      ...flaeche,
+      foto: {
+        dataUrl: flaeche.foto!.dataUrl,
+        breitePx: 1000,
+        hoehePx: 600,
+        traufePx: null,
+        perspektiveBestaetigt: false,
+      },
+    };
+    const { container, getByRole, findByRole } = render(
+      <FotoHintergrund flaeche={ohneEcken} onPatch={onPatch} fotoVerwalten={false} />,
+    );
+    fireEvent.click(getByRole('button', { name: /Überspringen/ }));
+    const svg = container.querySelector('svg')!;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600,
+      toJSON: () => ({}),
+    });
+    for (const [x, y] of [[0, 600], [1000, 600], [1000, 0], [0, 0]]) {
+      fireEvent.click(svg, { clientX: x, clientY: y });
+    }
+    expect(onPatch).not.toHaveBeenCalled();
+    fireEvent.click(await findByRole('button', { name: '4 Ecken übernehmen' }));
+    expect(onPatch).toHaveBeenCalledTimes(1);
+    expect(onPatch.mock.calls[0]![0].foto.perspektiveBestaetigt).toBe(true);
   });
 });

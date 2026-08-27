@@ -6,6 +6,8 @@ import {
   homographie,
   inverseHomographie,
   orientiereEcken,
+  pruefePerspektive,
+  pruefeUmrissAusKlicks,
   projPfad,
   projiziere,
   sortiereEcken,
@@ -79,10 +81,24 @@ describe('Homographie und Foto-Werkzeuge', () => {
     expect(traufeWechseln(quadrat)).toEqual([[0, 0], [0, 100], [100, 100], [100, 0]]);
   });
 
-  it('rechnet Umriss und Hindernis zurück und klemmt sie vollständig an den Dachrahmen', () => {
+  it('rechnet Umriss zurück, rastet nur nahe Punkte ein und lehnt weit entfernte ab', () => {
     const umriss = umrissAusKlicks([[0, 100], [50, 100], [50, 50]], 10, 10, quadrat)!;
     expect(umriss).toEqual([[0, 10], [5, 10], [5, 5]]);
     expect(umrissAusKlicks([[0, 0], [1, 1]], 10, 10, quadrat)).toBeNull();
+    const eingerastet = pruefeUmrissAusKlicks(
+      [[-5, 100], [50, 100], [50, 50]],
+      10,
+      10,
+      quadrat,
+    );
+    expect(eingerastet.ok).toBe(true);
+    if (eingerastet.ok) {
+      expect(eingerastet.punkte[0]).toEqual([0, 10]);
+      expect(eingerastet.eingerasteteIndizes).toEqual([0]);
+    }
+    expect(
+      pruefeUmrissAusKlicks([[-50, 100], [50, 100], [50, 50]], 10, 10, quadrat),
+    ).toMatchObject({ ok: false, ungueltigeIndizes: [0] });
     expect(hindernisAusKlicks([-50, -50], [150, 150], 10, 10, quadrat)).toEqual({
       xM: 0, yM: 0, breiteM: 10, hoeheM: 10,
     });
@@ -91,8 +107,34 @@ describe('Homographie und Foto-Werkzeuge', () => {
 
   it('liefert stabile SVG-Pfade und wählt bei komplexem Umriss die größten vier Hüllpunkte', () => {
     const h = homographie(10, 10, quadrat)!;
-    expect(projPfad(h, [[0, 0], [10, 0], [10, 10]])).toBe('M0.00 0.00L100.00 0.00L100.00 100.00Z');
+    expect(projPfad(h, [[0, 0], [10, 0], [10, 10]])).toEqual({
+      ok: true,
+      d: 'M0.00 0.00L100.00 0.00L100.00 100.00Z',
+    });
     const ecken = vierEckenFuerHomographie([[0, 0], [10, 0], [10, 10], [0, 10], [5, 5]]);
     expect(new Set(ecken.map(String))).toEqual(new Set(['0,0', '10,0', '10,10', '0,10']));
+  });
+
+  it('warnt bei einem extremen, aber stabilen Bodenfoto statt es zu sperren', () => {
+    const bodenfoto: Ecken = [[0, 1000], [1000, 1000], [501, 10], [499, 10]];
+    const pruefung = pruefePerspektive(12, 7, bodenfoto);
+    expect(pruefung.status).toBe('warnung');
+    expect(pruefung.massstabVerhaeltnis).toBeGreaterThanOrEqual(25);
+  });
+
+  it('lehnt falsch sortierte Ecken, Selbstüberschneidung und doppelte Umrisspunkte ab', () => {
+    const gekreuzt: Ecken = [[0, 100], [100, 0], [100, 100], [0, 0]];
+    expect(pruefePerspektive(10, 10, gekreuzt).status).toBe('fehler');
+    expect(
+      pruefeUmrissAusKlicks(
+        [[0, 100], [100, 0], [0, 0], [100, 100]],
+        10,
+        10,
+        quadrat,
+      ),
+    ).toMatchObject({ ok: false, grund: 'Der Umriss überkreuzt sich.' });
+    expect(
+      pruefeUmrissAusKlicks([[0, 100], [50, 50], [50, 50], [100, 100]], 10, 10, quadrat),
+    ).toMatchObject({ ok: false, grund: 'Der Umriss enthält doppelte Punkte.' });
   });
 });

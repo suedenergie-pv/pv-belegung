@@ -89,8 +89,6 @@ type Drag =
 
 /** Klick vs. Ziehen: darunter gilt die Geste als Klick (Meter). */
 const KLICK_SCHWELLE_M = 0.05;
-/** So viel Feld muss im Rahmen bleiben, damit es nicht „verloren geht" (Meter). */
-const MIN_SICHTBAR_M = 0.5;
 /** Fangradius der Größen-Griffe (Meter) — etwa Fingerbreite auf dem Tablet. */
 const GRIFF_FANG_M = 0.35;
 /** Kleinste Feldgröße beim Ziehen an den Griffen (Meter). */
@@ -403,7 +401,12 @@ export function SchrittBelegung({
               ...f,
               fotoZuordnungen: zuordnungen.map((z) =>
                 z.fotoId === zielId
-                  ? { fotoId: zielId, traufePx: null, markierungFertig: false }
+                  ? {
+                      fotoId: zielId,
+                      traufePx: null,
+                      markierungFertig: false,
+                      perspektiveBestaetigt: false,
+                    }
                   : z,
               ),
               // Gauben-Markierungen sind an die erste (definierende) Perspektive
@@ -433,7 +436,12 @@ export function SchrittBelegung({
             ...f,
             fotoZuordnungen: [
               ...fotoZuordnungenVon(f),
-              { fotoId: id, traufePx: null, markierungFertig: false },
+              {
+                fotoId: id,
+                traufePx: null,
+                markierungFertig: false,
+                perspektiveBestaetigt: false,
+              },
             ],
           };
           delete neu.fotoZuordnung;
@@ -467,7 +475,12 @@ export function SchrittBelegung({
         const bisher = fotoZuordnungenVon(neu);
         neu.fotoZuordnungen = bisher.some((z) => z.fotoId === fotoId)
           ? bisher
-          : [...bisher, { fotoId, traufePx: null, markierungFertig: false }];
+          : [...bisher, {
+              fotoId,
+              traufePx: null,
+              markierungFertig: false,
+              perspektiveBestaetigt: false,
+            }];
         delete neu.fotoZuordnung;
         delete neu.markierungFertig;
         return neu;
@@ -540,6 +553,11 @@ export function SchrittBelegung({
         };
         if (foto?.eckenPx) z.eckenPx = foto.eckenPx;
         else if (foto) delete z.eckenPx;
+        if (foto?.perspektiveBestaetigt !== undefined) {
+          z.perspektiveBestaetigt = foto.perspektiveBestaetigt;
+        } else if (foto) {
+          delete z.perspektiveBestaetigt;
+        }
         if (foto?.pxProM !== undefined) z.pxProM = foto.pxProM;
         else if (foto) delete z.pxProM;
         if (markierungFertig !== undefined) z.markierungFertig = markierungFertig;
@@ -561,9 +579,18 @@ export function SchrittBelegung({
           );
         }
       }
+      const geometrieGeaendert =
+        rest.breiteM !== undefined ||
+        rest.hoeheM !== undefined ||
+        rest.dachform !== undefined ||
+        rest.firstBreiteM !== undefined ||
+        rest.firstVersatzM !== undefined;
+      const aktualisiert = geometrieGeaendert
+        ? patchFlaechenGeometrie(aktuell, neu)
+        : { ...aktuell, ...neu };
       return {
         ...p,
-        flaechen: p.flaechen.map((x) => (x.id === aktuell.id ? { ...x, ...neu } : x)),
+        flaechen: p.flaechen.map((x) => (x.id === aktuell.id ? aktualisiert : x)),
       };
     });
   };
@@ -604,6 +631,7 @@ export function SchrittBelegung({
             fotoId,
             traufePx: null,
             markierungFertig: true,
+            perspektiveBestaetigt: !!eckenPx,
             ...(eckenPx ? { eckenPx } : {}),
           }],
         };
@@ -784,16 +812,27 @@ export function SchrittBelegung({
     return null; // gemischt
   };
 
-  /**
-   * Feld-Position in den Rahmen klemmen: es darf über den Rand hinausragen (dann
-   * fallen Module weg — genau das wollte Genrih), aber nicht komplett verschwinden.
-   */
+  /** Feld-Position vollständig im metrischen Dachrahmen halten. */
   const klemmeFeld = (f: Flaeche, feld: BelegungsFeldM, xM: number, yM: number) => {
     const B = rahmenBreiteVon(f);
     const H = f.hoeheM;
     return {
-      xM: Math.max(-feld.breiteM + MIN_SICHTBAR_M, Math.min(B - MIN_SICHTBAR_M, xM)),
-      yM: Math.max(-feld.hoeheM + MIN_SICHTBAR_M, Math.min(H - MIN_SICHTBAR_M, yM)),
+      xM: Math.max(0, Math.min(Math.max(0, B - feld.breiteM), xM)),
+      yM: Math.max(0, Math.min(Math.max(0, H - feld.hoeheM), yM)),
+    };
+  };
+
+  /** Größe und Lage eines Felds auf den Dachrahmen begrenzen. */
+  const begrenzeFeld = (f: Flaeche, rect: RechteckM): RechteckM => {
+    const B = rahmenBreiteVon(f);
+    const H = f.hoeheM;
+    const xM = Math.max(0, Math.min(B, rect.xM));
+    const yM = Math.max(0, Math.min(H, rect.yM));
+    return {
+      xM,
+      yM,
+      breiteM: Math.max(0, Math.min(rect.breiteM, B - xM)),
+      hoeheM: Math.max(0, Math.min(rect.hoeheM, H - yM)),
     };
   };
 
@@ -829,7 +868,7 @@ export function SchrittBelegung({
           const { rect, zellVersatz } = feldMitGriff(feld, drag.griff, dx, dy, sm.pitchXM, sm.pitchYM);
           return {
             ...feld,
-            ...rect,
+            ...begrenzeFeld(f, rect),
             leer: leerVerschoben(
               feld.leer,
               zellVersatz.col * sm.colsJeSchrittX,
