@@ -1,5 +1,5 @@
 # Deploy der Web-App (apps/web) als statischer Export auf GitHub Pages.
-# Die App ist eine reine Client-App (localStorage, kein Server-State) —
+# Die App ist eine reine Client-App (localStorage + IndexedDB, kein Server-State) —
 # die dev-only debug-shot-API-Route wird nur im CI-Checkout entfernt, weil
 # output:'export' keine POST-Route-Handler erlaubt (lokal bleibt sie, CLAUDE.md).
 name: pages
