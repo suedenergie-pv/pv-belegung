@@ -12,6 +12,7 @@ import {
   fmtDe,
   kwpGesamt,
   modulById,
+  projektFreigabe,
   rasterFuer,
   wrById,
   zonenVon,
@@ -64,6 +65,15 @@ async function svgZuJpeg(
   }
 }
 
+export interface PdfGeneratorOptionen {
+  /** Trennt PDF-Inhalt und Seitenlogik von der Browser-Rasterung. */
+  rastereSvg?: typeof svgZuJpeg;
+  /** Der PDF-Inhalt bleibt auch ohne Browser-Logo testbar. */
+  ladeLogo?: () => Promise<Awaited<ReturnType<typeof logoPng>> | null>;
+  /** Festes Datum für reproduzierbare Exporttests. */
+  jetzt?: Date;
+}
+
 function azimutLabel(deg: number): string {
   const namen: [number, string][] = [
     [0, 'Nord'], [45, 'Nord-Ost'], [90, 'Ost'], [135, 'Süd-Ost'],
@@ -79,16 +89,22 @@ const HINWEIS =
 /**
  * Baut das PDF aus fertig kalibrierten Projektfotos — der Generator kennt kein React.
  */
-export async function erzeugeBelegungsPdf(
+export async function baueBelegungsPdf(
   projekt: Projekt,
   result: StringPlanResult | null,
   svgVonFoto: (fotoId: string) => SVGSVGElement | null,
-): Promise<void> {
+  optionen: PdfGeneratorOptionen = {},
+): Promise<{ doc: import('jspdf').jsPDF; dateiname: string }> {
+  const freigabe = projektFreigabe(projekt);
+  if (!freigabe.pdf) {
+    throw new Error(`PDF gesperrt: ${freigabe.fehler.map((f) => f.meldung).join(' ')}`);
+  }
+  if (kwpGesamt(projekt) <= 0) throw new Error('PDF gesperrt: Die Belegung hat 0 kWp.');
   const { jsPDF } = await import('jspdf');
   const modul = modulById(projekt.modulId);
 
   // Logo vorab rastern (fällt bei Fehler auf den Text-Schriftzug zurück)
-  const logo = await logoPng().catch(() => null);
+  const logo = await (optionen.ladeLogo ?? logoPng)().catch(() => null);
 
   // Projektfotos mit allen jeweils zugeordneten Flächen, falls vorhanden.
   const fotoBilder: Array<{
@@ -102,8 +118,8 @@ export async function erzeugeBelegungsPdf(
     const zugeordneteFlaechen = fertigeFotoFlaechen(projekt, foto.id);
     if (zugeordneteFlaechen.length === 0) continue;
     const svg = svgVonFoto(foto.id);
-    if (!svg) continue;
-    const bild = await svgZuJpeg(svg, 1600);
+    if (!svg) throw new Error(`Exportbild für „${foto.name || foto.id}“ fehlt.`);
+    const bild = await (optionen.rastereSvg ?? svgZuJpeg)(svg, 1600);
     const flaechen = zugeordneteFlaechen
       .map(({ f, i }) => zonenVon(f, i))
       .join(', ');
@@ -115,6 +131,15 @@ export async function erzeugeBelegungsPdf(
   const SEITE_H = 297;
   const RAND = 16;
   const NUTZ_B = SEITE_B - 2 * RAND;
+  const INHALT_ENDE = SEITE_H - 16;
+
+  /** Gemeinsamer Seitenumbruch für Tabellenzeilen und Fotokarten. */
+  const seitenwechselWennNoetig = (hoehe: number, nachUmbruch?: () => void) => {
+    if (y + hoehe <= INHALT_ENDE) return;
+    doc.addPage();
+    y = 18;
+    nachUmbruch?.();
+  };
 
   const fuss = () => {
     const seiten = doc.getNumberOfPages();
@@ -148,7 +173,7 @@ export async function erzeugeBelegungsPdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(80);
-  const datum = new Date().toLocaleDateString('de-DE', {
+  const datum = (optionen.jetzt ?? new Date()).toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -190,23 +215,34 @@ export async function erzeugeBelegungsPdf(
   }
 
   // Flächen-Tabelle
-  doc.setDrawColor(210);
-  doc.setLineWidth(0.25);
-  doc.line(RAND, y, SEITE_B - RAND, y);
-  y += 5;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(110);
   const SPALTEN = [RAND, RAND + 52, RAND + 92, RAND + 124, RAND + 152] as const;
-  doc.text('Fläche', SPALTEN[0], y);
-  doc.text('Ausrichtung', SPALTEN[1], y);
-  doc.text('Neigung', SPALTEN[2], y);
-  doc.text('Module', SPALTEN[3], y);
-  doc.text('Leistung', SPALTEN[4], y);
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(40);
+  const tabellenKopf = () => {
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.25);
+    doc.line(RAND, y, SEITE_B - RAND, y);
+    y += 5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(110);
+    doc.text('Fläche', SPALTEN[0], y);
+    doc.text('Ausrichtung', SPALTEN[1], y);
+    doc.text('Neigung', SPALTEN[2], y);
+    doc.text('Module', SPALTEN[3], y);
+    doc.text('Leistung', SPALTEN[4], y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(40);
+  };
+  tabellenKopf();
   for (const [i, f] of projekt.flaechen.entries()) {
+    seitenwechselWennNoetig(7, () => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(20);
+      doc.text('Flächenübersicht (Fortsetzung)', RAND, y);
+      y += 6;
+      tabellenKopf();
+    });
     const raster = rasterFuer(f, modul);
     const n = aktiveModule(f, raster);
     const ausrichtungen = ausrichtungenVon(f, raster);
@@ -241,15 +277,13 @@ export async function erzeugeBelegungsPdf(
     const kartenH = kopfH + bildBereichH + 4;
     let spalte = 0;
     for (const bild of fotoBilder) {
-      if (spalte === 0 && y + kartenH > SEITE_H - 16) {
-        doc.addPage();
-        y = 18;
+      if (spalte === 0) seitenwechselWennNoetig(kartenH, () => {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
         doc.setTextColor(20);
-        doc.text('Belegungsübersicht', RAND, y);
+        doc.text('Belegungsübersicht (Fortsetzung)', RAND, y);
         y += 6;
-      }
+      });
 
       const x = RAND + spalte * (zelleB + 6);
       doc.setFillColor(248, 250, 252);
@@ -296,5 +330,14 @@ export async function erzeugeBelegungsPdf(
   }
 
   fuss();
-  doc.save(downloadDateiname(projekt, 'belegungsplan', 'pdf'));
+  return { doc, dateiname: downloadDateiname(projekt, 'belegungsplan', 'pdf') };
+}
+
+export async function erzeugeBelegungsPdf(
+  projekt: Projekt,
+  result: StringPlanResult | null,
+  svgVonFoto: (fotoId: string) => SVGSVGElement | null,
+): Promise<void> {
+  const { doc, dateiname } = await baueBelegungsPdf(projekt, result, svgVonFoto);
+  doc.save(dateiname);
 }

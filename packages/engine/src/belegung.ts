@@ -761,6 +761,45 @@ export function berechneFelderRaster(
   const EPS = 1e-9;
   const inZone = zonenPruefer({ ...input, randM });
   const positionen: ModulPosition[] = [];
+  /*
+   * Räumlicher Index statt einer vollständigen Suche über alle bereits gesetzten
+   * Module. Die Buckets sind nur eine Kandidaten-Vorauswahl; die endgültige
+   * Entscheidung trifft weiterhin exakt `rechteckeUeberlappen`. Dadurch bleiben
+   * Priorität, Reihenfolge und Ergebnis des bisherigen Algorithmus unverändert.
+   */
+  const ZELLGROESSE_M = 2;
+  const buckets = new Map<string, number[]>();
+  const bucketKeys = (r: RechteckM): string[] => {
+    const x0 = Math.floor(r.xM / ZELLGROESSE_M);
+    const y0 = Math.floor(r.yM / ZELLGROESSE_M);
+    const x1 = Math.floor((r.xM + r.breiteM) / ZELLGROESSE_M);
+    const y1 = Math.floor((r.yM + r.hoeheM) / ZELLGROESSE_M);
+    const keys: string[] = [];
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) keys.push(`${x}:${y}`);
+    }
+    return keys;
+  };
+  const kollidiert = (rect: RechteckM): boolean => {
+    const kandidaten = new Set<number>();
+    for (const key of bucketKeys(rect)) {
+      for (const index of buckets.get(key) ?? []) kandidaten.add(index);
+    }
+    for (const index of [...kandidaten].sort((a, b) => a - b)) {
+      const q = positionen[index]!;
+      if (rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM })) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const indiziere = (rect: RechteckM, index: number) => {
+    for (const key of bucketKeys(rect)) {
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(index);
+      else buckets.set(key, [index]);
+    }
+  };
 
   felder.forEach((feld, fi) => {
     const leer = new Set(feld.leer ?? []);
@@ -775,13 +814,7 @@ export function berechneFelderRaster(
       if (!inZone(xM, yM, z.wM, z.hM)) continue;
       // Kein Modul auf ein schon platziertes (früheres Feld gewinnt)
       const rect: RechteckM = { xM, yM, breiteM: z.wM, hoeheM: z.hM };
-      if (
-        positionen.some((q) =>
-          rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM }),
-        )
-      ) {
-        continue;
-      }
+      if (kollidiert(rect)) continue;
       const pos: ModulPosition = {
         row: z.row,
         col: z.col,
@@ -793,6 +826,7 @@ export function berechneFelderRaster(
         feld: fi,
       };
       if (z.seite) pos.seite = z.seite;
+      indiziere(rect, positionen.length);
       positionen.push(pos);
     }
   });

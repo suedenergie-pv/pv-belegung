@@ -433,11 +433,21 @@ export interface Projekt {
   fotoModellVersion?: 2 | 3;
   /** Projektweites Gesamt-Drohnenfoto für die Gesamtansicht (optional). */
   gesamtFoto?: GesamtFoto;
+  /** Komplexes Dach bewusst an die Projektleitung übergeben. */
+  eskaliert?: boolean;
+  eskalationsgrund?: string;
 }
 
 /** Kurzes Zonen-Kürzel A/B/C/… für die Gesamtansicht (0-basiert). */
 export function zonenLabel(i: number): string {
-  return String.fromCharCode(65 + (i % 26));
+  let n = Math.max(0, Math.floor(i)) + 1;
+  let label = '';
+  while (n > 0) {
+    n -= 1;
+    label = String.fromCharCode(65 + (n % 26)) + label;
+    n = Math.floor(n / 26);
+  }
+  return label;
 }
 
 export const AZIMUT_PRESETS = [
@@ -831,6 +841,145 @@ export function zuordnungsHinweise(p: Projekt): { fehler: string[]; hinweise: st
     }
   }
   return { fehler, hinweise };
+}
+
+export type ProjektFreigabeBereich = 'projekt' | 'belegung' | 'stringplan';
+
+export interface ProjektFreigabeFehler {
+  id: string;
+  bereich: ProjektFreigabeBereich;
+  meldung: string;
+  sprungziel: string;
+}
+
+export interface ProjektFreigabe {
+  pdf: boolean;
+  json: boolean;
+  /** Rohdaten dürfen auch bei einem bewusst eskalierten, geometrisch ungelösten Dach gesichert werden. */
+  rohdaten: boolean;
+  fehler: ProjektFreigabeFehler[];
+  flags: string[];
+  stringResult: StringPlanResult | null;
+}
+
+/** Deterministische Exportflags aus dem tatsächlichen Projektzustand. */
+export function projektFlags(p: Projekt): string[] {
+  const flags = new Set<string>();
+  for (const f of p.flaechen) {
+    for (const z of fotoZuordnungenVon(f)) {
+      if (!z.eckenPx) continue;
+      const pruefung = pruefePerspektive(
+        rahmenBreiteVon(f),
+        f.hoeheM,
+        z.eckenPx,
+        perspektiveQuelle(f),
+      );
+      if (pruefung.status === 'warnung') flags.add('extreme_perspektive_zulaessig');
+      if (z.pxProM === undefined) flags.add('foto_massstab_fehlt');
+    }
+  }
+  if (p.wrId || p.mppts.some((mppt) => mppt.length > 0)) {
+    flags.add('stringplan_nicht_pvsol_kalibriert');
+  }
+  if (p.eskaliert) flags.add('komplexes_dach_eskaliert');
+  return [...flags].sort();
+}
+
+/**
+ * Eine zentrale Freigabe für PDF und Ticketsystem-JSON. Entwürfe bleiben in
+ * allen drei Schritten bearbeitbar; nur die Ausgabe wird hart gesperrt.
+ */
+export function projektFreigabe(p: Projekt): ProjektFreigabe {
+  const fehler: ProjektFreigabeFehler[] = [];
+  const pflicht = [
+    ['kunde', p.kunde, 'Kunde fehlt.'],
+    ['adresse', p.adresse, 'Adresse fehlt.'],
+    ['erfasser', p.erfasser ?? '', 'Erfasser fehlt.'],
+  ] as const;
+  for (const [id, wert, meldung] of pflicht) {
+    if (!wert.trim()) fehler.push({ id, bereich: 'projekt', meldung, sprungziel: `projekt-${id}` });
+  }
+
+  let aktiveGesamt = 0;
+  try {
+    const modul = modulById(p.modulId);
+    for (const f of p.flaechen) aktiveGesamt += aktiveModule(f, rasterFuer(f, modul));
+  } catch (e) {
+    fehler.push({
+      id: 'modul',
+      bereich: 'belegung',
+      meldung: e instanceof Error ? e.message : 'Modulkatalog ist ungültig.',
+      sprungziel: 'belegung-start',
+    });
+  }
+  if (aktiveGesamt === 0) {
+    fehler.push({
+      id: 'keine-module',
+      bereich: 'belegung',
+      meldung: 'Mindestens ein aktives Modul muss belegt sein.',
+      sprungziel: 'belegung-start',
+    });
+  }
+
+  for (const f of belegteFlaechenOhneFoto(p)) {
+    fehler.push({
+      id: `foto-${f.id}`,
+      bereich: 'belegung',
+      meldung: `${f.name}: bestätigte und gültige Fotoperspektive fehlt.`,
+      sprungziel: `belegung-${f.id}`,
+    });
+  }
+
+  const stringVorhanden = !!p.wrId || p.mppts.some((mppt) => mppt.length > 0);
+  let stringResult: StringPlanResult | null = null;
+  if (stringVorhanden) {
+    if (!p.wrId) {
+      fehler.push({
+        id: 'string-wr',
+        bereich: 'stringplan',
+        meldung: 'Stringdaten sind vorhanden, aber kein Wechselrichter ist zugeordnet.',
+        sprungziel: 'export-stringplan',
+      });
+    } else {
+      try {
+        stringResult = pruefeStringplan(p);
+        if (!stringResult) throw new Error('Keine MPPT-Zuordnung vorhanden.');
+        const zuordnung = zuordnungsHinweise(p);
+        for (const [i, meldung] of zuordnung.fehler.entries()) {
+          fehler.push({
+            id: `string-zuordnung-${i}`,
+            bereich: 'stringplan',
+            meldung,
+            sprungziel: 'export-stringplan',
+          });
+        }
+        if (!stringResult.valid) {
+          fehler.push({
+            id: 'string-regeln',
+            bereich: 'stringplan',
+            meldung: 'Der vorhandene Stringplan besteht die Regeln R1–R12 nicht.',
+            sprungziel: 'export-stringplan',
+          });
+        }
+      } catch (e) {
+        fehler.push({
+          id: 'string-struktur',
+          bereich: 'stringplan',
+          meldung: e instanceof Error ? e.message : 'Stringdaten sind strukturell ungültig.',
+          sprungziel: 'export-stringplan',
+        });
+      }
+    }
+  }
+
+  return {
+    pdf: fehler.length === 0,
+    json: fehler.length === 0,
+    rohdaten: true,
+    fehler,
+    flags: projektFlags(p),
+    stringResult,
+  };
 }
 
 export const fmtDe = (v: number, digits = 2): string =>
@@ -1278,8 +1427,9 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
       : [],
     kwp: Math.round(kwpGesamt(p) * 100) / 100,
     regel_pruefung: result ? { bestanden: result.valid, regeln: result.regeln } : null,
-    flags: [],
-    eskaliert: false,
+    flags: projektFlags(p),
+    eskaliert: !!p.eskaliert,
+    eskalationsgrund: p.eskalationsgrund?.trim() || null,
     render_png_url: '',
     hinweis:
       'Vorplanung Vertrieb — keine Fachplanung. Finale Auslegung durch Projektleitung (PV*SOL).',

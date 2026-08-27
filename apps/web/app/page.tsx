@@ -135,25 +135,6 @@ export default function Home() {
     });
   };
 
-  const flaechenOk = projekt.flaechen.every((f) => {
-    const firstBreite =
-      f.firstBreiteM ??
-      (f.dachform === 'trapez' ? f.breiteM * 0.6 : f.breiteM);
-    return (
-      Number.isFinite(f.breiteM) &&
-      f.breiteM > 0 &&
-      Number.isFinite(f.hoeheM) &&
-      f.hoeheM > 0 &&
-      Number.isFinite(f.neigungDeg) &&
-      f.neigungDeg >= 0 &&
-      ((f.dachform !== 'trapez' && f.dachform !== 'schief') ||
-        (Number.isFinite(firstBreite) && firstBreite >= 0 && firstBreite <= f.breiteM)) &&
-      // 90° = Fassade (16.07.2026); Schrägdächer bleiben praktisch bei ≤ 75°
-      f.neigungDeg <= 90
-    );
-  });
-  const weiterErlaubt = schritt !== 1 || flaechenOk;
-
   const knopf =
     'h-11 rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:opacity-40';
 
@@ -226,21 +207,16 @@ export default function Home() {
 
       <nav className="flex flex-wrap items-center gap-2" aria-label="Schritte">
         {SCHRITTE.map((name, i) => {
-          const erreichbar =
-            i === schritt || i < schritt || (i === schritt + 1 && weiterErlaubt);
           return (
             <button
               key={name}
               type="button"
-              disabled={!erreichbar}
               aria-current={i === schritt ? 'step' : undefined}
-              onClick={() => erreichbar && setSchritt(i)}
+              onClick={() => setSchritt(i)}
               className={`h-11 rounded-full px-4 text-sm font-medium transition ${
                 i === schritt
                   ? 'bg-akzent text-white'
-                  : erreichbar
-                    ? 'bg-white text-slate-700 shadow-sm'
-                    : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                  : 'bg-white text-slate-700 shadow-sm'
               }`}
             >
               {i + 1}. {name}
@@ -251,7 +227,19 @@ export default function Home() {
 
       {schritt === 0 && <SchrittProjekt key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
       {schritt === 1 && <SchrittBelegung key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
-      {schritt === 2 && <SchrittExport key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
+      {schritt === 2 && (
+        <SchrittExport
+          key={aktiv?.id}
+          projekt={projekt}
+          onChange={setProjekt}
+          onSpringeZu={(zielSchritt, sprungziel) => {
+            setSchritt(zielSchritt);
+            window.setTimeout(() => {
+              document.getElementById(sprungziel)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 0);
+          }}
+        />
+      )}
 
       <div className="flex justify-between">
         <button
@@ -265,7 +253,6 @@ export default function Home() {
         {schritt < SCHRITTE.length - 1 && (
           <button
             type="button"
-            disabled={!weiterErlaubt}
             onClick={() => setSchritt((s) => Math.min(SCHRITTE.length - 1, s + 1))}
             className="h-12 rounded-xl bg-akzent px-8 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:opacity-40"
           >

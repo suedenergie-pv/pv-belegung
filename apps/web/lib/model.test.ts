@@ -15,11 +15,56 @@ import {
   neuesProjekt,
   patchFlaechenGeometrie,
   perspektiveQuelle,
+  projektFreigabe,
   speichereProjekte,
+  zonenLabel,
   type ProjektDb,
 } from './model';
 
 describe('Export-Geometrie und Modulausrichtung', () => {
+  it('setzt Zonen nach Z mit AA, AB und AZ fort', () => {
+    expect(zonenLabel(25)).toBe('Z');
+    expect(zonenLabel(26)).toBe('AA');
+    expect(zonenLabel(27)).toBe('AB');
+    expect(zonenLabel(51)).toBe('AZ');
+  });
+
+  it('sperrt leere Projekte zentral und gibt einen vollständig markierten Entwurf frei', () => {
+    const leer = neuesProjekt();
+    const gesperrt = projektFreigabe(leer);
+    expect(gesperrt.pdf).toBe(false);
+    expect(gesperrt.fehler.map((f) => f.id)).toEqual(
+      expect.arrayContaining(['kunde', 'adresse', 'erfasser', 'keine-module']),
+    );
+
+    const projekt = neuesProjekt();
+    projekt.kunde = 'Musterkunde';
+    projekt.adresse = 'Musterweg 1';
+    projekt.erfasser = 'Genrih';
+    projekt.fotos = [{
+      id: 'foto-1',
+      name: 'Dach',
+      dataUrl: 'data:image/jpeg;base64,AA==',
+      breitePx: 1000,
+      hoehePx: 600,
+    }];
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!,
+      felder: [{ xM: 0.05, yM: 0.05, breiteM: 9.9, hoeheM: 5.9, quer: false }],
+      fotoZuordnungen: [{
+        fotoId: 'foto-1',
+        traufePx: null,
+        eckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]],
+        perspektiveBestaetigt: true,
+        markierungFertig: true,
+      }],
+    };
+    const frei = projektFreigabe(projekt);
+    expect(frei.fehler).toEqual([]);
+    expect(frei.pdf).toBe(true);
+    expect(frei.flags).toContain('foto_massstab_fehlt');
+  });
+
   it('legt neue Dachflächen standardmäßig mit hochkant stehenden Modulen an', () => {
     expect(neueFlaeche(1, 'A').ausrichtung).toBe('hoch');
   });

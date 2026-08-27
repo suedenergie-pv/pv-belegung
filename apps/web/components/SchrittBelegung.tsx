@@ -1177,7 +1177,7 @@ export function SchrittBelegung({
   const belegungsReihenfolge = flaechenInBelegungsReihenfolge(projekt.flaechen);
 
   return (
-    <div className="space-y-4">
+    <div id="belegung-start" className="space-y-4">
       <Karte className="border-akzent/30 bg-gradient-to-r from-white to-akzent/5">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <div>

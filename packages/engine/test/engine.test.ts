@@ -67,6 +67,24 @@ describe('checkStringPlan — Orchestrierung R1–R11 (SPEC §7)', () => {
   });
 
   it('Strukturfehler werfen statt Regelergebnis (ungültige Eingaben, SPEC §1)', () => {
+    expect(() => checkStringPlan(mkInput(testInverter(), []))).toThrow(/Keine MPPT-Zuordnung/);
+    expect(() => checkStringPlan(mkInput(testInverter(), [mppt(1)]))).toThrow(/keine Strings/);
+    expect(() =>
+      checkStringPlan(
+        mkInput(testInverter(), [
+          mppt(1, mkString('S1', JW, 10)),
+          mppt(1, mkString('S2', JW, 10)),
+        ]),
+      ),
+    ).toThrow(/MPPT 1 ist doppelt/);
+    expect(() =>
+      checkStringPlan(
+        mkInput(testInverter(), [
+          mppt(1, mkString('S1', JW, 10)),
+          mppt(2, mkString('S1', JW, 10)),
+        ]),
+      ),
+    ).toThrow(/String-ID 'S1' ist doppelt/);
     expect(() =>
       checkStringPlan(mkInput(testInverter(), [mppt(3, mkString('S1', JW, 10))])),
     ).toThrow(/MPPT-Index 3/);

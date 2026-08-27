@@ -69,6 +69,26 @@ export function buildPlanCalc(input: StringPlanInput): PlanCalc {
   const moduleById = new Map(input.moduleTypes.map((m) => [m.id, m]));
   const planeById = new Map(input.planes.map((p) => [p.id, p]));
 
+  if (input.mppts.length === 0) {
+    throw new Error('Keine MPPT-Zuordnung vorhanden.');
+  }
+  const mpptIndizes = new Set<number>();
+  const stringIds = new Set<string>();
+  for (const mppt of input.mppts) {
+    if (mpptIndizes.has(mppt.mpptIndex)) {
+      throw new Error(`MPPT ${mppt.mpptIndex} ist doppelt zugeordnet.`);
+    }
+    mpptIndizes.add(mppt.mpptIndex);
+    if (mppt.strings.length === 0) {
+      throw new Error(`MPPT ${mppt.mpptIndex} enthält keine Strings.`);
+    }
+    for (const string of mppt.strings) {
+      if (!string.id.trim()) throw new Error('String-ID darf nicht leer sein.');
+      if (stringIds.has(string.id)) throw new Error(`String-ID '${string.id}' ist doppelt vergeben.`);
+      stringIds.add(string.id);
+    }
+  }
+
   const mppts: MpptCalc[] = input.mppts.map((mppt) => {
     if (
       !Number.isInteger(mppt.mpptIndex) ||

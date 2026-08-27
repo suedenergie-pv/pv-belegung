@@ -19,6 +19,7 @@ export function SchrittProjekt({
         <div className="grid gap-4 sm:grid-cols-2">
           <Feld label="Kunde">
             <input
+              id="projekt-kunde"
               className={inputKlasse}
               value={projekt.kunde}
               onChange={(e) => onChange({ ...projekt, kunde: e.target.value })}
@@ -27,6 +28,7 @@ export function SchrittProjekt({
           </Feld>
           <Feld label="Adresse">
             <input
+              id="projekt-adresse"
               className={inputKlasse}
               value={projekt.adresse}
               onChange={(e) => onChange({ ...projekt, adresse: e.target.value })}
@@ -35,6 +37,7 @@ export function SchrittProjekt({
           </Feld>
           <Feld label="Erfasser (Vertrieb)">
             <input
+              id="projekt-erfasser"
               className={inputKlasse}
               value={projekt.erfasser ?? ''}
               onChange={(e) => onChange({ ...projekt, erfasser: e.target.value })}
@@ -53,6 +56,7 @@ export function SchrittProjekt({
               <button
                 key={m.id}
                 type="button"
+                aria-pressed={aktiv}
                 onClick={() => onChange({ ...projekt, modulId: m.id })}
                 className={`rounded-xl border p-4 text-left transition ${
                   aktiv

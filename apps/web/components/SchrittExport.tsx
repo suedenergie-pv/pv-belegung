@@ -4,7 +4,6 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   ausrichtungenVon,
-  belegteFlaechenOhneFoto,
   flaechenAusrichtungsLabel,
   bauePayload,
   downloadDateiname,
@@ -13,10 +12,9 @@ import {
   fmtDe,
   kwpGesamt,
   modulById,
-  pruefeStringplan,
+  projektFreigabe,
   rasterFuer,
   wrById,
-  zuordnungsHinweise,
   type Projekt,
 } from '../lib/model';
 import { erzeugeBelegungsPdf } from '../lib/pdf-export';
@@ -26,22 +24,24 @@ import { Karte, KartenTitel } from './ui';
 export function SchrittExport({
   projekt,
   onChange,
+  onSpringeZu,
 }: {
   projekt: Projekt;
   onChange: (projekt: Projekt) => void;
+  onSpringeZu?: (schritt: 0 | 1 | 2, sprungziel: string) => void;
 }) {
   const modul = modulById(projekt.modulId);
-  const result = useMemo(() => pruefeStringplan(projekt), [projekt]);
-  const zuordnung = zuordnungsHinweise(projekt);
-  const ohneFoto = belegteFlaechenOhneFoto(projekt);
+  const freigabe = useMemo(() => projektFreigabe(projekt), [projekt]);
+  const result = freigabe.stringResult;
   const [kopiert, setKopiert] = useState(false);
+  const [statusMeldung, setStatusMeldung] = useState<string | null>(null);
   const [pdfLaeuft, setPdfLaeuft] = useState(false);
   const [pdfFehler, setPdfFehler] = useState<string | null>(null);
+  const [eskalationsgrund, setEskalationsgrund] = useState(projekt.eskalationsgrund ?? '');
   const renderRef = useRef<HTMLDivElement>(null);
 
-  const stringExportGesperrt =
-    (result !== null && !result.valid) || zuordnung.fehler.length > 0;
-  const exportGesperrt = stringExportGesperrt || ohneFoto.length > 0;
+  const stringExportGesperrt = freigabe.fehler.some((f) => f.bereich === 'stringplan');
+  const exportGesperrt = !freigabe.json;
   const payload = useMemo(() => bauePayload(projekt, result), [projekt, result]);
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
 
@@ -61,6 +61,26 @@ export function SchrittExport({
     } finally {
       setPdfLaeuft(false);
     }
+  };
+
+  const dateiHerunterladen = (inhalt: string, name: string) => {
+    try {
+      const blob = new Blob([inhalt], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      // Firefox/Safari brauchen die URL noch bis nach dem abgeschlossenen Klickzyklus.
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setStatusMeldung(`${name} wurde zum Download bereitgestellt.`);
+    } catch (e) {
+      setStatusMeldung(e instanceof Error ? e.message : 'Download fehlgeschlagen.');
+    }
+  };
+
+  const springeZu = (bereich: 'projekt' | 'belegung' | 'stringplan', ziel: string) => {
+    onSpringeZu?.(bereich === 'projekt' ? 0 : bereich === 'belegung' ? 1 : 2, ziel);
   };
 
   return (
@@ -117,7 +137,7 @@ export function SchrittExport({
           <KartenTitel>Belegungsplan (PDF)</KartenTitel>
           <button
             type="button"
-            disabled={pdfLaeuft || ohneFoto.length > 0}
+            disabled={pdfLaeuft || !freigabe.pdf}
             className="ml-auto h-12 rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:cursor-wait disabled:opacity-60"
             onClick={() => void pdfHerunterladen()}
           >
@@ -129,11 +149,24 @@ export function SchrittExport({
             Der aktuelle Stringplan ist ungültig und wird im PDF weggelassen.
           </p>
         )}
-        {ohneFoto.length > 0 && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Export gesperrt: {ohneFoto.map((f) => f.name).join(', ')} benötigt ein fertig
-            kalibriertes Drohnenfoto. Die gespeicherte Belegung bleibt erhalten.
-          </p>
+        {!freigabe.pdf && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <strong>PDF noch gesperrt. Bitte korrigieren:</strong>
+            <ul className="mt-2 space-y-1">
+              {freigabe.fehler.map((fehler) => (
+                <li key={fehler.id} className="flex items-center justify-between gap-3">
+                  <span>{fehler.meldung}</span>
+                  <button
+                    type="button"
+                    className="touch-target shrink-0 rounded-lg border border-amber-400 bg-white px-3 py-1.5 font-semibold"
+                    onClick={() => springeZu(fehler.bereich, fehler.sprungziel)}
+                  >
+                    Zum Fehler
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {pdfFehler && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{pdfFehler}</p>
@@ -153,10 +186,14 @@ export function SchrittExport({
               disabled={exportGesperrt}
               className="h-12 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition enabled:hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => {
-                void navigator.clipboard.writeText(json).then(() => {
-                  setKopiert(true);
-                  setTimeout(() => setKopiert(false), 2000);
-                });
+                void navigator.clipboard.writeText(json).then(
+                  () => {
+                    setKopiert(true);
+                    setStatusMeldung('JSON wurde kopiert.');
+                    setTimeout(() => setKopiert(false), 2000);
+                  },
+                  () => setStatusMeldung('Kopieren fehlgeschlagen. Bitte JSON-Datei herunterladen.'),
+                );
               }}
             >
               {kopiert ? '✓ Kopiert' : 'JSON kopieren'}
@@ -165,15 +202,7 @@ export function SchrittExport({
               type="button"
               disabled={exportGesperrt}
               className="h-12 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition enabled:hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={() => {
-                const blob = new Blob([json], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = downloadDateiname(projekt, 'belegung', 'json');
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
+              onClick={() => dateiHerunterladen(json, downloadDateiname(projekt, 'belegung', 'json'))}
             >
               JSON-Datei herunterladen
             </button>
@@ -182,8 +211,7 @@ export function SchrittExport({
           {exportGesperrt && (
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             <p className="min-w-60 flex-1">
-              Export gesperrt: Stringplan/Modulzuordnung ist ungültig oder eine belegte
-              Dachfläche besitzt noch kein fertig kalibriertes Drohnenfoto.
+              Export gesperrt. Die konkrete Fehlerliste steht oben beim PDF.
             </p>
             {stringExportGesperrt && <button
               type="button"
@@ -203,6 +231,57 @@ export function SchrittExport({
           </p>
         </details>
       </Karte>
+
+      <Karte id="export-stringplan">
+        <KartenTitel>Komplexes Dach eskalieren</KartenTitel>
+        <p className="mb-3 text-sm text-slate-600">
+          Wenn die Geometrie im Foto nicht zuverlässig lösbar ist, Rohdaten sichern und das
+          Projekt bewusst an die Projektleitung geben. Die direkte Ticketerstellung folgt erst
+          nach Freigabe der Ticketsystem-Kategorie.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            className="h-12 flex-1 rounded-xl border border-slate-300 px-3 text-base"
+            value={eskalationsgrund}
+            onChange={(e) => setEskalationsgrund(e.target.value)}
+            placeholder="Grund, optional"
+            aria-label="Eskalationsgrund"
+          />
+          <button
+            type="button"
+            className="touch-target rounded-xl border border-akzent bg-white px-4 font-semibold text-akzent"
+            onClick={() => {
+              onChange({
+                ...projekt,
+                eskaliert: true,
+                eskalationsgrund: eskalationsgrund.trim() || undefined,
+              });
+              setStatusMeldung('Projekt ist als komplexes Dach für die Projektleitung markiert.');
+            }}
+          >
+            Komplexes Dach → an PL
+          </button>
+          <button
+            type="button"
+            className="touch-target rounded-xl bg-slate-800 px-4 font-semibold text-white"
+            onClick={() => dateiHerunterladen(
+              JSON.stringify({ format: 'pvbelegung-rohdaten', version: 1, projekt }, null, 2),
+              `rohdaten-${downloadDateiname(projekt, 'belegung', 'json')}`,
+            )}
+          >
+            Rohdaten sichern
+          </button>
+        </div>
+        {projekt.eskaliert && (
+          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+            Eskaliert{projekt.eskalationsgrund ? `: ${projekt.eskalationsgrund}` : ''}
+          </p>
+        )}
+      </Karte>
+
+      <div aria-live="polite" className="sr-only">
+        {statusMeldung}
+      </div>
 
       {/* Offscreen-Render der Foto-Gruppen für den foto-basierten PDF-Export. */}
       <div
