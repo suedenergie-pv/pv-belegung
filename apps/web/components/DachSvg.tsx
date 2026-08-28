@@ -280,6 +280,8 @@ export function ModulAsset({ id, modul }: { id: string; modul: ModuleType }) {
   return <g id={id} dangerouslySetInnerHTML={{ __html: modulAssetInner(modul.renderSymbol) }} />;
 }
 
+export type FotoModulDarstellung = 'detail' | 'vorschau' | 'kontur';
+
 /**
  * Zeichnet die Module eines Rasters perspektivisch über eine Homographie
  * (Fläche→Foto-Pixel) — jedes Modul als in zwei Dreiecke geteiltes, exakt
@@ -297,6 +299,7 @@ export function moduleAufHomographie({
   toggle,
   hervorheben,
   clipIdPrefix,
+  darstellung = 'detail',
 }: {
   h: Homographie;
   raster: BelegungRaster;
@@ -307,6 +310,12 @@ export function moduleAufHomographie({
   toggle?: (key: string) => void;
   /** Diese Module (keys aus posKey) umranden. */
   hervorheben?: Hervorheben;
+  /**
+   * Die Gaubenbearbeitung darf nicht pro Zeigerbewegung das feinmaschige
+   * Produktions-SVG neu aufbauen. `vorschau` nutzt ein kleineres Netz;
+   * `kontur` zeigt beim aktiven Ziehen nur den exakten Modul-Fussabdruck.
+   */
+  darstellung?: FotoModulDarstellung;
   /**
    * Pro SVG-Instanz eindeutig. SVG-IDs gelten dokumentweit; ohne Präfix können
    * Vorschau und Editor gegenseitig ihre Dreiecks-Clips verwenden.
@@ -338,23 +347,31 @@ export function moduleAufHomographie({
     // Eine einzelne instabile Projektion darf weder SVG noch Modulmatrix erzeugen.
     // Die zentrale Perspektivprüfung meldet den Grund bereits an der Oberfläche.
     if (!pfad.ok) return null;
-    // Gauben sind laut Datenmodell eigenständige Ebenen. Ihre meist stärkere
-    // Perspektive wird mit einem feineren Netz gerendert; normale Dachflächen
-    // benötigen nur die beiden exakt aneinanderliegenden Dreiecke.
-    const dreiecke = flaeche.gaubenTyp
-      ? modulMatrixNetz(TL, TR, BR, BL, p.quer)
-      : modulMatrixDreiecke(TL, TR, BR, BL, p.quer);
+    // Im aktiven Ziehen reicht der exakte Fussabdruck. So entsteht nur ein
+    // SVG-Pfad statt bis zu 120 Clip-Dreiecken je Gaubenmodul. Nach dem Ziehen
+    // wird wieder eine erkennbare Modulvorschau aufgebaut; Export und normale
+    // Ansicht behalten unverändert das feine 6x10-Netz.
+    const dreiecke = darstellung === 'kontur'
+      ? []
+      : flaeche.gaubenTyp
+        ? darstellung === 'vorschau'
+          ? modulMatrixNetz(TL, TR, BR, BL, p.quer, 2, 3)
+          : modulMatrixNetz(TL, TR, BR, BL, p.quer)
+        : modulMatrixDreiecke(TL, TR, BR, BL, p.quer);
     return (
       <g
         key={key}
+        data-modul-darstellung={darstellung}
         opacity={aus ? 0.3 : 1}
         className={toggle ? 'cursor-pointer' : undefined}
         onClick={toggle ? () => toggle(key) : undefined}
       >
-        {flaeche.gaubenTyp && (
+        {(flaeche.gaubenTyp || darstellung === 'kontur') && (
           <path
             d={pfad.d}
             fill="#08090b"
+            stroke={darstellung === 'kontur' ? 'rgba(255,255,255,0.65)' : undefined}
+            strokeWidth={darstellung === 'kontur' ? fotoBreitePx * 0.0008 : undefined}
             style={{ pointerEvents: 'none' }}
           />
         )}

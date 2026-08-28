@@ -20,6 +20,13 @@ afterEach(() => {
 
 describe('Gauben-Serienworkflow', () => {
   it('übernimmt Typ und Maße einer Gaube direkt für die nächste Markierung', () => {
+    const frameCallbacks: FrameRequestCallback[] = [];
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    vi.stubGlobal('requestAnimationFrame', requestFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
     const eltern = {
       ...neueFlaeche(1, 'A'),
       foto: {
@@ -84,7 +91,10 @@ describe('Gauben-Serienworkflow', () => {
       fireEvent(ersterGriff, event);
     };
     pointer('pointerdown', 200, 500);
+    pointer('pointermove', 190, 510);
+    pointer('pointermove', 185, 515);
     pointer('pointermove', 180, 520);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
     pointer('pointerup', 180, 520);
     fireEvent.click(getByRole('button', { name: 'Anlegen & nächste gleiche markieren' }));
 

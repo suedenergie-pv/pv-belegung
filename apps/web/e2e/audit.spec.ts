@@ -239,6 +239,29 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
     })),
   );
   expect(trefferflaechen.every((x) => x.breite >= 44 || x.hoehe >= 44 || x.strich >= 44)).toBe(true);
+  const ersterGriff = await griffe.first().boundingBox();
+  if (!ersterGriff) throw new Error('Der erste Gaubengriff ist nicht sichtbar.');
+  await expect(gaubenSvg.locator('[data-modul-darstellung="vorschau"]').first()).toBeVisible();
+  await griffe.first().dispatchEvent('pointerdown', {
+    pointerId: 7,
+    clientX: ersterGriff.x + ersterGriff.width / 2,
+    clientY: ersterGriff.y + ersterGriff.height / 2,
+    buttons: 1,
+  });
+  await griffe.first().dispatchEvent('pointermove', {
+    pointerId: 7,
+    clientX: ersterGriff.x + ersterGriff.width / 2 + 8,
+    clientY: ersterGriff.y + ersterGriff.height / 2 + 5,
+    buttons: 1,
+  });
+  await expect(gaubenSvg.locator('[data-modul-darstellung="kontur"]').first()).toBeVisible();
+  expect(await gaubenSvg.locator('clipPath').count()).toBe(0);
+  await griffe.first().dispatchEvent('pointerup', {
+    pointerId: 7,
+    clientX: ersterGriff.x + ersterGriff.width / 2 + 8,
+    clientY: ersterGriff.y + ersterGriff.height / 2 + 5,
+  });
+  await expect(gaubenSvg.locator('[data-modul-darstellung="vorschau"]').first()).toBeVisible();
   await gaubenSvg.press('ArrowRight');
   await page.getByRole('button', { name: 'Markierung übernehmen' }).click();
 

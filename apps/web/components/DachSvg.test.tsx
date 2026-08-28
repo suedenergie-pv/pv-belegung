@@ -11,7 +11,7 @@ import {
   vollFeldFuer,
   type Flaeche,
 } from '../lib/model';
-import { DachSvg } from './DachSvg';
+import { DachSvg, moduleAufHomographie } from './DachSvg';
 
 describe('DachSvg', () => {
   it('vergibt bei zwei Ansichten derselben Foto-Fläche eindeutige Clip-IDs', () => {
@@ -125,6 +125,51 @@ describe('DachSvg', () => {
     );
     expect(clips).toHaveLength(raster.positionen.length * 6 * 10 * 2);
     expect(clips.every((punkte) => punkte.length === 3)).toBe(true);
+  });
+
+  it('reduziert die Gaubenmodule in der Bearbeitungsvorschau drastisch', () => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const basis: Flaeche = {
+      ...neueFlaeche(1, 'A'),
+      gaubenTyp: 'flachdach',
+      breiteM: 3,
+      hoeheM: 2.5,
+      ausrichtung: 'hoch',
+      foto: {
+        dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+        breitePx: 400,
+        hoehePx: 400,
+        traufePx: null,
+        eckenPx: [[125, 260], [330, 260], [308, 60], [138, 60]],
+      },
+    };
+    const flaeche = { ...basis, felder: [vollFeldFuer(basis, modul)] };
+    const raster = rasterFuer(flaeche, modul);
+    const h = homographie(
+      rahmenBreiteVon(flaeche),
+      flaeche.hoeheM,
+      flaeche.foto!.eckenPx!,
+      perspektiveQuelle(flaeche),
+    )!;
+    const render = (darstellung: 'vorschau' | 'kontur') => renderToStaticMarkup(
+      <svg>
+        {moduleAufHomographie({
+          h,
+          raster,
+          flaeche,
+          assetId: 'test-modul',
+          fotoBreitePx: 400,
+          clipIdPrefix: `test-${darstellung}`,
+          darstellung,
+        })}
+      </svg>,
+    );
+
+    const vorschau = render('vorschau');
+    const kontur = render('kontur');
+    expect(vorschau.match(/<clipPath/g)).toHaveLength(raster.positionen.length * 2 * 3 * 2);
+    expect(kontur).not.toContain('<clipPath');
+    expect(kontur.match(/data-modul-darstellung="kontur"/g)).toHaveLength(raster.positionen.length);
   });
 
   it('bietet für die Zeichenfläche eine beschriftete Tastaturbedienung an', () => {

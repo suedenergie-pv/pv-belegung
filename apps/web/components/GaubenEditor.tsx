@@ -211,7 +211,10 @@ export function GaubenEditor({
   const [bearbeiteId, setBearbeiteId] = useState<string | null>(null);
   const [ausgewaehlt, setAusgewaehlt] = useState(0);
   const [fallbackGrund, setFallbackGrund] = useState<string | null>(null);
+  const [zieht, setZieht] = useState(false);
   const ziehIndex = useRef<number | null>(null);
+  const ziehFrame = useRef<number | null>(null);
+  const vorgemerkteZiehPunkte = useRef<Punkt[] | null>(null);
   const [tastaturPunkt, setTastaturPunkt] = useState<Punkt>([
     foto?.breitePx ? foto.breitePx / 2 : 0,
     foto?.hoehePx ? foto.hoehePx / 2 : 0,
@@ -260,6 +263,10 @@ export function GaubenEditor({
     // bleibt bis Speichern/Abbrechen bestehen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bearbeiteGruppenId]);
+
+  useEffect(() => () => {
+    if (ziehFrame.current !== null) window.cancelAnimationFrame(ziehFrame.current);
+  }, []);
 
   if (!foto?.eckenPx) return null;
 
@@ -330,6 +337,39 @@ export function GaubenEditor({
     }
   };
 
+  /** Maximal ein Geometrie-/SVG-Neuaufbau pro Browserbild. */
+  const planeZiehPunkte = (neu: Punkt[]) => {
+    vorgemerkteZiehPunkte.current = neu;
+    if (ziehFrame.current !== null || typeof window.requestAnimationFrame !== 'function') return;
+    ziehFrame.current = window.requestAnimationFrame(() => {
+      ziehFrame.current = null;
+      const naechste = vorgemerkteZiehPunkte.current;
+      vorgemerkteZiehPunkte.current = null;
+      if (naechste) setzePunkteKontrolliert(naechste);
+    });
+  };
+
+  /** Beim Loslassen garantiert den letzten Zeigerstand uebernehmen. */
+  const uebernehmeVorgemerkteZiehPunkte = () => {
+    if (ziehFrame.current !== null) {
+      window.cancelAnimationFrame(ziehFrame.current);
+      ziehFrame.current = null;
+    }
+    const naechste = vorgemerkteZiehPunkte.current;
+    vorgemerkteZiehPunkte.current = null;
+    if (naechste) setzePunkteKontrolliert(naechste);
+  };
+
+  const verwerfeVorgemerkteZiehPunkte = () => {
+    if (ziehFrame.current !== null) {
+      window.cancelAnimationFrame(ziehFrame.current);
+      ziehFrame.current = null;
+    }
+    vorgemerkteZiehPunkte.current = null;
+    setZieht(false);
+    ziehIndex.current = null;
+  };
+
   const markierungAktuell = markierungAusPunkten(punkte);
   const pruefungAktuell = pruefungAusPunkten(punkte);
   const vorschauPunkte =
@@ -361,6 +401,7 @@ export function GaubenEditor({
         : null;
 
   const reset = () => {
+    verwerfeVorgemerkteZiehPunkte();
     setOffen(false);
     setMarkieren(false);
     setPunkte([]);
@@ -723,6 +764,7 @@ export function GaubenEditor({
                   beschriftung: false,
                   assetId: `gauben-modul-${svgInstanzId}`,
                   clipIdPrefix: `${svgInstanzId}-gauben-vorschau`,
+                  modulDarstellung: zieht ? 'kontur' : 'vorschau',
                 })}
                 <g aria-hidden="true" pointerEvents="none">
                   <line x1={tastaturPunkt[0]} y1="0" x2={tastaturPunkt[0]} y2={foto.hoehePx} stroke="#e8603a" strokeWidth="2" strokeDasharray="8 8" />
@@ -779,6 +821,7 @@ export function GaubenEditor({
                         e.stopPropagation();
                         setAusgewaehlt(i);
                         ziehIndex.current = i;
+                        setZieht(true);
                         e.currentTarget.ownerSVGElement?.focus();
                         try {
                           e.currentTarget.setPointerCapture(e.pointerId);
@@ -791,20 +834,38 @@ export function GaubenEditor({
                         const svg = e.currentTarget.ownerSVGElement;
                         const rect = svg?.getBoundingClientRect();
                         if (!rect?.width || !rect.height) return;
-                        const neu = punkte.map(([x, y]) => [x, y] as Punkt);
+                        const basis = vorgemerkteZiehPunkte.current ?? punkte;
+                        const neu = basis.map(([x, y]) => [x, y] as Punkt);
                         neu[i] = [
                           Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
                           Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
                         ];
-                        setzePunkteKontrolliert(neu);
+                        planeZiehPunkte(neu);
                       }}
                       onPointerUp={(e) => {
+                        const svg = e.currentTarget.ownerSVGElement;
+                        const rect = svg?.getBoundingClientRect();
+                        if (rect?.width && rect.height) {
+                          const basis = vorgemerkteZiehPunkte.current ?? punkte;
+                          const neu = basis.map(([x, y]) => [x, y] as Punkt);
+                          neu[i] = [
+                            Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
+                            Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
+                          ];
+                          vorgemerkteZiehPunkte.current = neu;
+                        }
+                        uebernehmeVorgemerkteZiehPunkte();
                         ziehIndex.current = null;
+                        setZieht(false);
                         if (typeof e.currentTarget.hasPointerCapture === 'function' && e.currentTarget.hasPointerCapture(e.pointerId)) {
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      onPointerCancel={() => { ziehIndex.current = null; }}
+                      onPointerCancel={() => {
+                        uebernehmeVorgemerkteZiehPunkte();
+                        ziehIndex.current = null;
+                        setZieht(false);
+                      }}
                     />
                     <circle
                       cx={p[0]}

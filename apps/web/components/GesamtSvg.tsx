@@ -12,7 +12,11 @@ import {
   type ProjektFoto,
   type Projekt,
 } from '../lib/model';
-import { ModulAsset, moduleAufHomographie } from './DachSvg';
+import {
+  ModulAsset,
+  moduleAufHomographie,
+  type FotoModulDarstellung,
+} from './DachSvg';
 
 /**
  * Reine Darstellung aller zugeordneten Flächen auf einem Projektfoto, ohne
@@ -35,6 +39,7 @@ export function fotoFlaechenInhalt({
   assetId = FOTO_ASSET_ID,
   nurFertige = false,
   clipIdPrefix,
+  modulDarstellung = 'detail',
 }: {
   projekt: Projekt;
   foto: ProjektFoto;
@@ -45,6 +50,8 @@ export function fotoFlaechenInhalt({
   nurFertige?: boolean;
   /** Pro umgebender SVG-Instanz eindeutig (SVG-Clip-IDs gelten dokumentweit). */
   clipIdPrefix: string;
+  /** Leichtere Darstellung ausschliesslich fuer interaktive Foto-Vorschauen. */
+  modulDarstellung?: FotoModulDarstellung;
 }) {
   const modul = modulById(projekt.modulId);
   const px = (v: number) => foto.breitePx * v;
@@ -83,6 +90,7 @@ export function fotoFlaechenInhalt({
           fotoBreitePx: foto.breitePx,
           druck: true,
           clipIdPrefix: `${clipIdPrefix}-${f.id}`,
+          darstellung: modulDarstellung,
         })}
         {beschriftung && (
           <g style={{ pointerEvents: 'none' }}>
