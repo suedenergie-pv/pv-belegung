@@ -127,4 +127,61 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     expect(onPatch).toHaveBeenCalledTimes(1);
     expect(onPatch.mock.calls[0]![0].foto.perspektiveBestaetigt).toBe(true);
   });
+
+  it('lädt einen vorhandenen Dachumriss in verschiebbare Griffe und speichert erst beim Übernehmen', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const mitUmriss: Flaeche = {
+      ...flaeche,
+      umrissM: [[0, 0], [10, 0], [10, 6], [0, 6]],
+    };
+    const { container, getAllByTestId, getByRole } = render(
+      <FotoHintergrund flaeche={mitUmriss} onPatch={onPatch} fotoVerwalten={false} />,
+    );
+
+    fireEvent.click(getByRole('button', { name: /Dachumriss/ }));
+    const griffe = getAllByTestId('umriss-griff');
+    expect(griffe).toHaveLength(4);
+    expect(onPatch).not.toHaveBeenCalled();
+
+    const svg = container.querySelector('svg')!;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600,
+      toJSON: () => ({}),
+    });
+    const ersterKreis = griffe[0]!.querySelector('circle')!;
+    const startX = Number(ersterKreis.getAttribute('cx'));
+    const startY = Number(ersterKreis.getAttribute('cy'));
+    const zielX = startX < 500 ? startX + 100 : startX - 100;
+    const zielY = startY < 300 ? startY + 100 : startY - 100;
+    fireEvent.mouseDown(svg, { clientX: startX, clientY: startY });
+    fireEvent.mouseMove(svg, { clientX: zielX, clientY: zielY });
+    fireEvent.mouseUp(svg);
+    expect(onPatch).not.toHaveBeenCalled();
+
+    fireEvent.click(getByRole('button', { name: /Umriss übernehmen/ }));
+    expect(onPatch).toHaveBeenCalledTimes(1);
+    expect(onPatch.mock.calls[0]![0].umrissM[0][0]).toBeCloseTo(1);
+    expect(onPatch.mock.calls[0]![0].umrissM[0][1]).toBeCloseTo(1);
+  });
+
+  it('entfernt nur den manuellen Umriss und erklärt den verbleibenden Perspektivrahmen', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const mitUmriss: Flaeche = {
+      ...flaeche,
+      umrissM: [[0, 0], [10, 0], [10, 6], [0, 6]],
+    };
+    const { getByRole, getByText, queryByRole, rerender } = render(
+      <FotoHintergrund flaeche={mitUmriss} onPatch={onPatch} fotoVerwalten={false} />,
+    );
+    fireEvent.click(getByRole('button', { name: /Dachumriss/ }));
+    fireEvent.click(getByRole('button', { name: 'Manuellen Umriss entfernen' }));
+    expect(onPatch).toHaveBeenCalledWith({ umrissM: undefined, inaktiv: [] });
+
+    rerender(<FotoHintergrund flaeche={{ ...mitUmriss, umrissM: undefined }} onPatch={onPatch} fotoVerwalten={false} />);
+    expect(getByRole('button', { name: /Perspektivrahmen bearbeiten/ })).toBeTruthy();
+    expect(queryByRole('button', { name: 'Manuellen Umriss entfernen' })).toBeNull();
+    expect(getByText(/Kein manueller Dachumriss vorhanden/)).toBeTruthy();
+  });
 });

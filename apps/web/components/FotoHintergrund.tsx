@@ -212,6 +212,14 @@ export function FotoHintergrund({
   const vorschauCheck = perspektivVorschau
     ? pruefePerspektive(rahmenB, H, perspektivVorschau, quelle)
     : null;
+  const umrissVorschauPruefung =
+    modus === 'umriss' && punkte.length >= 3 && foto?.eckenPx
+      ? pruefeUmrissAusKlicks(punkte, rahmenB, H, foto.eckenPx, quelle)
+      : null;
+  const umrissVorschauFehler =
+    umrissVorschauPruefung && !umrissVorschauPruefung.ok
+      ? umrissVorschauPruefung.grund
+      : null;
 
   // Fadenkreuz-Vorschau nur in den Punkt-Setz-Modi
   const zeigtKreuz =
@@ -222,6 +230,11 @@ export function FotoHintergrund({
     setPunkte(
       m === 'perspektive' && foto?.eckenPx
         ? foto.eckenPx.map((p) => [p[0], p[1]] as Punkt)
+        : m === 'umriss' && hom && flaeche.umrissM
+          ? flaeche.umrissM.map((p) => {
+              const [x, y] = projiziere(hom, [p[0], p[1]]);
+              return [x, y] as Punkt;
+            })
         : [],
     );
     setTouchGriff(null);
@@ -267,6 +280,14 @@ export function FotoHintergrund({
     setModus('hindernis');
   };
 
+  const umrissEntfernen = () => {
+    if (!flaeche.umrissM) return;
+    onPatch({ umrissM: undefined, inaktiv: [] });
+    setPunkte([]);
+    setTouchGriff(null);
+    setMarkierungsFehler(null);
+  };
+
   const hindernisSetzen = (p1: Punkt, p2: Punkt) => {
     if (!foto?.eckenPx) return;
     const rect = hindernisAusKlicks(p1, p2, rahmenB, H, foto.eckenPx, quelle);
@@ -286,13 +307,13 @@ export function FotoHintergrund({
   /**
    * Ziehbare Griffe (Genrih 08.07.): die 4 Ecken lassen sich nach dem Setzen frei
    * verschieben (grob klicken, dann exakt auf die Dachecke ziehen), ebenso die
-   * Trauflinie. Nur in den Modi „perspektive"/„first" — im Umriss/Hindernis bleibt
-   * der Klick fürs Zeichnen/Schließen. Draft-Punkte sind auch ziehbar.
+   * Trauflinie. Im Umriss-Modus sind sowohl neue als auch bereits gespeicherte
+   * Eckpunkte ziehbar; freie Klicks ergänzen weiterhin zusätzliche Ecken.
    */
   const handles = (): { x: number; y: number; z: Griff }[] => {
     if (!foto) return [];
     const arr: { x: number; y: number; z: Griff }[] = [];
-    if (modus === 'perspektive') {
+    if (modus === 'perspektive' || modus === 'umriss') {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
     } else if (modus === 'first') {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
@@ -549,10 +570,10 @@ export function FotoHintergrund({
         </div>
       )}
 
-      {(perspektivCheck?.status === 'fehler' || vorschauCheck?.status === 'fehler' || markierungsFehler) && (
+      {(perspektivCheck?.status === 'fehler' || vorschauCheck?.status === 'fehler' || umrissVorschauFehler || markierungsFehler) && (
         <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
           <strong>Markierung prüfen:</strong>{' '}
-          {markierungsFehler ?? vorschauCheck?.meldungen.join(' ') ?? perspektivCheck?.meldungen.join(' ')}
+          {markierungsFehler ?? umrissVorschauFehler ?? vorschauCheck?.meldungen.join(' ') ?? perspektivCheck?.meldungen.join(' ')}
         </div>
       )}
 
@@ -595,14 +616,15 @@ export function FotoHintergrund({
             />
             <SchrittChip
               nr="②"
-              label="4 Ecken"
+              label="Perspektivrahmen"
               aktiv={modus === 'perspektive'}
               erledigt={!!foto.eckenPx}
+              titel="Vier Ecken legen fest, wie die Dachfläche im Foto liegt"
               onClick={() => wechsleModus('perspektive')}
             />
             <SchrittChip
               nr="③"
-              label="Umriss"
+              label="Dachumriss"
               aktiv={modus === 'umriss'}
               erledigt={!!flaeche.umrissM || (parametrisch && !!foto.eckenPx)}
               gesperrt={!foto.eckenPx}
@@ -659,11 +681,11 @@ export function FotoHintergrund({
               <>
                 <button
                   type="button"
-                  disabled={punkte.length < 3}
+                  disabled={punkte.length < 3 || !!umrissVorschauFehler}
                   className="h-9 rounded-lg bg-akzent px-3 text-sm font-semibold text-white disabled:opacity-40"
                   onClick={() => umrissAbschliessen(punkte)}
                 >
-                  ✓ Umriss fertig ({punkte.length} Ecken)
+                  {flaeche.umrissM ? '✓ Umriss übernehmen' : '✓ Umriss fertig'} ({punkte.length} Ecken)
                 </button>
                 <button
                   type="button"
@@ -673,6 +695,20 @@ export function FotoHintergrund({
                 >
                   ↶ Punkt zurück
                 </button>
+                {flaeche.umrissM && (
+                  <button
+                    type="button"
+                    className="touch-target h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
+                    onClick={umrissEntfernen}
+                  >
+                    Manuellen Umriss entfernen
+                  </button>
+                )}
+                {foto.eckenPx && (
+                  <button type="button" className={knopfKlasse} onClick={() => wechsleModus('perspektive')}>
+                    Perspektivrahmen bearbeiten
+                  </button>
+                )}
               </>
             )}
             {modus === 'ziegel' && istSchraegdach && (
@@ -809,11 +845,20 @@ export function FotoHintergrund({
             )
           ) : modus === 'umriss' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <strong>Umriss zeichnen:</strong> den echten Rand der Fläche der Reihe nach
-              anklicken (Fadenkreuz hilft beim Zielen). Schließen: ersten Punkt oder „Umriss fertig".{' '}
-              <strong>Rechteckige Fläche → einfach „{flaechenName} belegen"</strong>.{' '}
-              <em>Warum zwei Schritte? Die 4 Ecken sagen dem Tool, WIE die Fläche im Foto liegt — der
-              Umriss sagt ihm die FORM.</em>
+              {flaeche.umrissM ? (
+                <>
+                  <strong>Dachumriss bearbeiten:</strong> Die nummerierten orangefarbenen Ecken
+                  direkt ziehen oder per Fadenkreuz versetzen. Danach „Umriss übernehmen" drücken.
+                </>
+              ) : (
+                <>
+                  <strong>Kein manueller Dachumriss vorhanden.</strong> Die orange gestrichelte
+                  Außenlinie ist der <strong>Perspektivrahmen</strong> aus vier Ecken. Für ein
+                  Rechteck einfach „{flaechenName} belegen" drücken. Nur bei Sonderformen hier den
+                  echten Rand Ecke für Ecke anklicken.
+                </>
+              )}{' '}
+              <em>Der Perspektivrahmen legt die Lage im Foto fest; der optionale Dachumriss legt die Form fest.</em>
             </p>
           ) : modus === 'hindernis' ? (
             <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
@@ -986,7 +1031,7 @@ export function FotoHintergrund({
               )}
 
               {/* Bereits gesetzter Umriss / Perspektiv-Rechteck */}
-              {foto.eckenPx && (
+              {foto.eckenPx && !(modus === 'umriss' && punkte.length >= 3) && (
                 <polygon
                   points={(flaeche.umrissM && hom
                     ? flaeche.umrissM.map((p) => projiziere(hom, [p[0], p[1]]))
@@ -1085,7 +1130,7 @@ export function FotoHintergrund({
                 <polyline
                   points={punkte.map(([qx, qy]) => `${qx},${qy}`).join(' ')}
                   fill="none"
-                  stroke="#f97316"
+                  stroke={umrissVorschauFehler ? '#dc2626' : '#f97316'}
                   strokeWidth={px(0.0025)}
                   strokeDasharray={`${px(0.008)} ${px(0.005)}`}
                 />
@@ -1096,22 +1141,44 @@ export function FotoHintergrund({
                   y1={punkte[punkte.length - 1]![1]}
                   x2={punkte[0]![0]}
                   y2={punkte[0]![1]}
-                  stroke="#f97316"
+                  stroke={umrissVorschauFehler ? '#dc2626' : '#f97316'}
                   strokeOpacity={0.4}
                   strokeWidth={px(0.0016)}
                   strokeDasharray={`${px(0.004)} ${px(0.004)}`}
                 />
               )}
               {punkte.map(([qx, qy], i) => (
-                <circle
+                <g
                   key={i}
-                  cx={qx}
-                  cy={qy}
-                  r={px(i === 0 && modus === 'umriss' && punkte.length >= 3 ? 0.011 : 0.007)}
-                  fill={modus === 'first' ? '#0d9488' : modus === 'ziegel' ? '#0ea5e9' : modus === 'hindernis' ? '#ef4444' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
-                  stroke="#ffffff"
-                  strokeWidth={px(0.002)}
-                />
+                  data-testid={modus === 'umriss' ? 'umriss-griff' : undefined}
+                  style={{ cursor: modus === 'umriss' || modus === 'perspektive' || modus === 'first' ? 'grab' : undefined }}
+                >
+                  {modus === 'umriss' && (
+                    <circle cx={qx} cy={qy} r={px(0.018)} fill="rgba(249,115,22,0.18)" />
+                  )}
+                  <circle
+                    cx={qx}
+                    cy={qy}
+                    r={px(i === 0 && modus === 'umriss' && punkte.length >= 3 ? 0.011 : 0.007)}
+                    fill={umrissVorschauFehler ? '#dc2626' : modus === 'first' ? '#0d9488' : modus === 'ziegel' ? '#0ea5e9' : modus === 'hindernis' ? '#ef4444' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
+                    stroke="#ffffff"
+                    strokeWidth={px(0.002)}
+                  />
+                  {modus === 'umriss' && (
+                    <text
+                      x={qx}
+                      y={qy}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#ffffff"
+                      fontSize={px(0.009)}
+                      fontWeight={700}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {i + 1}
+                    </text>
+                  )}
+                </g>
               ))}
             </svg>
           </div>
@@ -1144,7 +1211,11 @@ export function FotoHintergrund({
                 ? `Ecke ${punkte.length + 1} von 4 anklicken (${flaechenName}).`
                 : 'Vorschau prüfen, einzelne Punkte bei Bedarf ziehen und dann „4 Ecken übernehmen".'
               : modus === 'umriss'
-                ? punkte.length < 3
+                ? flaeche.umrissM && punkte.length >= 3
+                  ? umrissVorschauFehler
+                    ? 'Der Entwurf ist ungültig. Rote Ecke nachziehen; Speichern bleibt gesperrt.'
+                    : 'Nummerierte Ecke ziehen und anschließend „Umriss übernehmen" drücken.'
+                  : punkte.length < 3
                   ? `Ecke ${punkte.length + 1} anklicken (mind. 3) — oder „${flaechenName} belegen“ für ein Rechteck.`
                   : 'Weitere Ecken — oder ersten Punkt / „Umriss fertig" zum Schließen.'
                 : modus === 'hindernis'

@@ -50,7 +50,7 @@ async function projektPflichtfelder(page: Page) {
   await page.getByLabel('Erfasser (Vertrieb)').fill('Genrih');
 }
 
-async function fotoKalibrieren(page: Page) {
+async function fotoKalibrieren(page: Page, dachDirektBelegen = true) {
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
   const dateiauswahl = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Foto hinzufügen' }).click();
@@ -68,6 +68,7 @@ async function fotoKalibrieren(page: Page) {
     await foto.click({ position: { x: box.width * x, y: box.height * y } });
   }
   await page.getByRole('button', { name: '4 Ecken übernehmen' }).click();
+  if (!dachDirektBelegen) return;
   await page.getByRole('button', { name: /Dach belegen/ }).click();
   await expect(page.getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeVisible();
 }
@@ -196,6 +197,44 @@ test('Exportsperre springt zum konkreten Pflichtfehler', async ({ page }) => {
   await page.getByRole('button', { name: 'Zum Fehler' }).first().click();
   await expect(page.getByRole('button', { name: '1. Projekt' })).toHaveAttribute('aria-current', 'step');
   await expect(page.getByLabel('Kunde')).toBeFocused();
+});
+
+test('Dachumriss lässt sich an Ecken verschieben und getrennt vom Perspektivrahmen entfernen', async ({ page }) => {
+  const browserFehler: string[] = [];
+  page.on('console', (meldung) => {
+    if (meldung.type() === 'error') browserFehler.push(meldung.text());
+  });
+  page.on('pageerror', (fehler) => browserFehler.push(fehler.message));
+
+  await page.goto('/');
+  await fotoKalibrieren(page, false);
+  const foto = page.getByRole('img', { name: /im Foto markieren/ });
+  const box = await foto.boundingBox();
+  if (!box) throw new Error('Das Foto für den Dachumriss ist nicht sichtbar.');
+  for (const [x, y] of [[0.15, 0.85], [0.85, 0.85], [0.80, 0.20], [0.20, 0.20]]) {
+    await foto.click({ position: { x: box.width * x, y: box.height * y } });
+  }
+  await page.getByRole('button', { name: /Umriss fertig \(4 Ecken\)/ }).click();
+  await page.getByRole('button', { name: /Dachumriss/ }).click();
+
+  const griffe = page.getByTestId('umriss-griff');
+  await expect(griffe).toHaveCount(4);
+  const ersterGriff = await griffe.first().boundingBox();
+  if (!ersterGriff) throw new Error('Der erste Umrissgriff ist nicht sichtbar.');
+  await page.mouse.move(ersterGriff.x + ersterGriff.width / 2, ersterGriff.y + ersterGriff.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(ersterGriff.x + ersterGriff.width / 2 + 8, ersterGriff.y + ersterGriff.height / 2 + 5, { steps: 4 });
+  await page.mouse.up();
+  await page.getByRole('button', { name: /Umriss übernehmen/ }).click();
+
+  await page.getByRole('button', { name: /Dachumriss/ }).click();
+  await page.getByRole('button', { name: 'Manuellen Umriss entfernen' }).click();
+  await expect(page.getByRole('button', { name: 'Manuellen Umriss entfernen' })).toHaveCount(0);
+  await expect(page.getByText(/Kein manueller Dachumriss vorhanden/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Perspektivrahmen bearbeiten' }).click();
+  await expect(page.getByRole('button', { name: '4 Ecken übernehmen' })).toBeEnabled();
+  expect(browserFehler).toEqual([]);
 });
 
 test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschbar', async ({ page }, testInfo) => {
