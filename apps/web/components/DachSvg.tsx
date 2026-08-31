@@ -434,6 +434,7 @@ export function DachSvg({
   feldVorschau,
   geister,
   pointer,
+  modulDarstellung = 'detail',
   tastatur,
   perspektivEditor,
   fotoOverlay,
@@ -460,6 +461,8 @@ export function DachSvg({
   geister?: GeistPosition[];
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
+  /** Während einer Zieh-Geste genügen leichte Modulkonturen. */
+  modulDarstellung?: FotoModulDarstellung;
   tastatur?: TastaturProps;
   /** Vier sichtbare, per Maus/Touch/Tastatur verschiebbare Perspektivgriffe. */
   perspektivEditor?: PerspektivEditorProps;
@@ -858,8 +861,10 @@ export function DachSvg({
     </g>
   );
 
-  // Belegung in Flächen-Koordinaten (Meter) — identisch für beide Hintergründe
-  const belegung = (
+  // Belegung in Flächen-Koordinaten (Meter) wird nur für Alt-Foto/Draufsicht
+  // aufgebaut. Im aktuellen Homographie-Foto wäre diese zweite Modulliste
+  // unsichtbar, kostete beim Ziehen aber trotzdem für jedes Modul React-Arbeit.
+  const renderBelegung = () => (
     <>
       {!druck && (
         <rect
@@ -1021,6 +1026,7 @@ export function DachSvg({
               toggle,
               hervorheben,
               clipIdPrefix: `${svgInstanzId}-aktiv`,
+              darstellung: modulDarstellung,
             })}
             {/* Abgeschaltete Module (Geister) — klickbar zum einzelnen Zurückholen */}
             {!druck &&
@@ -1229,7 +1235,7 @@ export function DachSvg({
           <g
             transform={`translate(${x1} ${y1}) rotate(${winkelDeg}) scale(${pxProM}) scale(1 ${cosNeigung}) translate(0 ${-H})`}
           >
-            {belegung}
+            {renderBelegung()}
           </g>
         </svg>
       </div>
@@ -1297,7 +1303,7 @@ export function DachSvg({
             <line x1={tastaturCursorM[0]} y1={0} x2={tastaturCursorM[0]} y2={H} stroke="#e8603a" strokeWidth={0.03} strokeDasharray="0.12 0.08" />
           </g>
         )}
-        {belegung}
+        {renderBelegung()}
         {!druck && masse && renderMasse(0.3, (p) => p)}
       </svg>
     </div>

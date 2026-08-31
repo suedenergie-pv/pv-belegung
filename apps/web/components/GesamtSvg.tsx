@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { memo, useId } from 'react';
 import { homographie } from '../lib/foto-geometrie';
 import {
   modulById,
@@ -121,7 +121,7 @@ export function fotoFlaechenInhalt({
 }
 
 /** Vollständiges SVG genau einer Foto-Gruppe für PDF und Vorschau. */
-export function ProjektFotoSvg({
+export const ProjektFotoSvg = memo(function ProjektFotoSvg({
   projekt,
   foto,
   beschriftung = false,
@@ -156,4 +156,4 @@ export function ProjektFotoSvg({
       })}
     </svg>
   );
-}
+});

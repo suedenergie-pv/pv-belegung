@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { feldSchrittmasse, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import { dateiZuBild } from '../lib/bild';
 import {
@@ -310,15 +310,54 @@ export function SchrittBelegung({
    * zweiter Commit würde das Delta ein zweites Mal aufaddieren.
    */
   const dragAktiv = useRef(false);
+  /** Letzter gültiger Zeigerpunkt; bleibt auch zwischen zwei gedrosselten Renders frisch. */
+  const dragPunkt = useRef<PunktM | null>(null);
+  /** Höchstens ein React-Render je Browserframe, auch bei hochfrequenten Pointer-Events. */
+  const dragFrame = useRef<number | null>(null);
   const fotoInputRef = useRef<HTMLInputElement>(null);
   const fotoZielRef = useRef<FotoUploadZiel | null>(null);
   const [fotoUpload, setFotoUpload] = useState<FotoUploadStatus>({ status: 'bereit' });
 
-  const gesamt = projekt.flaechen.reduce(
-    (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
-    0,
-  );
-  const kwp = (gesamt * modul.pmaxW) / 1000;
+  const { gesamt, kwp } = useMemo(() => {
+    const anzahl = projekt.flaechen.reduce(
+      (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
+      0,
+    );
+    return { gesamt: anzahl, kwp: (anzahl * modul.pmaxW) / 1000 };
+  }, [projekt, modul]);
+
+  const stoppeDragFrame = () => {
+    if (dragFrame.current !== null && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(dragFrame.current);
+    }
+    dragFrame.current = null;
+  };
+
+  const starteDrag = (neu: Drag) => {
+    stoppeDragFrame();
+    dragPunkt.current = neu.aktuell;
+    dragAktiv.current = true;
+    setDrag(neu);
+  };
+
+  const aktualisiereDrag = (flaecheId: string, p: PunktM) => {
+    dragPunkt.current = p;
+    const render = () => {
+      dragFrame.current = null;
+      const aktuell = dragPunkt.current;
+      if (!aktuell) return;
+      setDrag((alt) =>
+        !alt || alt.flaecheId !== flaecheId ? alt : { ...alt, aktuell },
+      );
+    };
+    if (typeof window.requestAnimationFrame !== 'function') {
+      render();
+      return;
+    }
+    if (dragFrame.current === null) dragFrame.current = window.requestAnimationFrame(render);
+  };
+
+  useEffect(() => () => stoppeDragFrame(), []);
 
   /**
    * Aktuellster Projektstand — auch zwischen zwei Renders (16.07.2026). Ein
@@ -1001,30 +1040,30 @@ export function SchrittBelegung({
    * eigener Rückgängig-Schritt für jedes Pointer-Event. Der Commit passiert
    * einmalig beim Loslassen.
    */
-  const mitDrag = (f: Flaeche): Flaeche => {
-    if (!drag || drag.flaecheId !== f.id) return f;
-    const dx = drag.aktuell[0] - drag.start[0];
-    const dy = drag.aktuell[1] - drag.start[1];
-    if (drag.art === 'move') {
+  const mitDrag = (f: Flaeche, dragStand: Drag | null = drag): Flaeche => {
+    if (!dragStand || dragStand.flaecheId !== f.id) return f;
+    const dx = dragStand.aktuell[0] - dragStand.start[0];
+    const dy = dragStand.aktuell[1] - dragStand.start[1];
+    if (dragStand.art === 'move') {
       return {
         ...f,
         felder: felderVon(f).map((feld, i) =>
-          drag.indices.includes(i)
+          dragStand.indices.includes(i)
             ? { ...feld, xM: feld.xM + dx, yM: feld.yM + dy }
             : feld,
         ),
       };
     }
-    if (drag.art === 'resize') {
+    if (dragStand.art === 'resize') {
       return {
         ...f,
         felder: felderVon(f).map((feld, i) => {
-          if (i !== drag.index) return feld;
+          if (i !== dragStand.index) return feld;
           // Schrittmaße aus der ENGINE — am Flachdach ist der Rasterschritt der
           // Gestell-Pitch (Süd 1,80/1,90 m; O/W 2,48 m = 2 Zell-Spalten je Schritt),
           // nicht das Modulmaß. Sonst verschöbe das Ziehen das ganze Gestell-Raster.
           const sm = feldSchrittmasse(felderInput(f, modul), feld.quer);
-          const { rect, zellVersatz } = feldMitGriff(feld, drag.griff, dx, dy, sm.pitchXM, sm.pitchYM);
+          const { rect, zellVersatz } = feldMitGriff(feld, dragStand.griff, dx, dy, sm.pitchXM, sm.pitchYM);
           return {
             ...feld,
             ...rect,
@@ -1091,8 +1130,7 @@ export function SchrittBelegung({
       if (!feld) continue;
       for (const { id, p: gp } of griffPunkte(feld)) {
         if (Math.hypot(p[0] - gp[0], p[1] - gp[1]) <= GRIFF_FANG_M) {
-          dragAktiv.current = true;
-          setDrag({ art: 'resize', flaecheId: f.id, start: p, aktuell: p, index: i, griff: id });
+          starteDrag({ art: 'resize', flaecheId: f.id, start: p, aktuell: p, index: i, griff: id });
           return;
         }
       }
@@ -1105,36 +1143,39 @@ export function SchrittBelegung({
         break;
       }
     }
-    dragAktiv.current = true;
     if (treffer < 0) {
-      setDrag({ art: 'neu', flaecheId: f.id, start: p, aktuell: p });
+      starteDrag({ art: 'neu', flaecheId: f.id, start: p, aktuell: p });
       return;
     }
     // Feld aus der Auswahl angefasst → ganze Auswahl bewegen, sonst nur dieses
     const gewaehlt = auswahlVon(f);
     const indices = gewaehlt.includes(treffer) ? gewaehlt : [treffer];
-    setDrag({ art: 'move', flaecheId: f.id, start: p, aktuell: p, indices });
+    starteDrag({ art: 'move', flaecheId: f.id, start: p, aktuell: p, indices });
   };
 
   const onUpM = (f: Flaeche, p: PunktM) => {
     if (!drag || drag.flaecheId !== f.id || !dragAktiv.current) return;
     dragAktiv.current = false;
-    const weit = Math.hypot(p[0] - drag.start[0], p[1] - drag.start[1]) >= KLICK_SCHWELLE_M;
+    stoppeDragFrame();
+    dragPunkt.current = p;
+    const dragAmEnde = { ...drag, aktuell: p } as Drag;
+    const weit = Math.hypot(p[0] - dragAmEnde.start[0], p[1] - dragAmEnde.start[1]) >= KLICK_SCHWELLE_M;
     if (!weit) {
       // Klick: ins Leere = Auswahl aufheben; auf ein Feld = an-/abwählen;
       // auf einen Griff = nichts (Auswahl behalten, sonst verlöre man sie sofort)
-      if (drag.art === 'neu') setAuswahl(null);
-      else if (drag.art === 'move') {
-        const i = drag.indices[drag.indices.length - 1]!;
+      if (dragAmEnde.art === 'neu') setAuswahl(null);
+      else if (dragAmEnde.art === 'move') {
+        const i = dragAmEnde.indices[dragAmEnde.indices.length - 1]!;
         const alt = auswahlVon(f);
         const neu = alt.includes(i) ? alt.filter((x) => x !== i) : [...alt, i];
         setAuswahl(neu.length ? { flaecheId: f.id, indices: neu } : null);
       }
+      dragPunkt.current = null;
       setDrag(null);
       return;
     }
-    if (drag.art === 'neu') {
-      const rect = rechteckAus(drag.start, p);
+    if (dragAmEnde.art === 'neu') {
+      const rect = rechteckAus(dragAmEnde.start, p);
       const { w, h } = modulMasse(modul, f.ausrichtung === 'quer');
       // Winziges Feld = Fehlgriff, kein Modul passt ohnehin rein
       if (rect.breiteM >= w / 2 && rect.hoeheM >= h / 2) {
@@ -1157,15 +1198,16 @@ export function SchrittBelegung({
       // Verschieben/Größe-Ändern committen (Auswahl bleibt bestehen). Beim RESIZE
       // NICHT runden: die Kante ist exakt auf die Modulteilung eingerastet, und
       // cm-Rundung würde die Phase je Zug um Millimeter verziehen (summiert sich).
-      const bewegt = mitDrag(f).felder ?? [];
+      const bewegt = mitDrag(f, dragAmEnde).felder ?? [];
       patchFlaeche(f.id, {
         felder: bewegt.map((feld, i) =>
-          drag.art === 'move' && drag.indices.includes(i)
+          dragAmEnde.art === 'move' && dragAmEnde.indices.includes(i)
             ? { ...feld, xM: round2(feld.xM), yM: round2(feld.yM) }
             : feld,
         ),
       });
     }
+    dragPunkt.current = null;
     setDrag(null);
   };
 
@@ -1181,7 +1223,7 @@ export function SchrittBelegung({
     const f = projekt.flaechen.find((x) => x.id === drag.flaecheId);
     if (!f) return;
     const ende = () => {
-      if (dragAktiv.current) onUpM(f, drag.aktuell);
+      if (dragAktiv.current) onUpM(f, dragPunkt.current ?? drag.aktuell);
       else setDrag(null);
     };
     window.addEventListener('pointerup', ende);
@@ -1327,7 +1369,10 @@ export function SchrittBelegung({
   // Hauptdach und zugehörige Gauben bleiben im Vertriebsflow beieinander. Intern
   // sind die Gauben weiterhin eigenständige Ebenen; nur die UI-Reihenfolge wird
   // hierarchisch statt nach Erstellzeit aufgebaut (SPEC §4.3).
-  const belegungsReihenfolge = flaechenInBelegungsReihenfolge(projekt.flaechen);
+  const belegungsReihenfolge = useMemo(
+    () => flaechenInBelegungsReihenfolge(projekt.flaechen),
+    [projekt.flaechen],
+  );
 
   return (
     <div id="belegung-start" className="space-y-4">
@@ -1521,6 +1566,7 @@ export function SchrittBelegung({
         );
         // Felder-Werkzeug: aktiv, solange kein anderes Werkzeug und nichts gezeichnet wird
         const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen && !perspektiveHier;
+        const ziehtHier = drag?.flaecheId === f.id;
         const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
 
         const karte = (
@@ -1915,6 +1961,7 @@ export function SchrittBelegung({
                   modul={modul}
                   masse={masseZeigen}
                   maxHoehe={560}
+                  modulDarstellung={ziehtHier ? 'kontur' : 'detail'}
                   felderAnzeige={felder.map((feld, k) => ({
                     rect: feld,
                     ausgewaehlt: gewaehlt.includes(k),
@@ -1935,10 +1982,11 @@ export function SchrittBelegung({
                     felderWerkzeug
                       ? {
                           onDownM: (p) => onDownM(f, p),
-                          onMoveM: (p) =>
-                            setDrag((d) =>
-                              !d || d.flaecheId !== f.id ? d : p ? { ...d, aktuell: p } : null,
-                            ),
+                          // Ein ungültiger Einzelpunkt (z. B. nahe der projektiven
+                          // Fluchtgrenze) darf eine laufende Geste nicht abbrechen.
+                          onMoveM: (p) => {
+                            if (p) aktualisiereDrag(f.id, p);
+                          },
                           onUpM: (p) => onUpM(f, p),
                         }
                       : undefined
@@ -1983,6 +2031,7 @@ export function SchrittBelegung({
                             ausblendenId: f.id,
                             assetId: `modul-${f.id}`,
                             clipIdPrefix,
+                            modulDarstellung: ziehtHier ? 'kontur' : 'detail',
                           })
                       : undefined
                   }

@@ -169,6 +169,36 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
   await page.mouse.up();
   await expect(page.getByText(/1 Feld/).first()).toBeVisible();
 
+  // Das ausgewählte Feld über die kalibrierte Dachfläche hinausziehen. Während
+  // des Zugs werden nur leichte Konturen aufgebaut; danach kehrt die Detailoptik
+  // zurück und der blaue Feldrahmen bleibt tatsächlich außerhalb sichtbar.
+  // Mobil wächst die Werkzeugleiste nach der Auswahl und schiebt das SVG nach
+  // unten. Deshalb die echte Feldposition erst nach dem Anlegen neu auslesen.
+  const feldPfad = dach.locator('path[fill="rgba(2,132,199,0.06)"]').first();
+  const feldBox = await feldPfad.boundingBox();
+  const aktuelleDachBox = await dach.boundingBox();
+  if (!feldBox || !aktuelleDachBox) throw new Error('Das angelegte Feld ist nicht sichtbar.');
+  const mitte = { x: feldBox.x + feldBox.width / 2, y: feldBox.y + feldBox.height / 2 };
+  const ausserhalb = {
+    x: Math.min(viewport.width - 2, aktuelleDachBox.x + aktuelleDachBox.width * 0.97),
+    y: mitte.y,
+  };
+  await page.mouse.move(mitte.x, mitte.y);
+  await page.mouse.down();
+  await page.mouse.move(ausserhalb.x, ausserhalb.y, { steps: 30 });
+  await expect(dach.locator('[data-modul-darstellung="kontur"]').first()).toBeVisible();
+  await expect(dach.locator('[data-modul-darstellung="detail"]')).toHaveCount(0);
+  await page.mouse.up();
+  await expect(dach.locator('[data-modul-darstellung="detail"]').first()).toBeVisible();
+  const feldRagtRaus = await dach.locator('path[fill="rgba(2,132,199,0.06)"]').evaluate((pfad) => {
+    const d = pfad.getAttribute('d') ?? '';
+    const zahlen = (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+    const xWerte = zahlen.filter((_, index) => index % 2 === 0);
+    const breite = (pfad as SVGPathElement).ownerSVGElement?.viewBox.baseVal.width ?? 0;
+    return xWerte.length > 0 && Math.max(...xWerte) > breite;
+  });
+  expect(feldRagtRaus).toBe(true);
+
   await dach.press('ArrowRight');
   await dach.press('Shift+ArrowDown');
   await page.getByRole('button', { name: /Feld löschen/ }).click();

@@ -227,10 +227,11 @@ describe('Belegungsbedienung', () => {
     }
     const { getByRole, findByText } = render(<TestApp />);
     const svg = getByRole('img', { name: /^Belegungsfläche Dachfläche 1/ }) as unknown as SVGSVGElement;
-    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+    const normalesRechteck = {
       x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: 600, width: 1000, height: 600,
       toJSON: () => ({}),
-    });
+    };
+    const rechteckSpy = vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue(normalesRechteck);
     const flaeche = start.flaechen[0]!;
     const ecken = flaeche.fotoZuordnungen![0]!.eckenPx!;
     const h = homographie(
@@ -251,9 +252,24 @@ describe('Belegungsbedienung', () => {
     const griff = fotoPunkt(3, 2);
     const gross = fotoPunkt(12, 2);
     sendePointer(svg, 'pointerdown', griff[0], griff[1]);
+    // Ein einzelner ungültiger Messpunkt (hier: kurzzeitig 0×0-Viewport) darf
+    // den laufenden Zug nicht mehr abbrechen.
+    rechteckSpy.mockReturnValueOnce({
+      ...normalesRechteck,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+    });
     sendePointer(svg, 'pointermove', gross[0], gross[1]);
+    sendePointer(svg, 'pointermove', gross[0], gross[1]);
+    await waitFor(() => {
+      expect(svg.querySelector('[data-modul-darstellung="kontur"]')).toBeTruthy();
+      expect(svg.querySelector('[data-modul-darstellung="detail"]')).toBeNull();
+    });
     sendePointer(svg, 'pointerup', gross[0], gross[1]);
     await waitFor(() => expect(letzterStand.flaechen[0]!.felder![0]!.breiteM).toBeGreaterThan(10));
+    await waitFor(() => expect(svg.querySelector('[data-modul-darstellung="detail"]')).toBeTruthy());
 
     // Danach das weiterhin ausgewählte Feld über die linke Dachkante hinausschieben.
     const links = fotoPunkt(-2, 2);
