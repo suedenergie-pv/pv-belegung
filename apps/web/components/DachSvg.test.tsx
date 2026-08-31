@@ -172,6 +172,45 @@ describe('DachSvg', () => {
     expect(kontur.match(/data-modul-darstellung="kontur"/g)).toHaveLength(raster.positionen.length);
   });
 
+  it('legt Feldrahmen und Griffe über Hindernisse und gibt den Hindernissen keine Zeiger-Treffer', () => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const basis: Flaeche = {
+      ...neueFlaeche(1, 'A'),
+      breiteM: 10,
+      hoeheM: 6,
+      foto: {
+        dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+        breitePx: 1000,
+        hoehePx: 600,
+        traufePx: null,
+        eckenPx: [[100, 550], [900, 550], [850, 50], [150, 50]],
+      },
+    };
+    const feld = { xM: 2, yM: 1, breiteM: 5, hoeheM: 4, quer: false };
+    const flaeche = {
+      ...basis,
+      felder: [feld],
+      // Liegt auf der linken oberen Feldecke und damit direkt auf einem Griff.
+      hindernisse: [{ xM: 1.5, yM: 0.5, breiteM: 1, hoeheM: 1 }],
+    };
+    const html = renderToStaticMarkup(
+      <DachSvg
+        flaeche={flaeche}
+        raster={rasterFuer(flaeche, modul)}
+        modul={modul}
+        felderAnzeige={[{ rect: feld, ausgewaehlt: true }]}
+        pointer={{ onDownM: () => undefined, onMoveM: () => undefined, onUpM: () => undefined }}
+      />,
+    );
+
+    const hindernis = html.indexOf('fill="rgba(239,68,68,0.35)"');
+    const feldOverlay = html.indexOf('data-testid="belegungsfeld-overlays"');
+    expect(hindernis).toBeGreaterThan(-1);
+    expect(feldOverlay).toBeGreaterThan(hindernis);
+    expect(html.slice(hindernis, hindernis + 220)).toContain('pointer-events:none');
+    expect(html.match(/data-feld-griff=/g)).toHaveLength(8);
+  });
+
   it('bietet für die Zeichenfläche eine beschriftete Tastaturbedienung an', () => {
     const flaeche = neueFlaeche(1, 'A');
     const modul = modulById('jw-hd96n-r2-460');

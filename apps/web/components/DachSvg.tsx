@@ -742,6 +742,7 @@ export function DachSvg({
           fill="rgba(239,68,68,0.35)"
           stroke="#ef4444"
           strokeWidth={0.03}
+          style={{ pointerEvents: 'none' }}
         />
       ))}
       {draft.length >= 2 && (
@@ -813,6 +814,7 @@ export function DachSvg({
                   width={0.7}
                   height={0.7}
                   fill="transparent"
+                  data-feld-griff={id}
                   {...overlayZeiger(GRIFF_CURSOR[id])}
                 />
                 <rect
@@ -982,6 +984,105 @@ export function DachSvg({
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
       const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh) : undefined;
+      const felderFoto = !druck ? (
+        <g data-testid="belegungsfeld-overlays">
+          {(felderAnzeige ?? []).map((fa, i) => {
+            const pfad = projPfad(
+              h,
+              rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
+            );
+            if (!pfad.ok) return null;
+            return <g key={i}>
+              <path
+                d={pfad.d}
+                fill="rgba(2,132,199,0.06)"
+                stroke="#0284c7"
+                strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
+                strokeDasharray={
+                  fa.ausgewaehlt
+                    ? undefined
+                    : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
+                }
+                {...overlayZeiger('move')}
+              />
+              {/* Griffe am ausgewählten Feld — an die projizierten Punkte gesetzt */}
+              {fa.ausgewaehlt &&
+                griffPunkte(fa.rect).map(({ id, p }) => {
+                  const [gx, gy] = projiziere(h, [p[0], p[1]]);
+                  const r = foto.breitePx * 0.008;
+                  const hit = Math.max(r * 2, foto.breitePx * 0.03);
+                  return (
+                    <g key={id}>
+                      <rect
+                        x={gx - hit / 2}
+                        y={gy - hit / 2}
+                        width={hit}
+                        height={hit}
+                        fill="transparent"
+                        data-feld-griff={id}
+                        {...overlayZeiger(GRIFF_CURSOR[id])}
+                      />
+                      <rect
+                        x={gx - r}
+                        y={gy - r}
+                        width={r * 2}
+                        height={r * 2}
+                        rx={r * 0.3}
+                        fill="#ffffff"
+                        stroke="#0284c7"
+                        strokeWidth={foto.breitePx * 0.002}
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    </g>
+                  );
+                })}
+            </g>;
+          })}
+          {feldVorschau && (() => {
+            const pfad = projPfad(
+              h,
+              rechteck(
+                feldVorschau.rect.xM,
+                feldVorschau.rect.yM,
+                feldVorschau.rect.breiteM,
+                feldVorschau.rect.hoeheM,
+              ),
+            );
+            if (!pfad.ok) return null;
+            return <g style={{ pointerEvents: 'none' }}>
+              <path
+                d={pfad.d}
+                fill="rgba(2,132,199,0.15)"
+                stroke="#0284c7"
+                strokeWidth={foto.breitePx * 0.003}
+                strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
+              />
+              {(() => {
+                const [mx, my] = projiziere(h, [
+                  feldVorschau.rect.xM + feldVorschau.rect.breiteM / 2,
+                  feldVorschau.rect.yM + feldVorschau.rect.hoeheM / 2,
+                ]);
+                return (
+                  <text
+                    x={mx}
+                    y={my}
+                    fontSize={foto.breitePx * 0.035}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="#ffffff"
+                    stroke="#0f172a"
+                    strokeWidth={foto.breitePx * 0.008}
+                    paintOrder="stroke"
+                    fontWeight={700}
+                  >
+                    {feldVorschau.anzahl}
+                  </text>
+                );
+              })()}
+            </g>;
+          })()}
+        </g>
+      ) : null;
       return (
         <div
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -1045,105 +1146,6 @@ export function DachSvg({
                   />
                 ) : null;
               })}
-            {/* Belegungsfelder perspektivisch (gleiche Homographie wie die Module) */}
-            {!druck && (
-              <g>
-                {(felderAnzeige ?? []).map((fa, i) => {
-                  const pfad = projPfad(
-                    h,
-                    rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
-                  );
-                  if (!pfad.ok) return null;
-                  return <g key={i}>
-                    <path
-                      d={pfad.d}
-                      fill="rgba(2,132,199,0.06)"
-                      stroke="#0284c7"
-                      strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
-                      strokeDasharray={
-                        fa.ausgewaehlt
-                          ? undefined
-                          : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
-                      }
-                      {...overlayZeiger('move')}
-                    />
-                    {/* Griffe am ausgewählten Feld — an die projizierten Ecken gesetzt */}
-                    {fa.ausgewaehlt &&
-                      griffPunkte(fa.rect).map(({ id, p }) => {
-                        const [gx, gy] = projiziere(h, [p[0], p[1]]);
-                        const r = foto.breitePx * 0.008;
-                        const hit = Math.max(r * 2, foto.breitePx * 0.03);
-                        return (
-                          <g key={id}>
-                            <rect
-                              x={gx - hit / 2}
-                              y={gy - hit / 2}
-                              width={hit}
-                              height={hit}
-                              fill="transparent"
-                              {...overlayZeiger(GRIFF_CURSOR[id])}
-                            />
-                            <rect
-                              x={gx - r}
-                              y={gy - r}
-                              width={r * 2}
-                              height={r * 2}
-                              rx={r * 0.3}
-                              fill="#ffffff"
-                              stroke="#0284c7"
-                              strokeWidth={foto.breitePx * 0.002}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </g>
-                        );
-                      })}
-                  </g>;
-                })}
-                {feldVorschau && (() => {
-                  const pfad = projPfad(
-                    h,
-                    rechteck(
-                      feldVorschau.rect.xM,
-                      feldVorschau.rect.yM,
-                      feldVorschau.rect.breiteM,
-                      feldVorschau.rect.hoeheM,
-                    ),
-                  );
-                  if (!pfad.ok) return null;
-                  return <g style={{ pointerEvents: 'none' }}>
-                    <path
-                      d={pfad.d}
-                      fill="rgba(2,132,199,0.15)"
-                      stroke="#0284c7"
-                      strokeWidth={foto.breitePx * 0.003}
-                      strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
-                    />
-                    {(() => {
-                      const [mx, my] = projiziere(h, [
-                        feldVorschau.rect.xM + feldVorschau.rect.breiteM / 2,
-                        feldVorschau.rect.yM + feldVorschau.rect.hoeheM / 2,
-                      ]);
-                      return (
-                        <text
-                          x={mx}
-                          y={my}
-                          fontSize={foto.breitePx * 0.035}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fill="#ffffff"
-                          stroke="#0f172a"
-                          strokeWidth={foto.breitePx * 0.008}
-                          paintOrder="stroke"
-                          fontWeight={700}
-                        >
-                          {feldVorschau.anzahl}
-                        </text>
-                      );
-                    })()}
-                  </g>;
-                })()}
-              </g>
-            )}
             {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
             {!druck && umriss && (() => {
               const pfad = projPfad(h, umriss.map(([x, y]) => [x, y] as Punkt));
@@ -1167,6 +1169,7 @@ export function DachSvg({
                     fill="rgba(239,68,68,0.35)"
                     stroke="#ef4444"
                     strokeWidth={foto.breitePx * 0.0015}
+                    style={{ pointerEvents: 'none' }}
                   />
                 ) : null;
               })}
@@ -1196,6 +1199,8 @@ export function DachSvg({
                   />
                 );
               })}
+            {/* Belegungsfelder und Griffe liegen bewusst ÜBER Hindernissen. */}
+            {felderFoto}
             {!druck && masse && renderMasse(foto.breitePx * 0.02, (p) => projiziere(h, [p[0], p[1]]))}
             {!druck && perspektivGriffe}
           </svg>

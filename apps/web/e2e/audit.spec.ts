@@ -131,6 +131,71 @@ test('responsive Ebenen und Touch-Ziele überdecken sich nicht', async ({ page }
   expect(pruefung.massPosition).toBe(testInfo.project.use.viewport!.width >= 1024 ? 'sticky' : 'relative');
 });
 
+test('ein zweites Belegungsfeld lässt sich aus dem ersten heraus aufziehen', async ({ page }) => {
+  await page.goto('/');
+  await projektPflichtfelder(page);
+  await fotoKalibrieren(page);
+
+  const dach = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ });
+  await dach.scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: '+ Belegungsbereich zeichnen' }).click();
+  await dach.scrollIntoViewIfNeeded();
+  const erstesDachBox = await dach.boundingBox();
+  const erstesViewport = page.viewportSize();
+  if (!erstesDachBox || !erstesViewport) throw new Error('Die Belegungsfläche ist nicht sichtbar.');
+  const sichtbar = {
+    links: Math.max(0, erstesDachBox.x),
+    rechts: Math.min(erstesViewport.width - 2, erstesDachBox.x + erstesDachBox.width),
+    oben: Math.max(56, erstesDachBox.y),
+    unten: Math.min(erstesViewport.height - 2, erstesDachBox.y + erstesDachBox.height),
+  };
+  const ersterStart = {
+    x: sichtbar.links + (sichtbar.rechts - sichtbar.links) * 0.25,
+    y: sichtbar.oben + (sichtbar.unten - sichtbar.oben) * 0.25,
+  };
+  const erstesEnde = {
+    x: sichtbar.links + (sichtbar.rechts - sichtbar.links) * 0.65,
+    y: sichtbar.oben + (sichtbar.unten - sichtbar.oben) * 0.70,
+  };
+  await page.mouse.move(ersterStart.x, ersterStart.y);
+  await page.mouse.down();
+  await page.mouse.move(erstesEnde.x, erstesEnde.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByText(/1 Feld/).first()).toBeVisible();
+  const moduleVorher = Number((await page.getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).textContent())?.match(/(\d+) Module/)?.[1]);
+
+  // Der Start des zweiten Zugs liegt mitten im ersten blauen Rechteck. Nur der
+  // ausdrückliche Neu-Modus darf daraus ein weiteres Feld statt einer Bewegung machen.
+  await page.getByRole('button', { name: '+ Feld zeichnen' }).click();
+  await expect(page.getByRole('button', { name: '+ Feld zeichnen' })).toHaveAttribute('aria-pressed', 'true');
+  await dach.scrollIntoViewIfNeeded();
+  const erstesFeld = dach.locator('path[fill="rgba(2,132,199,0.06)"]').first();
+  const feldBox = await erstesFeld.boundingBox();
+  const dachBox = await dach.boundingBox();
+  const viewport = page.viewportSize();
+  if (!feldBox || !dachBox || !viewport) throw new Error('Das erste Feld ist nicht sichtbar.');
+  const start = {
+    x: feldBox.x + feldBox.width / 2,
+    y: feldBox.y + feldBox.height * 0.02,
+  };
+  const ende = {
+    x: Math.min(viewport.width - 2, dachBox.x + dachBox.width * 0.92),
+    // Vertikal im ersten Feld bleiben, damit der nach rechts herausragende Teil
+    // in jeder Bildschirmform garantiert mindestens eine Modulreihe erhält.
+    y: Math.min(viewport.height - 2, feldBox.y + feldBox.height * 0.98),
+  };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(ende.x, ende.y, { steps: 20 });
+  await page.mouse.up();
+
+  await expect(page.getByText(/2 Felder/).first()).toBeVisible();
+  await expect(dach.locator('path[fill="rgba(2,132,199,0.06)"]')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: '+ Feld zeichnen' })).toHaveAttribute('aria-pressed', 'false');
+  const moduleDanach = Number((await page.getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).textContent())?.match(/(\d+) Module/)?.[1]);
+  expect(moduleDanach).toBeGreaterThan(moduleVorher);
+});
+
 test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const browserFehler: string[] = [];

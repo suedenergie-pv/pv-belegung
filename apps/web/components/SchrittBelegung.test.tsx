@@ -6,6 +6,7 @@ import {
   neuesProjekt,
   perspektiveQuelle,
   rahmenBreiteVon,
+  rasterFuer,
   vollFeldFuer,
   modulById,
   neueGaubenFlaeche,
@@ -216,10 +217,60 @@ describe('Belegungsbedienung', () => {
     expect(feld.breiteM).toBeGreaterThan(10);
   });
 
-  it('vergrößert und verschiebt bestehende Belegungsbereiche frei über den Dachrahmen', async () => {
+  it('zeichnet ein zweites Feld auch dann, wenn der Zug im ersten Feld beginnt', async () => {
     const start = projektMitFreiraum([
+      { xM: 1, yM: 1, breiteM: 4, hoeheM: 4, quer: false },
+    ]);
+    let letzterStand = start;
+    function TestApp() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
+    }
+    const { getByRole, findByText } = render(<TestApp />);
+    const svg = getByRole('img', { name: /^Belegungsfläche Dachfläche 1/ }) as unknown as SVGSVGElement;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: 600, width: 1000, height: 600,
+      toJSON: () => ({}),
+    });
+    const flaeche = start.flaechen[0]!;
+    const h = homographie(
+      rahmenBreiteVon(flaeche),
+      flaeche.hoeheM,
+      flaeche.fotoZuordnungen![0]!.eckenPx!,
+      perspektiveQuelle(flaeche),
+    )!;
+    const fotoPunkt = (xM: number, yM: number) => projiziere(h, [xM, yM]);
+
+    // Der Start liegt bewusst im ersten Feld (x 1–5 m). Ohne ausdrücklichen
+    // Zeichenmodus würde dieser Zug das vorhandene Rechteck verschieben.
+    fireEvent.click(getByRole('button', { name: '+ Feld zeichnen' }));
+    expect(getByRole('button', { name: '+ Feld zeichnen' }).getAttribute('aria-pressed')).toBe('true');
+    const startPunkt = fotoPunkt(3, 2);
+    const endePunkt = fotoPunkt(8, 5);
+    sendePointer(svg, 'pointerdown', startPunkt[0], startPunkt[1]);
+    sendePointer(svg, 'pointermove', endePunkt[0], endePunkt[1]);
+    sendePointer(svg, 'pointerup', endePunkt[0], endePunkt[1]);
+
+    await waitFor(() => expect(letzterStand.flaechen[0]!.felder).toHaveLength(2));
+    await findByText('1 von 2 ausgewählt');
+    expect(getByRole('button', { name: '+ Feld zeichnen' }).getAttribute('aria-pressed')).toBe('false');
+    const raster = rasterFuer(letzterStand.flaechen[0]!, modulById(letzterStand.modulId));
+    expect(new Set(raster.positionen.map((p) => p.feld))).toEqual(new Set([0, 1]));
+  });
+
+  it('vergrößert und verschiebt bestehende Belegungsbereiche frei über den Dachrahmen', async () => {
+    const basis = projektMitFreiraum([
       { xM: 1, yM: 1, breiteM: 2, hoeheM: 2, quer: false },
     ]);
+    const start: Projekt = {
+      ...basis,
+      flaechen: [{
+        ...basis.flaechen[0]!,
+        // Der rechte Feldgriff (3 m / 2 m) liegt mitten im Hindernis. Trotzdem
+        // muss der blaue Griff den Zug erhalten und das Feld vergrößern.
+        hindernisse: [{ xM: 2.5, yM: 1.5, breiteM: 1, hoeheM: 1 }],
+      }],
+    };
     let letzterStand = start;
     function TestApp() {
       const [projekt, setProjekt] = useState(start);

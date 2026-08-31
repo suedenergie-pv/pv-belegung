@@ -85,10 +85,12 @@ interface GeometrieStand {
 
 /**
  * Werkzeuge der Belegung (16.07.2026, Genrih: „Belegungsautomatismus mildern").
- * null = FELDER (Standard): Felder aufziehen, auswählen, verschieben.
+ * null = AUSWAHL (Standard): Felder auswählen und verschieben; auf freier Fläche
+ * kann weiterhin direkt ein Feld aufgezogen werden.
+ * 'feld_neu' = ein weiteres Feld aufziehen, auch über einem bestehenden Feld.
  * 'zellen' = einzelne Module im Feld antippen und dauerhaft entfernen.
  */
-type WerkzeugArt = 'zellen';
+type WerkzeugArt = 'feld_neu' | 'zellen';
 
 type FotoUploadZiel =
   | { art: 'ersetzen'; fotoId: string }
@@ -1121,7 +1123,14 @@ export function SchrittBelegung({
 
   // ---- Zeiger-Gesten im Felder-Werkzeug ----
 
-  const onDownM = (f: Flaeche, p: PunktM) => {
+  const onDownM = (f: Flaeche, p: PunktM, nurNeuesFeld = false) => {
+    // Der ausdrückliche Zeichenmodus muss auch dann ein neues Feld beginnen,
+    // wenn der Startpunkt in einem vorhandenen Feld liegt. Sonst wäre bei einem
+    // großen ersten Feld kein zweites Rechteck mehr möglich.
+    if (nurNeuesFeld) {
+      starteDrag({ art: 'neu', flaecheId: f.id, start: p, aktuell: p });
+      return;
+    }
     const felder = felderVon(f);
     // Griffe der AUSGEWÄHLTEN Felder haben Vorrang vor allem anderen — sie liegen
     // auf dem Feldrand, dort würde sonst sofort das Verschieben starten.
@@ -1193,6 +1202,9 @@ export function SchrittBelegung({
           ],
         });
         setAuswahl({ flaecheId: f.id, indices: [felder.length] });
+        // Nach dem Aufziehen direkt zurück zur Auswahl: Das neue Feld lässt sich
+        // sofort verschieben/vergrößern; für das nächste genügt erneut „+ Feld“.
+        setModus(null);
       }
     } else {
       // Verschieben/Größe-Ändern committen (Auswahl bleibt bestehen). Beim RESIZE
@@ -1564,8 +1576,11 @@ export function SchrittBelegung({
         const gaubenAufFlaeche = projekt.flaechen.filter(
           (x) => x.elternFlaecheId === f.id && !!x.gaubenTyp,
         );
-        // Felder-Werkzeug: aktiv, solange kein anderes Werkzeug und nichts gezeichnet wird
+        // Auswahl und ausdrückliches Neu-Zeichnen teilen die Zeiger-Ebene, haben
+        // aber absichtlich verschiedene Trefferregeln (bestehendes Feld vs. neu).
+        const feldNeuWerkzeug = modusArt(f) === 'feld_neu' && !zeichneHier && belegungZeigen && !perspektiveHier;
         const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen && !perspektiveHier;
+        const feldPointerAktiv = felderWerkzeug || feldNeuWerkzeug;
         const ziehtHier = drag?.flaecheId === f.id;
         const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
 
@@ -1728,14 +1743,22 @@ export function SchrittBelegung({
               {belegungZeigen && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 lg:flex-col lg:items-stretch">
                   <span className="hidden text-xs font-bold uppercase tracking-wide text-slate-400 lg:block">Werkzeuge</span>
-                  <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-2">
+                  <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-1">
                     <WerkzeugKnopf
                       aktiv={modusArt(f) === null && !zeichneHier}
-                      title="Felder aufziehen, auswählen und verschieben"
+                      title="Belegungsfelder auswählen, verschieben und in der Größe ändern"
                       onClick={() => setzeModus(f, null)}
                     >
                       <IconFeld />
-                      Bereich zeichnen/auswählen
+                      Auswählen/verschieben
+                    </WerkzeugKnopf>
+                    <WerkzeugKnopf
+                      aktiv={modusArt(f) === 'feld_neu'}
+                      title="Ein weiteres Belegungsfeld aufziehen – auch über einem vorhandenen Feld"
+                      onClick={() => setzeModus(f, 'feld_neu')}
+                    >
+                      <IconFeld />
+                      + Feld zeichnen
                     </WerkzeugKnopf>
                     <WerkzeugKnopf
                       aktiv={modusArt(f) === 'zellen'}
@@ -1750,7 +1773,9 @@ export function SchrittBelegung({
                   <p className="text-xs text-slate-500 lg:text-center">
                     {modusArt(f) === 'zellen'
                       ? 'Aktiver Modus: einzelne Module an- oder ausschalten.'
-                      : 'Bereiche dürfen über das Dach hinausreichen und frei verschoben werden.'}
+                      : modusArt(f) === 'feld_neu'
+                        ? 'Neues blaues Rechteck aufziehen – Start auch über einem bestehenden Feld möglich.'
+                        : 'Felder auswählen oder verschieben; Bereiche dürfen über das Dach hinausreichen.'}
                   </p>
 
                   {artVon(f) === 'flachdach' ? (
@@ -1880,6 +1905,14 @@ export function SchrittBelegung({
                 </div>
               )}
 
+              {feldNeuWerkzeug && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 text-sm text-sky-900 lg:flex-col lg:items-stretch">
+                  <strong>Weiteres Belegungsfeld zeichnen</strong>
+                  <span>Beliebiges blaues Rechteck aufziehen – auch über einem vorhandenen Feld.</span>
+                  <button type="button" className={aktionKlasse} onClick={() => setzeModus(f, null)}>Abbrechen</button>
+                </div>
+              )}
+
               {felderWerkzeug && felder.length > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 lg:flex-col lg:items-stretch">
                   <span className="text-sm font-semibold text-sky-900">
@@ -1979,9 +2012,9 @@ export function SchrittBelegung({
                       : undefined
                   }
                   pointer={
-                    felderWerkzeug
+                    feldPointerAktiv
                       ? {
-                          onDownM: (p) => onDownM(f, p),
+                          onDownM: (p) => onDownM(f, p, feldNeuWerkzeug),
                           // Ein ungültiger Einzelpunkt (z. B. nahe der projektiven
                           // Fluchtgrenze) darf eine laufende Geste nicht abbrechen.
                           onMoveM: (p) => {
@@ -2062,7 +2095,7 @@ export function SchrittBelegung({
                     type="button"
                     className="touch-target h-11 rounded-lg bg-akzent px-4 font-semibold text-white"
                     onClick={() => {
-                      setzeModus(f, null);
+                      setzeModus(f, 'feld_neu');
                       document.querySelector<SVGSVGElement>(`#belegung-${f.id} svg`)?.focus();
                     }}
                   >
