@@ -918,16 +918,6 @@ export function SchrittBelegung({
     return null; // gemischt
   };
 
-  /** Feld-Position vollständig im metrischen Dachrahmen halten. */
-  const klemmeFeld = (f: Flaeche, feld: BelegungsFeldM, xM: number, yM: number) => {
-    const B = rahmenBreiteVon(f);
-    const H = f.hoeheM;
-    return {
-      xM: Math.max(0, Math.min(Math.max(0, B - feld.breiteM), xM)),
-      yM: Math.max(0, Math.min(Math.max(0, H - feld.hoeheM), yM)),
-    };
-  };
-
   const perspektivePruefen = (flaeche: Flaeche, ecken: Ecken) =>
     pruefePerspektive(
       rahmenBreiteVon(flaeche),
@@ -1005,20 +995,6 @@ export function SchrittBelegung({
     });
   };
 
-  /** Größe und Lage eines Felds auf den Dachrahmen begrenzen. */
-  const begrenzeFeld = (f: Flaeche, rect: RechteckM): RechteckM => {
-    const B = rahmenBreiteVon(f);
-    const H = f.hoeheM;
-    const xM = Math.max(0, Math.min(B, rect.xM));
-    const yM = Math.max(0, Math.min(H, rect.yM));
-    return {
-      xM,
-      yM,
-      breiteM: Math.max(0, Math.min(rect.breiteM, B - xM)),
-      hoeheM: Math.max(0, Math.min(rect.hoeheM, H - yM)),
-    };
-  };
-
   /**
    * Fläche mit laufender Zieh-Geste (nur zum Rendern). Während des Ziehens wird
    * NICHT ins Projekt geschrieben: so entstehen weder Speicherarbeit noch ein
@@ -1034,7 +1010,7 @@ export function SchrittBelegung({
         ...f,
         felder: felderVon(f).map((feld, i) =>
           drag.indices.includes(i)
-            ? { ...feld, ...klemmeFeld(f, feld, feld.xM + dx, feld.yM + dy) }
+            ? { ...feld, xM: feld.xM + dx, yM: feld.yM + dy }
             : feld,
         ),
       };
@@ -1051,7 +1027,7 @@ export function SchrittBelegung({
           const { rect, zellVersatz } = feldMitGriff(feld, drag.griff, dx, dy, sm.pitchXM, sm.pitchYM);
           return {
             ...feld,
-            ...begrenzeFeld(f, rect),
+            ...rect,
             leer: leerVerschoben(
               feld.leer,
               zellVersatz.col * sm.colsJeSchrittX,
@@ -1077,8 +1053,11 @@ export function SchrittBelegung({
     patchFlaeche(f.id, {
       felder: felderVon(f).map((feld, i) => {
         if (!indices.includes(i)) return feld;
-        const k = klemmeFeld(f, feld, feld.xM + sx * step, feld.yM + sy * step);
-        return { ...feld, xM: round2(k.xM), yM: round2(k.yM) };
+        return {
+          ...feld,
+          xM: round2(feld.xM + sx * step),
+          yM: round2(feld.yM + sy * step),
+        };
       }),
     });
   };
@@ -1092,12 +1071,11 @@ export function SchrittBelegung({
     patchFlaeche(f.id, {
       felder: felderVon(f).map((feld, index) => {
         if (!indices.includes(index)) return feld;
-        const rect = begrenzeFeld(f, {
+        return {
           ...feld,
           breiteM: Math.max(MIN_FELD_M, feld.breiteM + sx * step),
           hoeheM: Math.max(MIN_FELD_M, feld.hoeheM + sy * step),
-        });
-        return { ...feld, ...rect };
+        };
       }),
     });
   };
@@ -1726,7 +1704,7 @@ export function SchrittBelegung({
                   <p className="text-xs text-slate-500 lg:text-center">
                     {modusArt(f) === 'zellen'
                       ? 'Aktiver Modus: einzelne Module an- oder ausschalten.'
-                      : 'Aktiver Modus: Bereich aufziehen, antippen oder verschieben.'}
+                      : 'Bereiche dürfen über das Dach hinausreichen und frei verschoben werden.'}
                   </p>
 
                   {artVon(f) === 'flachdach' ? (
@@ -2029,7 +2007,7 @@ export function SchrittBelegung({
             {belegungZeigen && felder.length === 0 && !zeichneHier && (
               <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
                 <strong className="block">Noch kein Belegungsbereich angelegt.</strong>
-                <p className="mt-1">Du kannst einen Bereich direkt im Foto aufziehen oder die nutzbare Fläche automatisch füllen.</p>
+                <p className="mt-1">Du kannst einen Bereich frei im Foto aufziehen – auch größer als das Dach – oder die nutzbare Fläche automatisch füllen.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"

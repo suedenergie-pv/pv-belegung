@@ -960,8 +960,9 @@ export function DachSvg({
         const [xM, yM] = projiziere(inv, [px, py]);
         return Number.isFinite(xM) && Number.isFinite(yM) ? [xM, yM] : null;
       };
-      // Alle Interaktionen bleiben im metrischen Rahmen. Rand- und Rastereinrasten
-      // erfolgt explizit im Belegungseditor; ein notwendiges „Überziehen" gibt es nicht.
+      // Geklemmt NUR fürs Zeichnen (Umriss-/Hindernis-Punkte gehören auf die Fläche).
+      // Belegungsfelder brauchen die rohe Position: Ein Feld darf bewusst weit über
+      // den Dachrahmen reichen, um durch Verschieben mit der Rasterphase zu spielen.
       const eventZuM = (e: Parameters<typeof eventZuMRoh>[0]): PunktM | null => {
         const p = eventZuMRoh(e);
         return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
@@ -975,7 +976,7 @@ export function DachSvg({
       const moveM = zeichnen?.aktiv && zeichnen.onMoveM
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
-      const zeiger = pointer ? pointerHandler(pointer, eventZuM) : undefined;
+      const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh) : undefined;
       return (
         <div
           className="mx-auto w-full overflow-hidden rounded-xl border border-slate-200"
@@ -1246,12 +1247,13 @@ export function DachSvg({
     if (rect.width === 0 || rect.height === 0) return null; // 0×0-Viewport (Preview-Falle)
     return [((e.clientX - rect.left) / rect.width) * B, ((e.clientY - rect.top) / rect.height) * H];
   };
-  // Zeichnen und Ziehen bleiben im metrischen Rahmen; Einrasten ist explizit.
+  // Geklemmt nur fürs ZEICHNEN. Belegungsfelder dürfen frei über den Rahmen hinaus
+  // aufgezogen, verschoben und vergrößert werden.
   const draufsichtZuM = (e: Parameters<typeof draufsichtZuMRoh>[0]): PunktM | null => {
     const p = draufsichtZuMRoh(e);
     return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
   };
-  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuM) : undefined;
+  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuMRoh) : undefined;
 
   return (
     <div

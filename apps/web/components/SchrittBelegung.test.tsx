@@ -4,13 +4,15 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   neuesProjekt,
+  perspektiveQuelle,
+  rahmenBreiteVon,
   vollFeldFuer,
   modulById,
   neueGaubenFlaeche,
   type Projekt,
 } from '../lib/model';
 import { satteldachSeitenEcken } from '../lib/gauben-geometrie';
-import type { Ecken } from '../lib/foto-geometrie';
+import { homographie, projiziere, type Ecken } from '../lib/foto-geometrie';
 import { SchrittBelegung } from './SchrittBelegung';
 
 beforeEach(() => {
@@ -58,6 +60,50 @@ describe('Belegungsbedienung', () => {
         }],
       }],
     };
+  };
+
+  const projektMitFreiraum = (
+    felder: NonNullable<Projekt['flaechen'][number]['felder']> = [],
+  ): Projekt => {
+    const basis = neuesProjekt();
+    return {
+      ...basis,
+      fotos: [{
+        id: 'foto-1',
+        name: 'Testfoto mit Rand',
+        dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+        breitePx: 1000,
+        hoehePx: 600,
+      }],
+      flaechen: [{
+        ...basis.flaechen[0]!,
+        breiteM: 10,
+        hoeheM: 6,
+        dachform: 'rechteck',
+        grunddatenFertig: true,
+        felder,
+        fotoZuordnungen: [{
+          fotoId: 'foto-1',
+          traufePx: null,
+          // Das Dach belegt bewusst nur einen Teil des Fotos. Der freie Bildrand
+          // muss für überstehende Belegungsfelder nutzbar bleiben.
+          eckenPx: [[200, 500], [800, 500], [800, 100], [200, 100]],
+          perspektiveBestaetigt: true,
+          markierungFertig: true,
+        }],
+      }],
+    };
+  };
+
+  const sendePointer = (
+    ziel: Element,
+    art: 'pointerdown' | 'pointermove' | 'pointerup',
+    clientX: number,
+    clientY: number,
+  ) => {
+    const event = new MouseEvent(art, { bubbles: true, clientX, clientY });
+    Object.defineProperty(event, 'pointerId', { value: 17 });
+    fireEvent(ziel, event);
   };
 
   const projektMitSatteldachgaube = (): Projekt => {
@@ -143,6 +189,78 @@ describe('Belegungsbedienung', () => {
     await waitFor(() => expect(letzterStand.flaechen[0]!.felder?.length).toBe(1));
     fireEvent.click(getByRole('button', { name: /Rückgängig/ }));
     await waitFor(() => expect(letzterStand.flaechen[0]!.felder).toEqual([]));
+  });
+
+  it('zieht neue Belegungsbereiche frei über den markierten Dachrahmen hinaus auf', async () => {
+    const start = projektMitFreiraum();
+    let letzterStand = start;
+    function TestApp() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
+    }
+    const { getByRole } = render(<TestApp />);
+    const svg = getByRole('img', { name: /^Belegungsfläche Dachfläche 1/ }) as unknown as SVGSVGElement;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: 600, width: 1000, height: 600,
+      toJSON: () => ({}),
+    });
+
+    // Von links außerhalb der Dachmarkierung bis rechts außerhalb ziehen.
+    sendePointer(svg, 'pointerdown', 100, 450);
+    sendePointer(svg, 'pointermove', 900, 150);
+    sendePointer(svg, 'pointerup', 900, 150);
+
+    await waitFor(() => expect(letzterStand.flaechen[0]!.felder).toHaveLength(1));
+    const feld = letzterStand.flaechen[0]!.felder![0]!;
+    expect(feld.xM).toBeLessThan(0);
+    expect(feld.breiteM).toBeGreaterThan(10);
+  });
+
+  it('vergrößert und verschiebt bestehende Belegungsbereiche frei über den Dachrahmen', async () => {
+    const start = projektMitFreiraum([
+      { xM: 1, yM: 1, breiteM: 2, hoeheM: 2, quer: false },
+    ]);
+    let letzterStand = start;
+    function TestApp() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
+    }
+    const { getByRole, findByText } = render(<TestApp />);
+    const svg = getByRole('img', { name: /^Belegungsfläche Dachfläche 1/ }) as unknown as SVGSVGElement;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: 600, width: 1000, height: 600,
+      toJSON: () => ({}),
+    });
+    const flaeche = start.flaechen[0]!;
+    const ecken = flaeche.fotoZuordnungen![0]!.eckenPx!;
+    const h = homographie(
+      rahmenBreiteVon(flaeche),
+      flaeche.hoeheM,
+      ecken,
+      perspektiveQuelle(flaeche),
+    )!;
+    const fotoPunkt = (xM: number, yM: number) => projiziere(h, [xM, yM]);
+
+    // Feld antippen, damit seine Größen-Griffe aktiv werden.
+    const innen = fotoPunkt(2, 2);
+    sendePointer(svg, 'pointerdown', innen[0], innen[1]);
+    sendePointer(svg, 'pointerup', innen[0], innen[1]);
+    await findByText('1 von 1 ausgewählt');
+
+    // Rechten Griff (x=3 m) weit über die rechte Dachkante (x=10 m) ziehen.
+    const griff = fotoPunkt(3, 2);
+    const gross = fotoPunkt(12, 2);
+    sendePointer(svg, 'pointerdown', griff[0], griff[1]);
+    sendePointer(svg, 'pointermove', gross[0], gross[1]);
+    sendePointer(svg, 'pointerup', gross[0], gross[1]);
+    await waitFor(() => expect(letzterStand.flaechen[0]!.felder![0]!.breiteM).toBeGreaterThan(10));
+
+    // Danach das weiterhin ausgewählte Feld über die linke Dachkante hinausschieben.
+    const links = fotoPunkt(-2, 2);
+    sendePointer(svg, 'pointerdown', innen[0], innen[1]);
+    sendePointer(svg, 'pointermove', links[0], links[1]);
+    sendePointer(svg, 'pointerup', links[0], links[1]);
+    await waitFor(() => expect(letzterStand.flaechen[0]!.felder![0]!.xM).toBeLessThan(0));
   });
 
   it('ändert die Hauptdach-Perspektive erst beim Speichern und nimmt sie vollständig zurück', async () => {
