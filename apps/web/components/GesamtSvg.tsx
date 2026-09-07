@@ -36,7 +36,6 @@ export function fotoFlaechenInhalt({
   foto,
   ausblendenId,
   beschriftung = true,
-  rahmen = beschriftung,
   assetId = FOTO_ASSET_ID,
   nurFertige = false,
   clipIdPrefix,
@@ -46,8 +45,6 @@ export function fotoFlaechenInhalt({
   foto: ProjektFoto;
   ausblendenId?: string | null;
   beschriftung?: boolean;
-  /** Zeigt die festgelegte Dachflächenkontur unabhängig von der Zonenbeschriftung. */
-  rahmen?: boolean;
   assetId?: string;
   /** PDF: nur vollständig abgeschlossene Foto-Markierungen ausgeben. */
   nurFertige?: boolean;
@@ -75,12 +72,12 @@ export function fotoFlaechenInhalt({
     );
     return (
       <g key={f.id} opacity={ausblendenId ? 0.72 : 1}>
-        {rahmen && (
+        {beschriftung && (
           <polygon
             data-testid="dachflaechen-rahmen"
             data-dachflaeche={f.id}
             points={z.eckenPx.map(([x, y]) => `${x},${y}`).join(' ')}
-            fill={beschriftung ? 'rgba(249,115,22,0.025)' : 'none'}
+            fill="rgba(249,115,22,0.025)"
             stroke="#fb923c"
             strokeWidth={px(0.003)}
             strokeLinejoin="round"
@@ -130,15 +127,12 @@ export const ProjektFotoSvg = memo(function ProjektFotoSvg({
   projekt,
   foto,
   beschriftung = false,
-  rahmen = false,
   nurFertige = false,
 }: {
   projekt: Projekt;
   foto: ProjektFoto;
   /** Für die Belegungsverwaltung: Flächenrahmen und A/B/C einblenden. */
   beschriftung?: boolean;
-  /** Für den PDF-Export: nur den Dachflächenrahmen ohne A/B/C-Zonenkreis einblenden. */
-  rahmen?: boolean;
   /** Für den PDF-Export: keine noch laufenden Markierungen rendern. */
   nurFertige?: boolean;
 }) {
@@ -159,7 +153,6 @@ export const ProjektFotoSvg = memo(function ProjektFotoSvg({
         projekt,
         foto,
         beschriftung,
-        rahmen,
         nurFertige,
         clipIdPrefix: `${svgInstanzId}-foto`,
       })}

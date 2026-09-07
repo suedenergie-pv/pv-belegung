@@ -5,7 +5,7 @@ import { modulById, neuesProjekt, vollFeldFuer } from '../lib/model';
 import { ProjektFotoSvg } from './GesamtSvg';
 
 describe('ProjektFotoSvg', () => {
-  it('zeigt im PDF den Dachflächenrahmen ohne Zonenkreis und Belegungsfeld', () => {
+  it('zeigt den Dachflächenrahmen nur in der Vorschau und nicht im PDF', () => {
     const projekt = neuesProjekt();
     const foto = {
       id: 'foto-1',
@@ -25,14 +25,17 @@ describe('ProjektFotoSvg', () => {
       markierungFertig: true,
     }];
 
-    const html = renderToStaticMarkup(
-      <ProjektFotoSvg projekt={projekt} foto={foto} rahmen nurFertige />,
+    const vorschau = renderToStaticMarkup(
+      <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />,
+    );
+    const pdf = renderToStaticMarkup(
+      <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />,
     );
 
-    expect(html).toContain('data-testid="dachflaechen-rahmen"');
-    expect(html).toContain('data-dachflaeche="p1"');
-    expect(html).toContain('stroke="#fb923c"');
-    expect(html).not.toContain('fill="rgba(249,115,22,0.025)"');
-    expect(html).not.toContain('data-testid="belegungsfeld-overlays"');
+    expect(vorschau).toContain('data-testid="dachflaechen-rahmen"');
+    expect(vorschau).toContain('data-dachflaeche="p1"');
+    expect(vorschau).toContain('stroke="#fb923c"');
+    expect(pdf).not.toContain('data-testid="dachflaechen-rahmen"');
+    expect(pdf).not.toContain('data-testid="belegungsfeld-overlays"');
   });
 });

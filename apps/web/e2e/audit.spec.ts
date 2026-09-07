@@ -295,10 +295,21 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
     .getByTestId('arbeitsbereich-p1')
     .getByRole('button', { name: 'Automatisch belegen' })
     .click();
+  const vorschauRahmen = page.getByTestId('dachflaechen-rahmen');
+  await expect(vorschauRahmen).toHaveCount(1);
+  await expect(vorschauRahmen).toBeVisible();
+  if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    await page.screenshot({
+      path: resolve('.debug-shots', `belegung-preview-rahmen-${testInfo.project.name}.png`),
+      fullPage: true,
+    });
+  }
   await page.getByRole('button', { name: '3. Export' }).click();
   const pdf = page.getByRole('button', { name: 'PDF herunterladen' });
   await expect(pdf).toBeEnabled();
   await expect(page.getByText(/PDF noch gesperrt/)).toHaveCount(0);
+  await expect(page.getByTestId('dachflaechen-rahmen')).toHaveCount(0);
   if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
     mkdirSync(resolve('.debug-shots'), { recursive: true });
     await page.screenshot({

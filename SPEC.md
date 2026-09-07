@@ -368,9 +368,10 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 - **„Am Foto anpassen"** scrollt das belegte Foto direkt unter die angeheftete
   Maßzeile. Form und Maße bleiben dort bedienbar, damit die Wirkung ohne
   Hin-und-her-Scrollen unmittelbar am Ziegelbild geprüft werden kann.
-- Im Belegungseditor dürfen A/B/C-Rahmen der Orientierung dienen. Im Kunden-PDF zeigt
-  die Foto-Übersicht Foto, Module und die orange Kontur der festgelegten Dachfläche;
-  Zonen-Kreise und Belegungsfelder bleiben ausgeblendet.
+- Im Belegungseditor zeigt die Foto-Vorschau den orangefarbenen A/B/C-Rahmen der
+  festgelegten Dachfläche zur Orientierung. Im Kunden-PDF zeigt die Foto-Übersicht
+  nur Foto und Module; Zonen-Kreise, Flächenkontur und Belegungsfelder bleiben
+  ausgeblendet.
 - Gauben sind eigene untergeordnete Dachflächen (§4.3). Eine Flachdachgaube mit
   Stehfalz bleibt dachparallel; eine Satteldachgaube besteht aus zwei Ebenen. Angelegt
   und verwaltet werden sie jedoch verschachtelt im Foto ihrer Elternfläche; das Foto
