@@ -856,6 +856,11 @@ export interface ProjektFreigabe {
   json: boolean;
   /** Rohdaten dürfen auch bei einem bewusst eskalierten, geometrisch ungelösten Dach gesichert werden. */
   rohdaten: boolean;
+  /** Inhaltliche Fehler, die den Belegungsplan selbst unbrauchbar machen. */
+  pdfFehler: ProjektFreigabeFehler[];
+  /** PDF-Fehler plus Pflichtangaben für die spätere Ticketsystem-Übergabe. */
+  jsonFehler: ProjektFreigabeFehler[];
+  /** Kompatibler Gesamtblick auf alle Exportfehler. */
   fehler: ProjektFreigabeFehler[];
   flags: string[];
   stringResult: StringPlanResult | null;
@@ -885,18 +890,21 @@ export function projektFlags(p: Projekt): string[] {
 }
 
 /**
- * Eine zentrale Freigabe für PDF und Ticketsystem-JSON. Entwürfe bleiben in
- * allen drei Schritten bearbeitbar; nur die Ausgabe wird hart gesperrt.
+ * Zentrale, zielgenaue Freigabe für PDF und Ticketsystem-JSON. Projektdaten
+ * sind im nackten PDF optional, für die technische Übergabe aber Pflicht.
  */
 export function projektFreigabe(p: Projekt): ProjektFreigabe {
-  const fehler: ProjektFreigabeFehler[] = [];
+  const projektFehler: ProjektFreigabeFehler[] = [];
+  const pdfFehler: ProjektFreigabeFehler[] = [];
   const pflicht = [
     ['kunde', p.kunde, 'Kunde fehlt.'],
     ['adresse', p.adresse, 'Adresse fehlt.'],
     ['erfasser', p.erfasser ?? '', 'Erfasser fehlt.'],
   ] as const;
   for (const [id, wert, meldung] of pflicht) {
-    if (!wert.trim()) fehler.push({ id, bereich: 'projekt', meldung, sprungziel: `projekt-${id}` });
+    if (!wert.trim()) {
+      projektFehler.push({ id, bereich: 'projekt', meldung, sprungziel: `projekt-${id}` });
+    }
   }
 
   let aktiveGesamt = 0;
@@ -904,7 +912,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
     const modul = modulById(p.modulId);
     for (const f of p.flaechen) aktiveGesamt += aktiveModule(f, rasterFuer(f, modul));
   } catch (e) {
-    fehler.push({
+    pdfFehler.push({
       id: 'modul',
       bereich: 'belegung',
       meldung: e instanceof Error ? e.message : 'Modulkatalog ist ungültig.',
@@ -912,7 +920,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
     });
   }
   if (aktiveGesamt === 0) {
-    fehler.push({
+    pdfFehler.push({
       id: 'keine-module',
       bereich: 'belegung',
       meldung: 'Mindestens ein aktives Modul muss belegt sein.',
@@ -921,7 +929,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
   }
 
   for (const f of belegteFlaechenOhneFoto(p)) {
-    fehler.push({
+    pdfFehler.push({
       id: `foto-${f.id}`,
       bereich: 'belegung',
       meldung: `${f.name}: bestätigte und gültige Fotoperspektive fehlt.`,
@@ -933,7 +941,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
   let stringResult: StringPlanResult | null = null;
   if (stringVorhanden) {
     if (!p.wrId) {
-      fehler.push({
+      pdfFehler.push({
         id: 'string-wr',
         bereich: 'stringplan',
         meldung: 'Stringdaten sind vorhanden, aber kein Wechselrichter ist zugeordnet.',
@@ -945,7 +953,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
         if (!stringResult) throw new Error('Keine MPPT-Zuordnung vorhanden.');
         const zuordnung = zuordnungsHinweise(p);
         for (const [i, meldung] of zuordnung.fehler.entries()) {
-          fehler.push({
+          pdfFehler.push({
             id: `string-zuordnung-${i}`,
             bereich: 'stringplan',
             meldung,
@@ -953,7 +961,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
           });
         }
         if (!stringResult.valid) {
-          fehler.push({
+          pdfFehler.push({
             id: 'string-regeln',
             bereich: 'stringplan',
             meldung: 'Der vorhandene Stringplan besteht die Regeln R1–R12 nicht.',
@@ -961,7 +969,7 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
           });
         }
       } catch (e) {
-        fehler.push({
+        pdfFehler.push({
           id: 'string-struktur',
           bereich: 'stringplan',
           meldung: e instanceof Error ? e.message : 'Stringdaten sind strukturell ungültig.',
@@ -971,11 +979,14 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
     }
   }
 
+  const jsonFehler = [...projektFehler, ...pdfFehler];
   return {
-    pdf: fehler.length === 0,
-    json: fehler.length === 0,
+    pdf: pdfFehler.length === 0,
+    json: jsonFehler.length === 0,
     rohdaten: true,
-    fehler,
+    pdfFehler,
+    jsonFehler,
+    fehler: jsonFehler,
     flags: projektFlags(p),
     stringResult,
   };

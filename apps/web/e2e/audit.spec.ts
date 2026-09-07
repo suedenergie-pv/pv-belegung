@@ -285,13 +285,33 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
   expect(browserFehler).toEqual([]);
 });
 
-test('Exportsperre springt zum konkreten Pflichtfehler', async ({ page }) => {
+test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', async (
+  { page },
+  testInfo,
+) => {
   await page.goto('/');
+  await fotoKalibrieren(page);
+  await page
+    .getByTestId('arbeitsbereich-p1')
+    .getByRole('button', { name: 'Automatisch belegen' })
+    .click();
   await page.getByRole('button', { name: '3. Export' }).click();
-  await expect(page.getByRole('button', { name: 'PDF herunterladen' })).toBeDisabled();
-  await page.getByRole('button', { name: 'Zum Fehler' }).first().click();
-  await expect(page.getByRole('button', { name: '1. Projekt' })).toHaveAttribute('aria-current', 'step');
-  await expect(page.getByLabel('Kunde')).toBeFocused();
+  const pdf = page.getByRole('button', { name: 'PDF herunterladen' });
+  await expect(pdf).toBeEnabled();
+  await expect(page.getByText(/PDF noch gesperrt/)).toHaveCount(0);
+  if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    await page.screenshot({
+      path: resolve('.debug-shots', `export-nackt-${testInfo.project.name}.png`),
+      fullPage: true,
+    });
+  }
+  if (testInfo.project.name === 'desktop') {
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    const download = page.waitForEvent('download');
+    await pdf.click();
+    await (await download).saveAs(resolve('.debug-shots', 'browser-audit-nackter-belegungsplan.pdf'));
+  }
 });
 
 test('Dachumriss lässt sich an Ecken verschieben und getrennt vom Perspektivrahmen entfernen', async ({ page }) => {

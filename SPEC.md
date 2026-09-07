@@ -369,8 +369,8 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
   Maßzeile. Form und Maße bleiben dort bedienbar, damit die Wirkung ohne
   Hin-und-her-Scrollen unmittelbar am Ziegelbild geprüft werden kann.
 - Im Belegungseditor dürfen A/B/C-Rahmen der Orientierung dienen. Im Kunden-PDF zeigt
-  die Foto-Übersicht nur Foto und Module — keine Zonen-Kreise und keine orange
-  Flächenkontur.
+  die Foto-Übersicht Foto, Module und die orange Kontur der festgelegten Dachfläche;
+  Zonen-Kreise und Belegungsfelder bleiben ausgeblendet.
 - Gauben sind eigene untergeordnete Dachflächen (§4.3). Eine Flachdachgaube mit
   Stehfalz bleibt dachparallel; eine Satteldachgaube besteht aus zwei Ebenen. Angelegt
   und verwaltet werden sie jedoch verschachtelt im Foto ihrer Elternfläche; das Foto
@@ -485,6 +485,8 @@ Ticket-Kategorie: neue Kategorie „Vorplanung Vertrieb" (V3-Datenmodell des Tic
 
 PDF- und JSON-Downloads enthalten im Dateinamen neben dem Kunden-/Projektbezug auch
 die Gesamtanlagengröße in kWp, damit Dateien außerhalb des Tools eindeutig bleiben.
+Der PDF-Download darf auch ohne Kunde, Adresse und Erfasser erfolgen (nackter
+Belegungsplan); diese Angaben bleiben für den Ticketsystem-JSON-Export Pflicht.
 
 ---
 

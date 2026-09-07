@@ -44,16 +44,33 @@ const optionen = {
 describe('PDF-Generator', () => {
   it('sperrt einen vollständig leeren 0-kWp-Plan', async () => {
     const projekt = neuesProjekt();
-    projekt.kunde = 'PDF Test';
-    projekt.adresse = 'Musterweg 1';
-    projekt.erfasser = 'Test Vertrieb';
-    await expect(baueBelegungsPdf(projekt, null, () => null, optionen)).rejects.toThrow('PDF gesperrt');
+    await expect(baueBelegungsPdf(projekt, null, () => null, optionen)).rejects.toThrow(
+      'PDF gesperrt: Mindestens ein aktives Modul muss belegt sein.',
+    );
   });
 
   it('meldet ein fehlendes erwartetes SVG sichtbar als Exportfehler', async () => {
     await expect(
       baueBelegungsPdf(projektMitFlaechen(), null, () => null, optionen),
     ).rejects.toThrow('Exportbild für „Dachfoto“ fehlt');
+  });
+
+  it('erzeugt einen nackten PDF-Plan ohne Projektstammdaten', async () => {
+    const projekt = projektMitFlaechen();
+    projekt.kunde = '';
+    projekt.adresse = '';
+    projekt.erfasser = '';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+
+    const { doc, dateiname } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = ((doc as unknown as { internal: { pages: string[][] } }).internal.pages)
+      .flat(2)
+      .join('\n');
+    expect(dateiname).toMatch(/^belegungsplan-projekt-\d+,\d{2}-kwp\.pdf$/);
+    expect(inhalt).not.toContain('Kunde:');
+    expect(inhalt).not.toContain('Adresse:');
+    expect(inhalt).not.toContain('Erfasser:');
+    expect(inhalt).toContain('Datum: 27.08.2026');
   });
 
   it('erzeugt viele Flächen über mehrere Seiten und wiederholt den Tabellenkopf', async () => {

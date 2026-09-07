@@ -97,7 +97,7 @@ export async function baueBelegungsPdf(
 ): Promise<{ doc: import('jspdf').jsPDF; dateiname: string }> {
   const freigabe = projektFreigabe(projekt);
   if (!freigabe.pdf) {
-    throw new Error(`PDF gesperrt: ${freigabe.fehler.map((f) => f.meldung).join(' ')}`);
+    throw new Error(`PDF gesperrt: ${freigabe.pdfFehler.map((f) => f.meldung).join(' ')}`);
   }
   if (kwpGesamt(projekt) <= 0) throw new Error('PDF gesperrt: Die Belegung hat 0 kWp.');
   const { jsPDF } = await import('jspdf');

@@ -40,7 +40,7 @@ export function SchrittExport({
   const [eskalationsgrund, setEskalationsgrund] = useState(projekt.eskalationsgrund ?? '');
   const renderRef = useRef<HTMLDivElement>(null);
 
-  const stringExportGesperrt = freigabe.fehler.some((f) => f.bereich === 'stringplan');
+  const stringExportGesperrt = freigabe.jsonFehler.some((f) => f.bereich === 'stringplan');
   const exportGesperrt = !freigabe.json;
   const payload = useMemo(() => bauePayload(projekt, result), [projekt, result]);
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
@@ -153,7 +153,7 @@ export function SchrittExport({
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
             <strong>PDF noch gesperrt. Bitte korrigieren:</strong>
             <ul className="mt-2 space-y-1">
-              {freigabe.fehler.map((fehler) => (
+              {freigabe.pdfFehler.map((fehler) => (
                 <li key={fehler.id} className="flex items-center justify-between gap-3">
                   <span>{fehler.meldung}</span>
                   <button
@@ -209,18 +209,32 @@ export function SchrittExport({
             </div>
           </div>
           {exportGesperrt && (
-          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            <p className="min-w-60 flex-1">
-              Export gesperrt. Die konkrete Fehlerliste steht oben beim PDF.
-            </p>
-            {stringExportGesperrt && <button
-              type="button"
-              className="touch-target rounded-lg border border-red-300 bg-white px-3 py-2 font-semibold text-red-700 hover:bg-red-100"
-              onClick={() => onChange({ ...projekt, wrId: null, mppts: [] })}
-            >
-              Alten Stringplan entfernen
-            </button>}
-          </div>
+            <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p className="font-semibold">Technischer Export noch gesperrt:</p>
+              <ul className="mt-2 space-y-1">
+                {freigabe.jsonFehler.map((fehler) => (
+                  <li key={fehler.id} className="flex items-center justify-between gap-3">
+                    <span>{fehler.meldung}</span>
+                    <button
+                      type="button"
+                      className="touch-target shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 font-semibold"
+                      onClick={() => springeZu(fehler.bereich, fehler.sprungziel)}
+                    >
+                      Zum Fehler
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {stringExportGesperrt && (
+                <button
+                  type="button"
+                  className="touch-target mt-2 rounded-lg border border-red-300 bg-white px-3 py-2 font-semibold text-red-700 hover:bg-red-100"
+                  onClick={() => onChange({ ...projekt, wrId: null, mppts: [] })}
+                >
+                  Alten Stringplan entfernen
+                </button>
+              )}
+            </div>
           )}
           <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
             {json}
@@ -292,7 +306,7 @@ export function SchrittExport({
       >
         {projekt.fotos.map((foto) => (
           <div key={foto.id} data-foto={foto.id} style={{ width: 1400 }}>
-            <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />
+            <ProjektFotoSvg projekt={projekt} foto={foto} rahmen nurFertige />
           </div>
         ))}
       </div>

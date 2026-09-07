@@ -43,18 +43,16 @@ describe('Export-Geometrie und Modulausrichtung', () => {
     expect(zonenLabel(51)).toBe('AZ');
   });
 
-  it('sperrt leere Projekte zentral und gibt einen vollständig markierten Entwurf frei', () => {
+  it('fordert Projektdaten nur für JSON und gibt einen nackten PDF-Entwurf frei', () => {
     const leer = neuesProjekt();
     const gesperrt = projektFreigabe(leer);
     expect(gesperrt.pdf).toBe(false);
-    expect(gesperrt.fehler.map((f) => f.id)).toEqual(
+    expect(gesperrt.pdfFehler.map((f) => f.id)).toEqual(['keine-module']);
+    expect(gesperrt.jsonFehler.map((f) => f.id)).toEqual(
       expect.arrayContaining(['kunde', 'adresse', 'erfasser', 'keine-module']),
     );
 
     const projekt = neuesProjekt();
-    projekt.kunde = 'Musterkunde';
-    projekt.adresse = 'Musterweg 1';
-    projekt.erfasser = 'Genrih';
     projekt.fotos = [{
       id: 'foto-1',
       name: 'Dach',
@@ -74,9 +72,16 @@ describe('Export-Geometrie und Modulausrichtung', () => {
       }],
     };
     const frei = projektFreigabe(projekt);
-    expect(frei.fehler).toEqual([]);
+    expect(frei.pdfFehler).toEqual([]);
     expect(frei.pdf).toBe(true);
+    expect(frei.json).toBe(false);
+    expect(frei.jsonFehler.map((f) => f.id)).toEqual(['kunde', 'adresse', 'erfasser']);
     expect(frei.flags).toContain('foto_massstab_fehlt');
+
+    projekt.kunde = 'Musterkunde';
+    projekt.adresse = 'Musterweg 1';
+    projekt.erfasser = 'Genrih';
+    expect(projektFreigabe(projekt).json).toBe(true);
   });
 
   it('legt neue Dachflächen standardmäßig mit hochkant stehenden Modulen an', () => {

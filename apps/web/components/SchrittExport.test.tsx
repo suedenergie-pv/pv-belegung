@@ -56,16 +56,34 @@ describe('Exportfunktionen', () => {
     expect(JSON.parse(json)).toMatchObject({ projekt: { kunde: 'Audit Kunde' }, geometrie_quelle: 'manual' });
   });
 
+  it('lädt den Belegungsplan auch ohne Kunde, Adresse und Erfasser herunter', async () => {
+    const projekt = freigegebenesProjekt();
+    projekt.kunde = '';
+    projekt.adresse = '';
+    projekt.erfasser = '';
+    const { getByRole, queryByText } = render(
+      <SchrittExport projekt={projekt} onChange={vi.fn()} />,
+    );
+
+    const pdf = getByRole('button', { name: 'PDF herunterladen' });
+    expect((pdf as HTMLButtonElement).disabled).toBe(false);
+    expect(queryByText(/PDF noch gesperrt/)).toBeNull();
+    fireEvent.click(pdf);
+    await waitFor(() => expect(pdfMock).toHaveBeenCalledTimes(1));
+  });
+
   it('sperrt PDF und JSON bei belegter Fläche ohne kalibriertes Foto', () => {
     const projekt = neuesProjekt();
     projekt.kunde = 'Audit Kunde';
     projekt.adresse = 'Musterweg 1';
     projekt.erfasser = 'Test Vertrieb';
     projekt.flaechen[0]!.felder = [vollFeldFuer(projekt.flaechen[0]!, modulById(projekt.modulId))];
-    const { getByRole, getByText } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);
+    const { getAllByText, getByRole, getByText } = render(
+      <SchrittExport projekt={projekt} onChange={vi.fn()} />,
+    );
 
     expect((getByRole('button', { name: 'PDF herunterladen' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(getByText(/bestätigte und gültige Fotoperspektive fehlt/)).toBeTruthy();
+    expect(getAllByText(/bestätigte und gültige Fotoperspektive fehlt/)).toHaveLength(2);
     fireEvent.click(getByText('Technische Daten (JSON)', { exact: false }));
     expect((getByRole('button', { name: 'JSON kopieren' }) as HTMLButtonElement).disabled).toBe(true);
   });
