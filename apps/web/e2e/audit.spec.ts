@@ -337,7 +337,7 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
   }
 });
 
-test('Dachumriss lässt sich an Ecken verschieben und getrennt vom Perspektivrahmen entfernen', async ({ page }) => {
+test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben', async ({ page }, testInfo) => {
   const browserFehler: string[] = [];
   page.on('console', (meldung) => {
     if (meldung.type() === 'error') browserFehler.push(meldung.text());
@@ -349,14 +349,23 @@ test('Dachumriss lässt sich an Ecken verschieben und getrennt vom Perspektivrah
   const foto = page.getByRole('img', { name: /im Foto markieren/ });
   const box = await foto.boundingBox();
   if (!box) throw new Error('Das Foto für den Dachumriss ist nicht sichtbar.');
-  for (const [x, y] of [[0.15, 0.85], [0.85, 0.85], [0.80, 0.20], [0.20, 0.20]]) {
+  for (const [x, y] of [[0.15, 0.85], [0.85, 0.85], [0.80, 0.20], [0.20, 0.20], [0.20, 0.225]]) {
     await foto.click({ position: { x: box.width * x, y: box.height * y } });
   }
-  await page.getByRole('button', { name: /Umriss fertig \(4 Ecken\)/ }).click();
+  // Die letzte Ecke liegt innerhalb der früheren Griff-Trefferzone ihrer Nachbarin.
+  await expect(page.getByTestId('umriss-griff')).toHaveCount(5);
+  await expect(page.getByTestId('umriss-griff').first()).toHaveCSS('cursor', 'crosshair');
+  await foto.click({ position: { x: box.width * 0.15, y: box.height * 0.85 } });
+  await expect(page.getByRole('button', { name: /Umriss fertig/ })).toHaveCount(0);
   await page.getByRole('button', { name: /Dachumriss/ }).click();
 
   const griffe = page.getByTestId('umriss-griff');
-  await expect(griffe).toHaveCount(4);
+  await expect(griffe).toHaveCount(5);
+  await expect(griffe.first()).toHaveCSS('cursor', 'grab');
+  if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    await foto.screenshot({ path: resolve('.debug-shots', `umriss-abgeschlossen-${testInfo.project.name}.png`) });
+  }
   const ersterGriff = await griffe.first().boundingBox();
   if (!ersterGriff) throw new Error('Der erste Umrissgriff ist nicht sichtbar.');
   await page.mouse.move(ersterGriff.x + ersterGriff.width / 2, ersterGriff.y + ersterGriff.height / 2);

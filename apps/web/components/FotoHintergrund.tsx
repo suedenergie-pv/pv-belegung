@@ -125,6 +125,7 @@ export function FotoHintergrund({
   const kantenName = istSchraegdach ? 'Traufe' : istFlachdach ? 'Referenzkante' : 'Unterkante';
   const flaechenName = istSchraegdach ? 'Dach' : istFlachdach ? 'Flachdach' : 'Fassade';
   const [punkte, setPunkte] = useState<Punkt[]>([]);
+  const [umrissBearbeiten, setUmrissBearbeiten] = useState(false);
   const [modus, setModus] = useState<Modus>('first');
   const [anzahlZiegel, setAnzahlZiegel] = useState(10);
   const [deckbreiteCm, setDeckbreiteCm] = useState<number | null>(null);
@@ -161,6 +162,7 @@ export function FotoHintergrund({
   // des vorigen Fotos weiterlaufen. Bestehende Ecken führen direkt zu Hindernissen.
   useEffect(() => {
     setPunkte([]);
+    setUmrissBearbeiten(false);
     setFirstLinie(null);
     setMausPx(null);
     setFadenkreuzAktiv(false);
@@ -227,6 +229,7 @@ export function FotoHintergrund({
 
   const wechsleModus = (m: Modus) => {
     setModus(m);
+    setUmrissBearbeiten(m === 'umriss' && !!hom && !!flaeche.umrissM);
     setPunkte(
       m === 'perspektive' && foto?.eckenPx
         ? foto.eckenPx.map((p) => [p[0], p[1]] as Punkt)
@@ -265,6 +268,7 @@ export function FotoHintergrund({
     setPunkte([]);
     setMarkierungsFehler(null);
     setModus(geometrieBehalten ? 'hindernis' : 'umriss');
+    setUmrissBearbeiten(false);
   };
 
   const umrissAbschliessen = (pts: Punkt[]) => {
@@ -284,6 +288,7 @@ export function FotoHintergrund({
     if (!flaeche.umrissM) return;
     onPatch({ umrissM: undefined, inaktiv: [] });
     setPunkte([]);
+    setUmrissBearbeiten(false);
     setTouchGriff(null);
     setMarkierungsFehler(null);
   };
@@ -307,13 +312,13 @@ export function FotoHintergrund({
   /**
    * Ziehbare Griffe (Genrih 08.07.): die 4 Ecken lassen sich nach dem Setzen frei
    * verschieben (grob klicken, dann exakt auf die Dachecke ziehen), ebenso die
-   * Trauflinie. Im Umriss-Modus sind sowohl neue als auch bereits gespeicherte
-   * Eckpunkte ziehbar; freie Klicks ergänzen weiterhin zusätzliche Ecken.
+   * Trauflinie. Umriss-Griffe sind erst beim Bearbeiten eines abgeschlossenen
+   * Umrisses aktiv. Beim Neuzeichnen muss der Startpunkt den Umriss schließen.
    */
   const handles = (): { x: number; y: number; z: Griff }[] => {
     if (!foto) return [];
     const arr: { x: number; y: number; z: Griff }[] = [];
-    if (modus === 'perspektive' || modus === 'umriss') {
+    if (modus === 'perspektive' || (modus === 'umriss' && umrissBearbeiten)) {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
     } else if (modus === 'first') {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
@@ -691,7 +696,10 @@ export function FotoHintergrund({
                   type="button"
                   disabled={punkte.length === 0}
                   className={`${knopfKlasse} disabled:opacity-40`}
-                  onClick={() => setPunkte(punkte.slice(0, -1))}
+                  onClick={() => {
+                    setPunkte(punkte.slice(0, -1));
+                    if (punkte.length <= 3) setUmrissBearbeiten(false);
+                  }}
                 >
                   ↶ Punkt zurück
                 </button>
@@ -926,6 +934,7 @@ export function FotoHintergrund({
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
                   setPunkte([]);
+                  setUmrissBearbeiten(false);
                   setTouchGriff(null);
                   setFadenkreuzAktiv(false);
                   setMarkierungsFehler(null);
@@ -1151,9 +1160,9 @@ export function FotoHintergrund({
                 <g
                   key={i}
                   data-testid={modus === 'umriss' ? 'umriss-griff' : undefined}
-                  style={{ cursor: modus === 'umriss' || modus === 'perspektive' || modus === 'first' ? 'grab' : undefined }}
+                  style={{ cursor: (modus === 'umriss' && umrissBearbeiten) || modus === 'perspektive' || modus === 'first' ? 'grab' : undefined }}
                 >
-                  {modus === 'umriss' && (
+                  {modus === 'umriss' && umrissBearbeiten && (
                     <circle cx={qx} cy={qy} r={px(0.018)} fill="rgba(249,115,22,0.18)" />
                   )}
                   <circle
