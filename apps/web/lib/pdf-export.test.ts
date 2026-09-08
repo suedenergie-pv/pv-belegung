@@ -71,6 +71,8 @@ describe('PDF-Generator', () => {
     expect(inhalt).not.toContain('Adresse:');
     expect(inhalt).not.toContain('Erfasser:');
     expect(inhalt).toContain('Datum: 27.08.2026');
+    expect(inhalt).toContain('A - Dachfläche 1');
+    expect(inhalt).not.toContain('A · Dachfläche 1');
   });
 
   it('erzeugt viele Flächen über mehrere Seiten und wiederholt den Tabellenkopf', async () => {

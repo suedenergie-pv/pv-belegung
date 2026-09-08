@@ -246,7 +246,9 @@ export async function baueBelegungsPdf(
     const raster = rasterFuer(f, modul);
     const n = aktiveModule(f, raster);
     const ausrichtungen = ausrichtungenVon(f, raster);
-    doc.text(flaechenTitel(f, i), SPALTEN[0], y);
+    // Der UI-Mittelpunkt wird von manchen PDF-Viewern als Kästchen angezeigt.
+    // Im Export einen verlässlich darstellbaren ASCII-Trenner verwenden.
+    doc.text(flaechenTitel(f, i).replaceAll(' · ', ' - '), SPALTEN[0], y);
     const richtungKurz = f.flachdach
       ? f.flachdach.aufstaenderung === 'ostwest'
         ? `O/W: O ${flachdachOstRichtung(f)}`
