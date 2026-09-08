@@ -318,7 +318,7 @@ export function FotoHintergrund({
   const handles = (): { x: number; y: number; z: Griff }[] => {
     if (!foto) return [];
     const arr: { x: number; y: number; z: Griff }[] = [];
-    if (modus === 'perspektive' || (modus === 'umriss' && umrissBearbeiten)) {
+    if ((modus === 'perspektive' && punkte.length === 4) || (modus === 'umriss' && umrissBearbeiten)) {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
     } else if (modus === 'first') {
       punkte.forEach((p, i) => arr.push({ x: p[0], y: p[1], z: { art: 'punkt', i } }));
@@ -1120,8 +1120,9 @@ export function FotoHintergrund({
               )}
 
               {/* Vorschaulinie: letzter Punkt → Mauszeiger */}
-              {(modus === 'first' || modus === 'perspektive' || modus === 'umriss') && letzter && kreuzPx && (
+              {(modus === 'first' || (modus === 'perspektive' && punkte.length < 4) || (modus === 'umriss' && !umrissBearbeiten)) && letzter && kreuzPx && (
                 <line
+                  data-testid="naechste-kante-vorschau"
                   x1={letzter[0]}
                   y1={letzter[1]}
                   x2={kreuzPx[0]}
@@ -1159,7 +1160,7 @@ export function FotoHintergrund({
                 <g
                   key={i}
                   data-testid={modus === 'umriss' ? 'umriss-griff' : undefined}
-                  style={{ cursor: (modus === 'umriss' && umrissBearbeiten) || modus === 'perspektive' || modus === 'first' ? 'grab' : undefined }}
+                  style={{ cursor: (modus === 'umriss' && umrissBearbeiten) || (modus === 'perspektive' && punkte.length === 4) || modus === 'first' ? 'grab' : undefined }}
                 >
                   {modus === 'umriss' && umrissBearbeiten && (
                     <circle cx={qx} cy={qy} r={px(0.018)} fill="rgba(249,115,22,0.18)" />

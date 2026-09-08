@@ -67,6 +67,10 @@ async function fotoKalibrieren(page: Page, dachDirektBelegen = true) {
   for (const [x, y] of [[0.1, 0.9], [0.9, 0.9], [0.85, 0.1], [0.15, 0.1]]) {
     await foto.click({ position: { x: box.width * x, y: box.height * y } });
   }
+  await foto.hover({ position: { x: box.width / 2, y: box.height / 2 } });
+  await expect(page.getByTestId('naechste-kante-vorschau')).toHaveCount(0);
+  mkdirSync(resolve('.debug-shots'), { recursive: true });
+  await foto.screenshot({ path: resolve('.debug-shots', `perspektive-vier-punkte-${page.viewportSize()!.width}.png`) });
   await page.getByRole('button', { name: '4 Ecken übernehmen' }).click();
   if (!dachDirektBelegen) return;
   await page.getByRole('button', { name: /Dach belegen/ }).click();

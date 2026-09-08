@@ -119,9 +119,14 @@ describe('Foto-Markierung auf Tablet und PC', () => {
       x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600,
       toJSON: () => ({}),
     });
-    for (const [x, y] of [[0, 600], [1000, 600], [1000, 0], [0, 0]]) {
+    for (const [x, y] of [[0, 600], [1000, 600], [1000, 0]]) {
       fireEvent.click(svg, { clientX: x, clientY: y });
     }
+    fireEvent.mouseMove(svg, { clientX: 50, clientY: 50 });
+    expect(container.querySelector('[data-testid="naechste-kante-vorschau"]')).not.toBeNull();
+    fireEvent.click(svg, { clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(svg, { clientX: 200, clientY: 200 });
+    expect(container.querySelector('[data-testid="naechste-kante-vorschau"]')).toBeNull();
     expect(onPatch).not.toHaveBeenCalled();
     fireEvent.click(await findByRole('button', { name: '4 Ecken übernehmen' }));
     expect(onPatch).toHaveBeenCalledTimes(1);
