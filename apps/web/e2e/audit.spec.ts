@@ -291,6 +291,17 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
 ) => {
   await page.goto('/');
   await fotoKalibrieren(page);
+  const grosserUmriss = page
+    .getByTestId('arbeitsbereich-p1')
+    .getByTestId('dachflaechen-umriss');
+  await expect(grosserUmriss).toHaveCount(1);
+  await expect(grosserUmriss).toBeVisible();
+  if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    await page.getByTestId('arbeitsbereich-p1').screenshot({
+      path: resolve('.debug-shots', `belegung-grosser-umriss-${testInfo.project.name}.png`),
+    });
+  }
   await page
     .getByTestId('arbeitsbereich-p1')
     .getByRole('button', { name: 'Automatisch belegen' })
@@ -310,6 +321,7 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
   await expect(pdf).toBeEnabled();
   await expect(page.getByText(/PDF noch gesperrt/)).toHaveCount(0);
   await expect(page.getByTestId('dachflaechen-rahmen')).toHaveCount(0);
+  await expect(page.getByTestId('dachflaechen-umriss')).toHaveCount(0);
   if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
     mkdirSync(resolve('.debug-shots'), { recursive: true });
     await page.screenshot({

@@ -1146,8 +1146,9 @@ export function DachSvg({
                   />
                 ) : null;
               })}
-            {/* Markierungs-Overlays (Umriss/Hindernisse/Draft) — im Druck NICHT anzeigen */}
-            {!druck && umriss && (() => {
+            {/* Ein optional zusätzlich eingezeichneter Dachpolygon-Umriss bleibt
+                neben dem äußeren Vier-Ecken-Perspektivrahmen erhalten. */}
+            {!druck && flaeche.umrissM && umriss && (() => {
               const pfad = projPfad(h, umriss.map(([x, y]) => [x, y] as Punkt));
               return pfad.ok ? (
                 <path
@@ -1156,6 +1157,7 @@ export function DachSvg({
                   stroke="#f97316"
                   strokeWidth={foto.breitePx * 0.002}
                   strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
+                  style={{ pointerEvents: 'none' }}
                 />
               ) : null;
             })()}
@@ -1201,6 +1203,43 @@ export function DachSvg({
               })}
             {/* Belegungsfelder und Griffe liegen bewusst ÜBER Hindernissen. */}
             {felderFoto}
+            {/* Der orange Perspektivrahmen aus den vier gesetzten Foto-Ecken bleibt
+                über Modulfeld und Hindernissen sichtbar. So ist die äußere Dachgrenze
+                beim Einzeichnen eindeutig; im PDF bleibt sie weg. */}
+            {!druck && (() => {
+              const ecken = foto.eckenPx!;
+              const punkte = ecken.map(([x, y]) => `${x},${y}`).join(' ');
+              return (
+                <g aria-label="Umriss der festgelegten Dachfläche" style={{ pointerEvents: 'none' }}>
+                  <polygon
+                    points={punkte}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.9)"
+                    strokeWidth={Math.max(5, foto.breitePx * 0.0045)}
+                  />
+                  <polygon
+                    data-testid="dachflaechen-umriss"
+                    points={punkte}
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth={Math.max(3, foto.breitePx * 0.0025)}
+                    strokeDasharray={`${foto.breitePx * 0.01} ${foto.breitePx * 0.006}`}
+                  />
+                  {ecken.map(([x, y], index) => (
+                    <circle
+                      key={index}
+                      data-dach-ecke={index + 1}
+                      cx={x}
+                      cy={y}
+                      r={Math.max(5, foto.breitePx * 0.005)}
+                      fill="#f97316"
+                      stroke="#ffffff"
+                      strokeWidth={Math.max(2, foto.breitePx * 0.0018)}
+                    />
+                  ))}
+                </g>
+              );
+            })()}
             {!druck && masse && renderMasse(foto.breitePx * 0.02, (p) => projiziere(h, [p[0], p[1]]))}
             {!druck && perspektivGriffe}
           </svg>

@@ -211,6 +211,36 @@ describe('DachSvg', () => {
     expect(html.match(/data-feld-griff=/g)).toHaveLength(8);
   });
 
+  it('zeigt den orangefarbenen Vier-Ecken-Rahmen in der großen Fotoansicht, aber nicht im PDF', () => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const flaeche: Flaeche = {
+      ...neueFlaeche(1, 'A'),
+      breiteM: 13.6,
+      hoeheM: 7,
+      foto: {
+        dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+        breitePx: 1600,
+        hoehePx: 900,
+        traufePx: null,
+        eckenPx: [[100, 800], [1500, 800], [1450, 100], [150, 100]],
+      },
+    };
+    const raster = rasterFuer(flaeche, modul);
+
+    const vorschau = renderToStaticMarkup(
+      <DachSvg flaeche={flaeche} raster={raster} modul={modul} />,
+    );
+    const pdf = renderToStaticMarkup(
+      <DachSvg flaeche={flaeche} raster={raster} modul={modul} druck />,
+    );
+
+    expect(vorschau).toContain('data-testid="dachflaechen-umriss"');
+    expect(vorschau).toContain('stroke="#f97316"');
+    expect(vorschau.match(/data-dach-ecke=/g)).toHaveLength(4);
+    expect(pdf).not.toContain('data-testid="dachflaechen-umriss"');
+    expect(pdf).not.toContain('data-dach-ecke=');
+  });
+
   it('bietet für die Zeichenfläche eine beschriftete Tastaturbedienung an', () => {
     const flaeche = neueFlaeche(1, 'A');
     const modul = modulById('jw-hd96n-r2-460');
