@@ -1103,19 +1103,18 @@ export function FotoHintergrund({
                   />
                 ))}
 
-              {/* Fadenkreuz am Mauszeiger — kräftig, mit weißem Halo + Zielring (auf
-                  jedem Fotohintergrund gut sichtbar) */}
+              {/* Feines Fadenkreuz: Strichbreite bleibt auch bei großen Fotos konstant. */}
               {zeigtKreuz && kreuzPx && (
                 <g style={{ pointerEvents: 'none' }}>
-                  <g stroke="#ffffff" strokeOpacity={0.85} strokeWidth={px(0.0045)} fill="none">
-                    <line x1={0} y1={kreuzPx[1]} x2={foto.breitePx} y2={kreuzPx[1]} />
-                    <line x1={kreuzPx[0]} y1={0} x2={kreuzPx[0]} y2={foto.hoehePx} />
-                    <circle cx={kreuzPx[0]} cy={kreuzPx[1]} r={px(0.013)} />
+                  <g stroke="#ffffff" strokeOpacity={0.7} strokeWidth={2.5} fill="none">
+                    <line vectorEffect="non-scaling-stroke" x1={0} y1={kreuzPx[1]} x2={foto.breitePx} y2={kreuzPx[1]} />
+                    <line vectorEffect="non-scaling-stroke" x1={kreuzPx[0]} y1={0} x2={kreuzPx[0]} y2={foto.hoehePx} />
+                    <circle vectorEffect="non-scaling-stroke" cx={kreuzPx[0]} cy={kreuzPx[1]} r={px(0.006)} />
                   </g>
-                  <g stroke="#0284c7" strokeOpacity={0.95} strokeWidth={px(0.002)} fill="none">
-                    <line x1={0} y1={kreuzPx[1]} x2={foto.breitePx} y2={kreuzPx[1]} />
-                    <line x1={kreuzPx[0]} y1={0} x2={kreuzPx[0]} y2={foto.hoehePx} />
-                    <circle cx={kreuzPx[0]} cy={kreuzPx[1]} r={px(0.013)} />
+                  <g stroke="#0284c7" strokeOpacity={0.95} strokeWidth={1} fill="none">
+                    <line vectorEffect="non-scaling-stroke" x1={0} y1={kreuzPx[1]} x2={foto.breitePx} y2={kreuzPx[1]} />
+                    <line vectorEffect="non-scaling-stroke" x1={kreuzPx[0]} y1={0} x2={kreuzPx[0]} y2={foto.hoehePx} />
+                    <circle vectorEffect="non-scaling-stroke" cx={kreuzPx[0]} cy={kreuzPx[1]} r={px(0.006)} />
                   </g>
                 </g>
               )}

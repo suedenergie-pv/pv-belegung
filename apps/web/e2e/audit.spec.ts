@@ -365,6 +365,8 @@ test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben
   if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
     mkdirSync(resolve('.debug-shots'), { recursive: true });
     await foto.screenshot({ path: resolve('.debug-shots', `umriss-abgeschlossen-${testInfo.project.name}.png`) });
+    await foto.hover({ position: { x: box.width / 2, y: box.height / 2 } });
+    await foto.screenshot({ path: resolve('.debug-shots', `fadenkreuz-${testInfo.project.name}.png`) });
   }
   const ersterGriff = await griffe.first().boundingBox();
   if (!ersterGriff) throw new Error('Der erste Umrissgriff ist nicht sichtbar.');
