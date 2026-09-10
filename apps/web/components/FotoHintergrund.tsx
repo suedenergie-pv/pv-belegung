@@ -1030,11 +1030,12 @@ export function FotoHintergrund({
                     x2={firstLinie[1][0]}
                     y2={firstLinie[1][1]}
                     stroke="#0d9488"
-                    strokeWidth={px(0.003)}
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
                     strokeLinecap="round"
                   />
                   {firstLinie.map((p, i) => (
-                    <circle key={i} cx={p[0]} cy={p[1]} r={px(0.008)} fill="#0d9488" stroke="#fff" strokeWidth={px(0.002)} />
+                    <circle key={i} cx={p[0]} cy={p[1]} r={px(0.0025)} fill="#0d9488" stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" />
                   ))}
                 </g>
               )}
@@ -1168,10 +1169,11 @@ export function FotoHintergrund({
                   <circle
                     cx={qx}
                     cy={qy}
-                    r={px(i === 0 && modus === 'umriss' && punkte.length >= 3 ? 0.011 : 0.007)}
+                    r={px(modus === 'first' ? 0.0025 : i === 0 && modus === 'umriss' && punkte.length >= 3 ? 0.011 : 0.007)}
                     fill={umrissVorschauFehler ? '#dc2626' : modus === 'first' ? '#0d9488' : modus === 'ziegel' ? '#0ea5e9' : modus === 'hindernis' ? '#ef4444' : i === 0 && modus === 'umriss' ? '#ea580c' : '#f97316'}
                     stroke="#ffffff"
-                    strokeWidth={px(0.002)}
+                    strokeWidth={modus === 'first' ? 1 : px(0.002)}
+                    vectorEffect={modus === 'first' ? 'non-scaling-stroke' : undefined}
                   />
                   {modus === 'umriss' && (
                     <text

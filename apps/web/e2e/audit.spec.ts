@@ -50,7 +50,7 @@ async function projektPflichtfelder(page: Page) {
   await page.getByLabel('Erfasser (Vertrieb)').fill('Genrih');
 }
 
-async function fotoKalibrieren(page: Page, dachDirektBelegen = true) {
+async function fotoKalibrieren(page: Page, dachDirektBelegen = true, traufeZeichnen = false) {
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
   const dateiauswahl = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Foto hinzufügen' }).click();
@@ -60,10 +60,18 @@ async function fotoKalibrieren(page: Page, dachDirektBelegen = true) {
     buffer: testPng(),
   });
   await expect(page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' })).toBeVisible();
-  await page.getByRole('button', { name: /Überspringen/ }).click();
+  if (!traufeZeichnen) await page.getByRole('button', { name: /Überspringen/ }).click();
   const foto = page.getByRole('img', { name: /im Foto markieren/ });
   const box = await foto.boundingBox();
   if (!box) throw new Error('Das Kalibrierfoto ist nicht sichtbar.');
+  if (traufeZeichnen) {
+    for (const x of [0.1, 0.9]) {
+      await foto.click({ position: { x: box.width * x, y: box.height * 0.9 } });
+    }
+    await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).hover();
+    mkdirSync(resolve('.debug-shots'), { recursive: true });
+    await foto.screenshot({ path: resolve('.debug-shots', `traufe-${page.viewportSize()!.width}.png`) });
+  }
   for (const [x, y] of [[0.1, 0.9], [0.9, 0.9], [0.85, 0.1], [0.15, 0.1]]) {
     await foto.click({ position: { x: box.width * x, y: box.height * y } });
   }
@@ -294,7 +302,7 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
   testInfo,
 ) => {
   await page.goto('/');
-  await fotoKalibrieren(page);
+  await fotoKalibrieren(page, true, true);
   const grosserUmriss = page
     .getByTestId('arbeitsbereich-p1')
     .getByTestId('dachflaechen-umriss');
