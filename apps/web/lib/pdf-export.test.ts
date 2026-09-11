@@ -115,23 +115,29 @@ describe('PDF-Ausgabe auf Apple-Mobilgeräten', () => {
   });
 
   it('öffnet das fertige PDF auf dem bereits reservierten iPad-Tab', () => {
-    const blob = new Blob(['pdf'], { type: 'application/pdf' });
-    const doc = { output: vi.fn(() => blob), save: vi.fn() } as unknown as import('jspdf').jsPDF;
-    const replace = vi.fn();
-    const fenster = {
-      closed: false,
-      location: { replace },
-    } as unknown as Window;
-    const ausgabe: PdfAusgabeVorbereitung = { appleMobil: true, fenster };
+    const arrayBuffer = new ArrayBuffer(3);
+    const doc = { output: vi.fn(() => arrayBuffer), save: vi.fn() } as unknown as import('jspdf').jsPDF;
     const createObjectURL = vi.fn(() => 'blob:pdf-test');
     const revokeObjectURL = vi.fn();
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }));
+    const popupDokument = document.implementation.createHTMLDocument();
+    const linkClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const fenster = {
+      closed: false,
+      document: popupDokument,
+      File,
+      URL: { createObjectURL, revokeObjectURL },
+    } as unknown as Window;
+    const ausgabe: PdfAusgabeVorbereitung = { appleMobil: true, fenster };
 
     speichereBelegungsPdf(doc, 'belegungsplan.pdf', ausgabe);
 
-    expect(doc.output).toHaveBeenCalledWith('blob');
+    expect(doc.output).toHaveBeenCalledWith('arraybuffer');
     expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ name: 'belegungsplan.pdf' }));
-    expect(replace).toHaveBeenCalledWith('blob:pdf-test');
+    expect(popupDokument.querySelector('a')).toMatchObject({
+      download: 'belegungsplan.pdf',
+      href: 'blob:pdf-test',
+    });
+    expect(linkClick).toHaveBeenCalledTimes(1);
     expect(doc.save).not.toHaveBeenCalled();
   });
 });

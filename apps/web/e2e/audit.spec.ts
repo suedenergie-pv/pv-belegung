@@ -356,7 +356,10 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
     hasTouch: true,
   });
 
-  test('öffnet den fertigen Plan im beim Antippen reservierten PDF-Tab', async ({ page }, testInfo) => {
+  test('lädt den fertigen Plan im beim Antippen reservierten PDF-Tab', async (
+    { page },
+    testInfo,
+  ) => {
     test.skip(testInfo.project.name !== 'tablet-grenze');
     await page.goto('/');
     await fotoKalibrieren(page);
@@ -370,7 +373,9 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
     await page.getByRole('button', { name: 'PDF herunterladen' }).click();
     const pdfTab = await popupVersprechen;
     await expect(pdfTab.locator('body')).toContainText('PDF wird erstellt');
-    await pdfTab.waitForURL(/^blob:/, { timeout: 20_000 });
+    const download = await pdfTab.waitForEvent('download', { timeout: 20_000 });
+    expect(download.suggestedFilename()).toMatch(/\.pdf$/);
+    expect(await download.failure()).toBeNull();
   });
 });
 

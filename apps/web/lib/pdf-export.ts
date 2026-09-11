@@ -385,13 +385,50 @@ export function speichereBelegungsPdf(
     return;
   }
 
-  const datei = new File([doc.output('blob')], dateiname, { type: 'application/pdf' });
-  const url = URL.createObjectURL(datei);
   if (ausgabe.fenster && !ausgabe.fenster.closed) {
-    ausgabe.fenster.location.replace(url);
-  } else {
-    // Falls Safari den neuen Tab blockiert, bleibt der PDF-Aufruf trotzdem nutzbar.
-    window.location.assign(url);
+    try {
+      // WebKit verwaltet Blob-URLs pro Fenster. Datei und URL müssen deshalb in
+      // genau dem Tab entstehen, der anschließend das PDF anzeigt.
+      const zielGlobal = ausgabe.fenster as unknown as PdfUrlGlobal;
+      const url = erzeugePdfUrl(doc, dateiname, zielGlobal);
+      const link = ausgabe.fenster.document.createElement('a');
+      link.href = url;
+      link.download = dateiname;
+      link.textContent = 'PDF herunterladen';
+      const hinweis = ausgabe.fenster.document.createElement('p');
+      hinweis.textContent = 'Falls der Download nicht automatisch startet: ';
+      hinweis.append(link);
+      ausgabe.fenster.document.body.replaceChildren(hinweis);
+      link.click();
+      planeUrlFreigabe(zielGlobal.URL, url);
+      return;
+    } catch {
+      ausgabe.fenster.close();
+    }
   }
-  window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+
+  // Ein Wechsel im selben Fenster funktioniert auch dann, wenn Safari Popups blockiert.
+  const url = erzeugePdfUrl(doc, dateiname, window);
+  window.location.assign(url);
+  planeUrlFreigabe(window.URL, url);
+}
+
+interface PdfUrlGlobal {
+  File: typeof File;
+  URL: typeof URL;
+}
+
+function erzeugePdfUrl(
+  doc: import('jspdf').jsPDF,
+  dateiname: string,
+  ziel: PdfUrlGlobal,
+): string {
+  const datei = new ziel.File([doc.output('arraybuffer')], dateiname, {
+    type: 'application/pdf',
+  });
+  return ziel.URL.createObjectURL(datei);
+}
+
+function planeUrlFreigabe(urlApi: typeof URL, url: string): void {
+  window.setTimeout(() => urlApi.revokeObjectURL(url), 5 * 60 * 1000);
 }
