@@ -17,7 +17,7 @@ import {
   wrById,
   type Projekt,
 } from '../lib/model';
-import { erzeugeBelegungsPdf } from '../lib/pdf-export';
+import { bereitePdfAusgabeVor, erzeugeBelegungsPdf } from '../lib/pdf-export';
 import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
@@ -46,6 +46,7 @@ export function SchrittExport({
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
 
   const pdfHerunterladen = async () => {
+    const ausgabe = bereitePdfAusgabeVor();
     setPdfLaeuft(true);
     setPdfFehler(null);
     try {
@@ -55,8 +56,10 @@ export function SchrittExport({
         (fotoId) =>
           renderRef.current?.querySelector<SVGSVGElement>(`[data-foto="${fotoId}"] svg`) ??
           null,
+        ausgabe,
       );
     } catch (e) {
+      if (ausgabe?.fenster && !ausgabe.fenster.closed) ausgabe.fenster.close();
       setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
     } finally {
       setPdfLaeuft(false);

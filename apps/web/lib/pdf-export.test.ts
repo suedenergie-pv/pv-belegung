@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { modulById, neuesProjekt, vollFeldFuer, type Projekt } from './model';
-import { baueBelegungsPdf } from './pdf-export';
+import {
+  baueBelegungsPdf,
+  istAppleMobilgeraet,
+  speichereBelegungsPdf,
+  type PdfAusgabeVorbereitung,
+} from './pdf-export';
 
 function projektMitFlaechen(anzahl = 1): Projekt {
   const projekt = neuesProjekt();
@@ -40,6 +45,8 @@ const optionen = {
   })),
   jetzt: new Date('2026-08-27T12:00:00Z'),
 };
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('PDF-Generator', () => {
   it('sperrt einen vollständig leeren 0-kWp-Plan', async () => {
@@ -84,5 +91,47 @@ describe('PDF-Generator', () => {
       .join('\n');
     expect(inhalt).toContain('Flächenübersicht \\(Fortsetzung\\)');
     expect(inhalt).toContain('Belegungsübersicht');
+  });
+});
+
+describe('PDF-Ausgabe auf Apple-Mobilgeräten', () => {
+  it('erkennt iPadOS auch mit Desktop-Kennung', () => {
+    expect(istAppleMobilgeraet({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)',
+      platform: 'MacIntel',
+      maxTouchPoints: 5,
+    })).toBe(true);
+    expect(istAppleMobilgeraet({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)',
+      platform: 'MacIntel',
+      maxTouchPoints: 0,
+    })).toBe(false);
+  });
+
+  it('behält auf Desktop den direkten jsPDF-Download bei', () => {
+    const doc = { save: vi.fn() } as unknown as import('jspdf').jsPDF;
+    speichereBelegungsPdf(doc, 'plan.pdf');
+    expect(doc.save).toHaveBeenCalledWith('plan.pdf');
+  });
+
+  it('öffnet das fertige PDF auf dem bereits reservierten iPad-Tab', () => {
+    const blob = new Blob(['pdf'], { type: 'application/pdf' });
+    const doc = { output: vi.fn(() => blob), save: vi.fn() } as unknown as import('jspdf').jsPDF;
+    const replace = vi.fn();
+    const fenster = {
+      closed: false,
+      location: { replace },
+    } as unknown as Window;
+    const ausgabe: PdfAusgabeVorbereitung = { appleMobil: true, fenster };
+    const createObjectURL = vi.fn(() => 'blob:pdf-test');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }));
+
+    speichereBelegungsPdf(doc, 'belegungsplan.pdf', ausgabe);
+
+    expect(doc.output).toHaveBeenCalledWith('blob');
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ name: 'belegungsplan.pdf' }));
+    expect(replace).toHaveBeenCalledWith('blob:pdf-test');
+    expect(doc.save).not.toHaveBeenCalled();
   });
 });

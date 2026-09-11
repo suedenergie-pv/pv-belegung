@@ -339,7 +339,59 @@ export async function erzeugeBelegungsPdf(
   projekt: Projekt,
   result: StringPlanResult | null,
   svgVonFoto: (fotoId: string) => SVGSVGElement | null,
+  ausgabe?: PdfAusgabeVorbereitung,
 ): Promise<void> {
   const { doc, dateiname } = await baueBelegungsPdf(projekt, result, svgVonFoto);
-  doc.save(dateiname);
+  speichereBelegungsPdf(doc, dateiname, ausgabe);
+}
+
+export interface PdfAusgabeVorbereitung {
+  appleMobil: true;
+  fenster: Window | null;
+}
+
+export function istAppleMobilgeraet(
+  kennung: Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'> = navigator,
+): boolean {
+  return (
+    /iPad|iPhone|iPod/i.test(kennung.userAgent) ||
+    (kennung.platform === 'MacIntel' && kennung.maxTouchPoints > 1)
+  );
+}
+
+/**
+ * iPadOS verliert während der asynchronen PDF-Erzeugung die direkte Nutzergeste.
+ * Deshalb wird beim Antippen sofort ein Zieltab reserviert und erst nach dem Rendern
+ * mit dem fertigen PDF befüllt.
+ */
+export function bereitePdfAusgabeVor(): PdfAusgabeVorbereitung | undefined {
+  if (!istAppleMobilgeraet()) return undefined;
+
+  const fenster = window.open('', '_blank');
+  if (fenster) {
+    fenster.document.title = 'PDF wird erstellt';
+    fenster.document.body.textContent = 'PDF wird erstellt …';
+  }
+  return { appleMobil: true, fenster };
+}
+
+export function speichereBelegungsPdf(
+  doc: import('jspdf').jsPDF,
+  dateiname: string,
+  ausgabe?: PdfAusgabeVorbereitung,
+): void {
+  if (!ausgabe?.appleMobil) {
+    doc.save(dateiname);
+    return;
+  }
+
+  const datei = new File([doc.output('blob')], dateiname, { type: 'application/pdf' });
+  const url = URL.createObjectURL(datei);
+  if (ausgabe.fenster && !ausgabe.fenster.closed) {
+    ausgabe.fenster.location.replace(url);
+  } else {
+    // Falls Safari den neuen Tab blockiert, bleibt der PDF-Aufruf trotzdem nutzbar.
+    window.location.assign(url);
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
 }

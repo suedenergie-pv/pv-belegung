@@ -4,8 +4,14 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { modulById, neuesProjekt, vollFeldFuer } from '../lib/model';
 
-const { pdfMock } = vi.hoisted(() => ({ pdfMock: vi.fn() }));
-vi.mock('../lib/pdf-export', () => ({ erzeugeBelegungsPdf: pdfMock }));
+const { pdfMock, pdfVorbereitenMock } = vi.hoisted(() => ({
+  pdfMock: vi.fn(),
+  pdfVorbereitenMock: vi.fn(),
+}));
+vi.mock('../lib/pdf-export', () => ({
+  erzeugeBelegungsPdf: pdfMock,
+  bereitePdfAusgabeVor: pdfVorbereitenMock,
+}));
 
 import { SchrittExport } from './SchrittExport';
 
@@ -30,6 +36,8 @@ function freigegebenesProjekt() {
 
 beforeEach(() => {
   pdfMock.mockReset();
+  pdfVorbereitenMock.mockReset();
+  pdfVorbereitenMock.mockReturnValue(undefined);
   vi.stubGlobal('React', React);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -90,11 +98,14 @@ describe('Exportfunktionen', () => {
 
   it('zeigt PDF-Fehler an, ohne die Oberfläche hängen zu lassen', async () => {
     pdfMock.mockRejectedValueOnce(new Error('Canvas fehlgeschlagen'));
+    const close = vi.fn();
+    pdfVorbereitenMock.mockReturnValue({ appleMobil: true, fenster: { closed: false, close } });
     const { getByRole, findByText } = render(
       <SchrittExport projekt={freigegebenesProjekt()} onChange={vi.fn()} />,
     );
     fireEvent.click(getByRole('button', { name: 'PDF herunterladen' }));
     expect(await findByText('Canvas fehlgeschlagen')).toBeTruthy();
+    expect(close).toHaveBeenCalledTimes(1);
     expect((getByRole('button', { name: 'PDF herunterladen' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
