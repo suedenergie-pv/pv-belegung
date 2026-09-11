@@ -3,9 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { modulById, neuesProjekt, vollFeldFuer, type Projekt } from './model';
 import {
   baueBelegungsPdf,
-  istAppleMobilgeraet,
-  speichereBelegungsPdf,
-  type PdfAusgabeVorbereitung,
+  istIosWebviewBrowser,
+  pdfDownloadFuerBrowser,
 } from './pdf-export';
 
 function projektMitFlaechen(anzahl = 1): Projekt {
@@ -94,50 +93,42 @@ describe('PDF-Generator', () => {
   });
 });
 
-describe('PDF-Ausgabe auf Apple-Mobilgeräten', () => {
-  it('erkennt iPadOS auch mit Desktop-Kennung', () => {
-    expect(istAppleMobilgeraet({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)',
-      platform: 'MacIntel',
-      maxTouchPoints: 5,
-    })).toBe(true);
-    expect(istAppleMobilgeraet({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)',
-      platform: 'MacIntel',
-      maxTouchPoints: 0,
-    })).toBe(false);
+describe('Vorbereiteter PDF-Download', () => {
+  it('erkennt Chrome, Google-App, Firefox und Edge auf iOS', () => {
+    expect(istIosWebviewBrowser('Mozilla/5.0 CriOS/140.0 Mobile/15E148')).toBe(true);
+    expect(istIosWebviewBrowser('Mozilla/5.0 GSA/384.0 Mobile/15E148')).toBe(true);
+    expect(istIosWebviewBrowser('Mozilla/5.0 FxiOS/142.0 Mobile/15E148')).toBe(true);
+    expect(istIosWebviewBrowser('Mozilla/5.0 EdgiOS/140.0 Mobile/15E148')).toBe(true);
+    expect(istIosWebviewBrowser('Mozilla/5.0 Version/18.0 Mobile/15E148 Safari/604.1')).toBe(false);
   });
 
-  it('behält auf Desktop den direkten jsPDF-Download bei', () => {
-    const doc = { save: vi.fn() } as unknown as import('jspdf').jsPDF;
-    speichereBelegungsPdf(doc, 'plan.pdf');
-    expect(doc.save).toHaveBeenCalledWith('plan.pdf');
-  });
-
-  it('öffnet das fertige PDF auf dem bereits reservierten iPad-Tab', () => {
+  it('erstellt für normale Browser einen aufräumbaren Dateilink', () => {
     const arrayBuffer = new ArrayBuffer(3);
-    const doc = { output: vi.fn(() => arrayBuffer), save: vi.fn() } as unknown as import('jspdf').jsPDF;
+    const doc = { output: vi.fn(() => arrayBuffer) } as unknown as import('jspdf').jsPDF;
     const createObjectURL = vi.fn(() => 'blob:pdf-test');
     const revokeObjectURL = vi.fn();
-    const popupDokument = document.implementation.createHTMLDocument();
-    const linkClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-    const fenster = {
-      closed: false,
-      document: popupDokument,
-      File,
-      URL: { createObjectURL, revokeObjectURL },
-    } as unknown as Window;
-    const ausgabe: PdfAusgabeVorbereitung = { appleMobil: true, fenster };
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
 
-    speichereBelegungsPdf(doc, 'belegungsplan.pdf', ausgabe);
+    const download = pdfDownloadFuerBrowser(doc, 'belegungsplan.pdf', 'Mozilla/5.0 Safari/605.1.15');
 
     expect(doc.output).toHaveBeenCalledWith('arraybuffer');
     expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ name: 'belegungsplan.pdf' }));
-    expect(popupDokument.querySelector('a')).toMatchObject({
-      download: 'belegungsplan.pdf',
-      href: 'blob:pdf-test',
-    });
-    expect(linkClick).toHaveBeenCalledTimes(1);
-    expect(doc.save).not.toHaveBeenCalled();
+    expect(download).toMatchObject({ href: 'blob:pdf-test', dateiname: 'belegungsplan.pdf' });
+    download.aufraeumen();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:pdf-test');
+  });
+
+  it('erstellt für Chrome auf iOS einen selbstenthaltenen Dateilink', () => {
+    const dataUrl = 'data:application/pdf;filename=plan.pdf;base64,JVBERi0=';
+    const doc = { output: vi.fn(() => dataUrl) } as unknown as import('jspdf').jsPDF;
+
+    const download = pdfDownloadFuerBrowser(
+      doc,
+      'plan.pdf',
+      'Mozilla/5.0 (iPad) CriOS/140.0 Mobile/15E148',
+    );
+
+    expect(doc.output).toHaveBeenCalledWith('datauristring', { filename: 'plan.pdf' });
+    expect(download).toMatchObject({ href: dataUrl, dateiname: 'plan.pdf' });
   });
 });

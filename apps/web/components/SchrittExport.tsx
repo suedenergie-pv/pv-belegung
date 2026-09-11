@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   ausrichtungenVon,
@@ -17,7 +17,10 @@ import {
   wrById,
   type Projekt,
 } from '../lib/model';
-import { bereitePdfAusgabeVor, erzeugeBelegungsPdf } from '../lib/pdf-export';
+import {
+  bereiteBelegungsPdfDownload,
+  type VorbereiteterPdfDownload,
+} from '../lib/pdf-export';
 import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
@@ -35,8 +38,10 @@ export function SchrittExport({
   const result = freigabe.stringResult;
   const [kopiert, setKopiert] = useState(false);
   const [statusMeldung, setStatusMeldung] = useState<string | null>(null);
-  const [pdfLaeuft, setPdfLaeuft] = useState(false);
+  const [pdfLaeuft, setPdfLaeuft] = useState(true);
   const [pdfFehler, setPdfFehler] = useState<string | null>(null);
+  const [pdfDownload, setPdfDownload] = useState<VorbereiteterPdfDownload | null>(null);
+  const [pdfVersuch, setPdfVersuch] = useState(0);
   const [eskalationsgrund, setEskalationsgrund] = useState(projekt.eskalationsgrund ?? '');
   const renderRef = useRef<HTMLDivElement>(null);
 
@@ -45,26 +50,49 @@ export function SchrittExport({
   const payload = useMemo(() => bauePayload(projekt, result), [projekt, result]);
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
 
-  const pdfHerunterladen = async () => {
-    const ausgabe = bereitePdfAusgabeVor();
+  useEffect(() => {
+    let verworfen = false;
+    let download: VorbereiteterPdfDownload | null = null;
+    if (!freigabe.pdf) {
+      setPdfLaeuft(false);
+      setPdfDownload(null);
+      return;
+    }
+
     setPdfLaeuft(true);
     setPdfFehler(null);
-    try {
-      await erzeugeBelegungsPdf(
+    setPdfDownload(null);
+    const zeitgeber = window.setTimeout(() => {
+      void bereiteBelegungsPdfDownload(
         projekt,
         result,
         (fotoId) =>
           renderRef.current?.querySelector<SVGSVGElement>(`[data-foto="${fotoId}"] svg`) ??
           null,
-        ausgabe,
+      ).then(
+        (fertig) => {
+          if (verworfen) {
+            fertig.aufraeumen();
+            return;
+          }
+          download = fertig;
+          setPdfDownload(fertig);
+          setPdfLaeuft(false);
+        },
+        (e) => {
+          if (verworfen) return;
+          setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
+          setPdfLaeuft(false);
+        },
       );
-    } catch (e) {
-      if (ausgabe?.fenster && !ausgabe.fenster.closed) ausgabe.fenster.close();
-      setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
-    } finally {
-      setPdfLaeuft(false);
-    }
-  };
+    });
+
+    return () => {
+      verworfen = true;
+      window.clearTimeout(zeitgeber);
+      download?.aufraeumen();
+    };
+  }, [freigabe.pdf, pdfVersuch, projekt, result]);
 
   const dateiHerunterladen = (inhalt: string, name: string) => {
     try {
@@ -138,14 +166,29 @@ export function SchrittExport({
       <Karte>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <KartenTitel>Belegungsplan (PDF)</KartenTitel>
-          <button
-            type="button"
-            disabled={pdfLaeuft || !freigabe.pdf}
-            className="ml-auto h-12 rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:cursor-wait disabled:opacity-60"
-            onClick={() => void pdfHerunterladen()}
-          >
-            {pdfLaeuft ? 'Erzeuge PDF …' : 'PDF herunterladen'}
-          </button>
+          {pdfDownload ? (
+            <a
+              role="button"
+              href={pdfDownload.href}
+              download={pdfDownload.dateiname}
+              className="ml-auto inline-flex h-12 items-center rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition hover:bg-akzent/90"
+            >
+              PDF herunterladen
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled={pdfLaeuft || !freigabe.pdf}
+              className="ml-auto h-12 rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:cursor-wait disabled:opacity-60"
+              onClick={() => setPdfVersuch((alt) => alt + 1)}
+            >
+              {pdfLaeuft
+                ? 'Bereite PDF vor …'
+                : pdfFehler
+                  ? 'PDF erneut vorbereiten'
+                  : 'PDF herunterladen'}
+            </button>
+          )}
         </div>
         {result && !result.valid && (
           <p className="text-sm text-slate-500">

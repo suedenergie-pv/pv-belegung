@@ -4,13 +4,12 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { modulById, neuesProjekt, vollFeldFuer } from '../lib/model';
 
-const { pdfMock, pdfVorbereitenMock } = vi.hoisted(() => ({
+const { pdfMock, pdfAufraeumenMock } = vi.hoisted(() => ({
   pdfMock: vi.fn(),
-  pdfVorbereitenMock: vi.fn(),
+  pdfAufraeumenMock: vi.fn(),
 }));
 vi.mock('../lib/pdf-export', () => ({
-  erzeugeBelegungsPdf: pdfMock,
-  bereitePdfAusgabeVor: pdfVorbereitenMock,
+  bereiteBelegungsPdfDownload: pdfMock,
 }));
 
 import { SchrittExport } from './SchrittExport';
@@ -36,8 +35,12 @@ function freigegebenesProjekt() {
 
 beforeEach(() => {
   pdfMock.mockReset();
-  pdfVorbereitenMock.mockReset();
-  pdfVorbereitenMock.mockReturnValue(undefined);
+  pdfAufraeumenMock.mockReset();
+  pdfMock.mockResolvedValue({
+    href: 'blob:pdf-test',
+    dateiname: 'belegungsplan.pdf',
+    aufraeumen: pdfAufraeumenMock,
+  });
   vi.stubGlobal('React', React);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -55,8 +58,10 @@ describe('Exportfunktionen', () => {
     const projekt = freigegebenesProjekt();
     const { getByRole, getByText } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);
 
-    fireEvent.click(getByRole('button', { name: 'PDF herunterladen' }));
     await waitFor(() => expect(pdfMock).toHaveBeenCalledTimes(1));
+    const pdfLink = getByRole('button', { name: 'PDF herunterladen' });
+    expect(pdfLink.getAttribute('href')).toBe('blob:pdf-test');
+    expect(pdfLink.getAttribute('download')).toBe('belegungsplan.pdf');
     fireEvent.click(getByText('Technische Daten (JSON)', { exact: false }));
     fireEvent.click(getByRole('button', { name: 'JSON kopieren' }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1));
@@ -73,11 +78,9 @@ describe('Exportfunktionen', () => {
       <SchrittExport projekt={projekt} onChange={vi.fn()} />,
     );
 
-    const pdf = getByRole('button', { name: 'PDF herunterladen' });
-    expect((pdf as HTMLButtonElement).disabled).toBe(false);
     expect(queryByText(/PDF noch gesperrt/)).toBeNull();
-    fireEvent.click(pdf);
     await waitFor(() => expect(pdfMock).toHaveBeenCalledTimes(1));
+    expect(getByRole('button', { name: 'PDF herunterladen' })).toBeTruthy();
   });
 
   it('sperrt PDF und JSON bei belegter Fläche ohne kalibriertes Foto', () => {
@@ -98,14 +101,13 @@ describe('Exportfunktionen', () => {
 
   it('zeigt PDF-Fehler an, ohne die Oberfläche hängen zu lassen', async () => {
     pdfMock.mockRejectedValueOnce(new Error('Canvas fehlgeschlagen'));
-    const close = vi.fn();
-    pdfVorbereitenMock.mockReturnValue({ appleMobil: true, fenster: { closed: false, close } });
     const { getByRole, findByText } = render(
       <SchrittExport projekt={freigegebenesProjekt()} onChange={vi.fn()} />,
     );
-    fireEvent.click(getByRole('button', { name: 'PDF herunterladen' }));
     expect(await findByText('Canvas fehlgeschlagen')).toBeTruthy();
-    expect(close).toHaveBeenCalledTimes(1);
-    expect((getByRole('button', { name: 'PDF herunterladen' }) as HTMLButtonElement).disabled).toBe(false);
+    const erneut = getByRole('button', { name: 'PDF erneut vorbereiten' });
+    expect((erneut as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(erneut);
+    await waitFor(() => expect(pdfMock).toHaveBeenCalledTimes(2));
   });
 });

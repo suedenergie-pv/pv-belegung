@@ -335,100 +335,45 @@ export async function baueBelegungsPdf(
   return { doc, dateiname: downloadDateiname(projekt, 'belegungsplan', 'pdf') };
 }
 
-export async function erzeugeBelegungsPdf(
+export interface VorbereiteterPdfDownload {
+  href: string;
+  dateiname: string;
+  aufraeumen: () => void;
+}
+
+export function istIosWebviewBrowser(userAgent = navigator.userAgent): boolean {
+  return /CriOS|GSA|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
+}
+
+export function pdfDownloadFuerBrowser(
+  doc: import('jspdf').jsPDF,
+  dateiname: string,
+  userAgent = navigator.userAgent,
+): VorbereiteterPdfDownload {
+  if (istIosWebviewBrowser(userAgent)) {
+    return {
+      href: doc.output('datauristring', { filename: dateiname }),
+      dateiname,
+      aufraeumen: () => undefined,
+    };
+  }
+
+  const datei = new File([doc.output('arraybuffer')], dateiname, {
+    type: 'application/pdf',
+  });
+  const href = URL.createObjectURL(datei);
+  return {
+    href,
+    dateiname,
+    aufraeumen: () => URL.revokeObjectURL(href),
+  };
+}
+
+export async function bereiteBelegungsPdfDownload(
   projekt: Projekt,
   result: StringPlanResult | null,
   svgVonFoto: (fotoId: string) => SVGSVGElement | null,
-  ausgabe?: PdfAusgabeVorbereitung,
-): Promise<void> {
+): Promise<VorbereiteterPdfDownload> {
   const { doc, dateiname } = await baueBelegungsPdf(projekt, result, svgVonFoto);
-  speichereBelegungsPdf(doc, dateiname, ausgabe);
-}
-
-export interface PdfAusgabeVorbereitung {
-  appleMobil: true;
-  fenster: Window | null;
-}
-
-export function istAppleMobilgeraet(
-  kennung: Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'> = navigator,
-): boolean {
-  return (
-    /iPad|iPhone|iPod/i.test(kennung.userAgent) ||
-    (kennung.platform === 'MacIntel' && kennung.maxTouchPoints > 1)
-  );
-}
-
-/**
- * iPadOS verliert während der asynchronen PDF-Erzeugung die direkte Nutzergeste.
- * Deshalb wird beim Antippen sofort ein Zieltab reserviert und erst nach dem Rendern
- * mit dem fertigen PDF befüllt.
- */
-export function bereitePdfAusgabeVor(): PdfAusgabeVorbereitung | undefined {
-  if (!istAppleMobilgeraet()) return undefined;
-
-  const fenster = window.open('', '_blank');
-  if (fenster) {
-    fenster.document.title = 'PDF wird erstellt';
-    fenster.document.body.textContent = 'PDF wird erstellt …';
-  }
-  return { appleMobil: true, fenster };
-}
-
-export function speichereBelegungsPdf(
-  doc: import('jspdf').jsPDF,
-  dateiname: string,
-  ausgabe?: PdfAusgabeVorbereitung,
-): void {
-  if (!ausgabe?.appleMobil) {
-    doc.save(dateiname);
-    return;
-  }
-
-  if (ausgabe.fenster && !ausgabe.fenster.closed) {
-    try {
-      // WebKit verwaltet Blob-URLs pro Fenster. Datei und URL müssen deshalb in
-      // genau dem Tab entstehen, der anschließend das PDF anzeigt.
-      const zielGlobal = ausgabe.fenster as unknown as PdfUrlGlobal;
-      const url = erzeugePdfUrl(doc, dateiname, zielGlobal);
-      const link = ausgabe.fenster.document.createElement('a');
-      link.href = url;
-      link.download = dateiname;
-      link.textContent = 'PDF herunterladen';
-      const hinweis = ausgabe.fenster.document.createElement('p');
-      hinweis.textContent = 'Falls der Download nicht automatisch startet: ';
-      hinweis.append(link);
-      ausgabe.fenster.document.body.replaceChildren(hinweis);
-      link.click();
-      planeUrlFreigabe(zielGlobal.URL, url);
-      return;
-    } catch {
-      ausgabe.fenster.close();
-    }
-  }
-
-  // Ein Wechsel im selben Fenster funktioniert auch dann, wenn Safari Popups blockiert.
-  const url = erzeugePdfUrl(doc, dateiname, window);
-  window.location.assign(url);
-  planeUrlFreigabe(window.URL, url);
-}
-
-interface PdfUrlGlobal {
-  File: typeof File;
-  URL: typeof URL;
-}
-
-function erzeugePdfUrl(
-  doc: import('jspdf').jsPDF,
-  dateiname: string,
-  ziel: PdfUrlGlobal,
-): string {
-  const datei = new ziel.File([doc.output('arraybuffer')], dateiname, {
-    type: 'application/pdf',
-  });
-  return ziel.URL.createObjectURL(datei);
-}
-
-function planeUrlFreigabe(urlApi: typeof URL, url: string): void {
-  window.setTimeout(() => urlApi.revokeObjectURL(url), 5 * 60 * 1000);
+  return pdfDownloadFuerBrowser(doc, dateiname);
 }

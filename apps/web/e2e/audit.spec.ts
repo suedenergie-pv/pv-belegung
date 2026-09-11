@@ -356,7 +356,7 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
     hasTouch: true,
   });
 
-  test('lädt den fertigen Plan im beim Antippen reservierten PDF-Tab', async (
+  test('lädt den vorab erzeugten Plan über einen echten Dateilink', async (
     { page },
     testInfo,
   ) => {
@@ -369,11 +369,34 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
       .click();
     await page.getByRole('button', { name: '3. Export' }).click();
 
-    const popupVersprechen = page.waitForEvent('popup');
+    const downloadVersprechen = page.waitForEvent('download');
     await page.getByRole('button', { name: 'PDF herunterladen' }).click();
-    const pdfTab = await popupVersprechen;
-    await expect(pdfTab.locator('body')).toContainText('PDF wird erstellt');
-    const download = await pdfTab.waitForEvent('download', { timeout: 20_000 });
+    const download = await downloadVersprechen;
+    expect(download.suggestedFilename()).toMatch(/\.pdf$/);
+    expect(await download.failure()).toBeNull();
+  });
+});
+
+test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
+  test.use({
+    userAgent:
+      'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/140.0.0.0 Mobile/15E148 Safari/604.1',
+    hasTouch: true,
+  });
+
+  test('lädt den fertigen Plan ohne Blob-URL', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'tablet-grenze');
+    await page.goto('/');
+    await fotoKalibrieren(page);
+    await page
+      .getByTestId('arbeitsbereich-p1')
+      .getByRole('button', { name: 'Automatisch belegen' })
+      .click();
+    await page.getByRole('button', { name: '3. Export' }).click();
+
+    const downloadVersprechen = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'PDF herunterladen' }).click();
+    const download = await downloadVersprechen;
     expect(download.suggestedFilename()).toMatch(/\.pdf$/);
     expect(await download.failure()).toBeNull();
   });
