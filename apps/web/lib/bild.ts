@@ -7,6 +7,7 @@
 
 export const MAX_FOTO_PX = 1600;
 export const MAX_FOTO_BYTES = 20 * 1024 * 1024;
+export const FOTO_SCHRITT_TIMEOUT_MS = 15_000;
 const ERLAUBTE_BILDTYPEN = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export interface FotoBild {
@@ -25,14 +26,55 @@ export async function dateiZuBild(file: File, maxPx = MAX_FOTO_PX): Promise<Foto
   }
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error('Die Bilddatei konnte nicht gelesen werden.'));
+    let erledigt = false;
+    const fertig = (aktion: () => void) => {
+      if (erledigt) return;
+      erledigt = true;
+      window.clearTimeout(timeout);
+      reader.onload = null;
+      reader.onerror = null;
+      reader.onabort = null;
+      aktion();
+    };
+    const timeout = window.setTimeout(() => {
+      fertig(() => {
+        try {
+          reader.abort();
+        } catch {
+          // Der Fehlerzustand unten bleibt die verlässliche Rückmeldung.
+        }
+        reject(new Error('Das Einlesen des Fotos dauert zu lange. Bitte erneut versuchen.'));
+      });
+    }, FOTO_SCHRITT_TIMEOUT_MS);
+    reader.onload = () => fertig(() => resolve(reader.result as string));
+    reader.onerror = () =>
+      fertig(() => reject(reader.error ?? new Error('Die Bilddatei konnte nicht gelesen werden.')));
+    reader.onabort = () => fertig(() => reject(new Error('Das Einlesen des Fotos wurde abgebrochen.')));
     reader.readAsDataURL(file);
   });
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = () => reject(new Error('Das Bildformat konnte nicht dekodiert werden.'));
+    let erledigt = false;
+    const fertig = (aktion: () => void, quelleLeeren = false) => {
+      if (erledigt) return;
+      erledigt = true;
+      window.clearTimeout(timeout);
+      i.onload = null;
+      i.onerror = null;
+      if (quelleLeeren) i.src = '';
+      aktion();
+    };
+    const timeout = window.setTimeout(
+      () =>
+        fertig(
+          () => reject(new Error('Das Dekodieren des Fotos dauert zu lange. Bitte erneut versuchen.')),
+          true,
+        ),
+      FOTO_SCHRITT_TIMEOUT_MS,
+    );
+    i.onload = () => fertig(() => resolve(i));
+    i.onerror = () =>
+      fertig(() => reject(new Error('Das Bildformat konnte nicht dekodiert werden.')), true);
     i.src = dataUrl;
   });
   const faktor = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));

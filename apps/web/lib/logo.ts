@@ -1,3 +1,5 @@
+import { ladeBildMitTimeout, svgMarkupAlsDataUrl } from './svg-raster';
+
 /**
  * SüdEnergie-Logo für den PDF-Export (06.07.2026). Quelle:
  * SuedEnergie-Logos-Final/01_Standard/SuedEnergie-Logo-Farbe.svg.
@@ -45,48 +47,41 @@ export async function logoPng(): Promise<{ dataUrl: string; w: number; h: number
   const skala = 3;
   const vbW = 920;
   const vbH = 110;
-  const url = URL.createObjectURL(new Blob([logoSvg()], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('Logo-Rasterung fehlgeschlagen'));
-      el.src = url;
-    });
-    const cw = vbW * skala;
-    const ch = vbH * skala;
-    const canvas = document.createElement('canvas');
-    canvas.width = cw;
-    canvas.height = ch;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas nicht verfügbar');
-    ctx.drawImage(img, 0, 0, cw, ch);
+  const img = await ladeBildMitTimeout(
+    svgMarkupAlsDataUrl(logoSvg()),
+    'Logo-Rasterung fehlgeschlagen',
+  );
+  const cw = vbW * skala;
+  const ch = vbH * skala;
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas nicht verfügbar');
+  ctx.drawImage(img, 0, 0, cw, ch);
 
-    // Bounding-Box der nicht-transparenten Pixel → enger Zuschnitt
-    const { data } = ctx.getImageData(0, 0, cw, ch);
-    let minX = cw;
-    let minY = ch;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y = 0; y < ch; y++) {
-      for (let x = 0; x < cw; x++) {
-        if (data[(y * cw + x) * 4 + 3]! > 10) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
+  // Bounding-Box der nicht-transparenten Pixel → enger Zuschnitt
+  const { data } = ctx.getImageData(0, 0, cw, ch);
+  let minX = cw;
+  let minY = ch;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      if (data[(y * cw + x) * 4 + 3]! > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
-    if (maxX < minX) return { dataUrl: canvas.toDataURL('image/png'), w: cw, h: ch };
-    const w = maxX - minX + 1;
-    const h = maxY - minY + 1;
-    const out = document.createElement('canvas');
-    out.width = w;
-    out.height = h;
-    out.getContext('2d')!.drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
-    return { dataUrl: out.toDataURL('image/png'), w, h };
-  } finally {
-    URL.revokeObjectURL(url);
   }
+  if (maxX < minX) return { dataUrl: canvas.toDataURL('image/png'), w: cw, h: ch };
+  const w = maxX - minX + 1;
+  const h = maxY - minY + 1;
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  out.getContext('2d')!.drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
+  return { dataUrl: out.toDataURL('image/png'), w, h };
 }

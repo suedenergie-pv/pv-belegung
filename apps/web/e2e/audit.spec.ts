@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
 
@@ -50,14 +50,19 @@ async function projektPflichtfelder(page: Page) {
   await page.getByLabel('Erfasser (Vertrieb)').fill('Genrih');
 }
 
-async function fotoKalibrieren(page: Page, dachDirektBelegen = true, traufeZeichnen = false) {
+async function fotoKalibrieren(
+  page: Page,
+  dachDirektBelegen = true,
+  traufeZeichnen = false,
+  fotoGroesse: { breite: number; hoehe: number } = { breite: 240, hoehe: 160 },
+) {
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
   const dateiauswahl = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Foto hinzufügen' }).click();
   await (await dateiauswahl).setFiles({
     name: 'dach.png',
     mimeType: 'image/png',
-    buffer: testPng(),
+    buffer: testPng(fotoGroesse.breite, fotoGroesse.hoehe),
   });
   await expect(page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' })).toBeVisible();
   if (!traufeZeichnen) await page.getByRole('button', { name: /Überspringen/ }).click();
@@ -83,6 +88,63 @@ async function fotoKalibrieren(page: Page, dachDirektBelegen = true, traufeZeich
   if (!dachDirektBelegen) return;
   await page.getByRole('button', { name: /Dach belegen/ }).click();
   await expect(page.getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeVisible();
+}
+
+async function erwarteGueltigenPdfDownload(page: Page) {
+  const link = page.getByRole('button', { name: 'PDF herunterladen' });
+  await expect(link).toBeVisible({ timeout: 25_000 });
+  const downloadVersprechen = page.waitForEvent('download');
+  await link.click();
+  const download = await downloadVersprechen;
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/);
+  expect(await download.failure()).toBeNull();
+  const pfad = await download.path();
+  if (!pfad) throw new Error('Der Browser hat keine heruntergeladene PDF-Datei bereitgestellt.');
+  expect(readFileSync(pfad).subarray(0, 5).toString('ascii')).toBe('%PDF-');
+}
+
+async function zeichneZweiFelderUndVerschiebe(page: Page) {
+  const dach = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ });
+  await page.getByRole('button', { name: '+ Belegungsbereich zeichnen' }).click();
+  await dach.scrollIntoViewIfNeeded();
+  const box = await dach.boundingBox();
+  const viewport = page.viewportSize();
+  if (!box || !viewport) throw new Error('Die Belegungsfläche ist nicht sichtbar.');
+  const sichtbar = {
+    links: Math.max(0, box.x),
+    rechts: Math.min(viewport.width - 2, box.x + box.width),
+    oben: Math.max(56, box.y),
+    unten: Math.min(viewport.height - 2, box.y + box.height),
+  };
+  const punkt = (x: number, y: number) => ({
+    x: sichtbar.links + (sichtbar.rechts - sichtbar.links) * x,
+    y: sichtbar.oben + (sichtbar.unten - sichtbar.oben) * y,
+  });
+  const ziehen = async (start: { x: number; y: number }, ende: { x: number; y: number }) => {
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(ende.x, ende.y, { steps: 12 });
+    await page.mouse.up();
+  };
+
+  await ziehen(punkt(0.12, 0.18), punkt(0.46, 0.82));
+  await expect(page.getByText(/1 Feld/).first()).toBeVisible();
+  await page.getByRole('button', { name: '+ Feld zeichnen' }).click();
+  await dach.scrollIntoViewIfNeeded();
+  const erstesFeld = dach.locator('path[fill="rgba(2,132,199,0.06)"]').first();
+  const feldBox = await erstesFeld.boundingBox();
+  const aktuelleDachBox = await dach.boundingBox();
+  if (!feldBox || !aktuelleDachBox) throw new Error('Das erste Feld ist nicht sichtbar.');
+  await ziehen(
+    { x: feldBox.x + feldBox.width / 2, y: feldBox.y + feldBox.height * 0.02 },
+    {
+      x: Math.min(viewport.width - 2, aktuelleDachBox.x + aktuelleDachBox.width * 0.92),
+      y: Math.min(viewport.height - 2, feldBox.y + feldBox.height * 0.98),
+    },
+  );
+  await expect(page.getByText(/2 Felder/).first()).toBeVisible();
+  await dach.press('ArrowRight');
+  await expect(dach.locator('path[fill="rgba(2,132,199,0.06)"]')).toHaveCount(2);
 }
 
 async function satteldachGaubeAnlegen(page: Page) {
@@ -361,6 +423,11 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
     testInfo,
   ) => {
     test.skip(testInfo.project.name !== 'tablet-grenze');
+    await page.addInitScript(() => {
+      URL.createObjectURL = () => {
+        throw new Error('Blob-URLs sind in diesem iOS-Test deaktiviert.');
+      };
+    });
     await page.goto('/');
     await fotoKalibrieren(page);
     await page
@@ -369,11 +436,7 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
       .click();
     await page.getByRole('button', { name: '3. Export' }).click();
 
-    const downloadVersprechen = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'PDF herunterladen' }).click();
-    const download = await downloadVersprechen;
-    expect(download.suggestedFilename()).toMatch(/\.pdf$/);
-    expect(await download.failure()).toBeNull();
+    await erwarteGueltigenPdfDownload(page);
   });
 });
 
@@ -386,6 +449,34 @@ test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
 
   test('lädt den fertigen Plan ohne Blob-URL', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'tablet-grenze');
+    await page.addInitScript(() => {
+      URL.createObjectURL = () => {
+        throw new Error('Blob-URLs sind in diesem iOS-WebView-Test deaktiviert.');
+      };
+    });
+    await page.goto('/');
+    await fotoKalibrieren(page, true, false, { breite: 1600, hoehe: 1200 });
+    await zeichneZweiFelderUndVerschiebe(page);
+    await page.getByRole('button', { name: '3. Export' }).click();
+
+    await erwarteGueltigenPdfDownload(page);
+  });
+});
+
+test.describe('PDF-Ausgabe in der Google-App auf dem iPad', () => {
+  test.use({
+    userAgent:
+      'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 GSA/384.0 Mobile/15E148 Safari/604.1',
+    hasTouch: true,
+  });
+
+  test('lädt den fertigen Plan ohne Blob-URL', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'tablet-grenze');
+    await page.addInitScript(() => {
+      URL.createObjectURL = () => {
+        throw new Error('Blob-URLs sind in diesem iOS-WebView-Test deaktiviert.');
+      };
+    });
     await page.goto('/');
     await fotoKalibrieren(page);
     await page
@@ -394,11 +485,7 @@ test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
       .click();
     await page.getByRole('button', { name: '3. Export' }).click();
 
-    const downloadVersprechen = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'PDF herunterladen' }).click();
-    const download = await downloadVersprechen;
-    expect(download.suggestedFilename()).toMatch(/\.pdf$/);
-    expect(await download.failure()).toBeNull();
+    await erwarteGueltigenPdfDownload(page);
   });
 });
 

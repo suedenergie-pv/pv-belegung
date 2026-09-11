@@ -94,12 +94,19 @@ describe('PDF-Generator', () => {
 });
 
 describe('Vorbereiteter PDF-Download', () => {
-  it('erkennt Chrome, Google-App, Firefox und Edge auf iOS', () => {
+  it('erkennt Safari, Chrome, Google-App, Firefox und Edge auf iOS', () => {
     expect(istIosWebviewBrowser('Mozilla/5.0 CriOS/140.0 Mobile/15E148')).toBe(true);
     expect(istIosWebviewBrowser('Mozilla/5.0 GSA/384.0 Mobile/15E148')).toBe(true);
     expect(istIosWebviewBrowser('Mozilla/5.0 FxiOS/142.0 Mobile/15E148')).toBe(true);
     expect(istIosWebviewBrowser('Mozilla/5.0 EdgiOS/140.0 Mobile/15E148')).toBe(true);
-    expect(istIosWebviewBrowser('Mozilla/5.0 Version/18.0 Mobile/15E148 Safari/604.1')).toBe(false);
+    expect(istIosWebviewBrowser('Mozilla/5.0 (iPad) Version/18.0 Mobile/15E148 Safari/604.1')).toBe(true);
+    expect(
+      istIosWebviewBrowser(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Version/18.0 Safari/605.1.15',
+        'MacIntel',
+        5,
+      ),
+    ).toBe(true);
   });
 
   it('erstellt für normale Browser einen aufräumbaren Dateilink', () => {
@@ -129,6 +136,24 @@ describe('Vorbereiteter PDF-Download', () => {
     );
 
     expect(doc.output).toHaveBeenCalledWith('datauristring', { filename: 'plan.pdf' });
+    expect(download).toMatchObject({ href: dataUrl, dateiname: 'plan.pdf' });
+  });
+
+  it('erstellt auch für Safari auf iOS ohne Blob-URL einen selbstenthaltenen Dateilink', () => {
+    const dataUrl = 'data:application/pdf;filename=plan.pdf;base64,JVBERi0=';
+    const doc = { output: vi.fn(() => dataUrl) } as unknown as import('jspdf').jsPDF;
+    const createObjectURL = vi.fn(() => {
+      throw new Error('Blob-URL darf auf iOS nicht verwendet werden');
+    });
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+
+    const download = pdfDownloadFuerBrowser(
+      doc,
+      'plan.pdf',
+      'Mozilla/5.0 (iPad) Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+
+    expect(createObjectURL).not.toHaveBeenCalled();
     expect(download).toMatchObject({ href: dataUrl, dateiname: 'plan.pdf' });
   });
 });

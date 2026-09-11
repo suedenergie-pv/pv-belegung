@@ -1,5 +1,6 @@
 import type { StringPlanResult } from '@pv-belegung/engine';
 import { logoPng } from './logo';
+import { ladeBildMitTimeout, svgMarkupAlsDataUrl } from './svg-raster';
 import {
   aktiveModule,
   ausrichtungenVon,
@@ -42,27 +43,19 @@ async function svgZuJpeg(
   klon.setAttribute('height', String(hoehe));
   klon.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   const markup = new XMLSerializer().serializeToString(klon);
-  const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }));
-
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('SVG-Rasterung fehlgeschlagen'));
-      el.src = url;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = breite;
-    canvas.height = hoehe;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas nicht verfügbar');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, breite, hoehe);
-    ctx.drawImage(img, 0, 0, breite, hoehe);
-    return { dataUrl: canvas.toDataURL('image/jpeg', 0.92), seitenverhaeltnis };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  const img = await ladeBildMitTimeout(
+    svgMarkupAlsDataUrl(markup),
+    'SVG-Rasterung fehlgeschlagen',
+  );
+  const canvas = document.createElement('canvas');
+  canvas.width = breite;
+  canvas.height = hoehe;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas nicht verfügbar');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, breite, hoehe);
+  ctx.drawImage(img, 0, 0, breite, hoehe);
+  return { dataUrl: canvas.toDataURL('image/jpeg', 0.92), seitenverhaeltnis };
 }
 
 export interface PdfGeneratorOptionen {
@@ -341,8 +334,15 @@ export interface VorbereiteterPdfDownload {
   aufraeumen: () => void;
 }
 
-export function istIosWebviewBrowser(userAgent = navigator.userAgent): boolean {
-  return /CriOS|GSA|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
+export function istIosWebviewBrowser(
+  userAgent = navigator.userAgent,
+  platform = navigator.platform,
+  maxTouchPoints = navigator.maxTouchPoints,
+): boolean {
+  return (
+    /iPad|iPhone|iPod|CriOS|GSA|FxiOS|EdgiOS|OPiOS/i.test(userAgent) ||
+    (/Macintosh/i.test(userAgent) && platform === 'MacIntel' && maxTouchPoints > 1)
+  );
 }
 
 export function pdfDownloadFuerBrowser(

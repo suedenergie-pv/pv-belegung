@@ -24,6 +24,8 @@ import {
 import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
+const PDF_VORBEREITUNG_TIMEOUT_MS = 20_000;
+
 export function SchrittExport({
   projekt,
   onChange,
@@ -52,6 +54,7 @@ export function SchrittExport({
 
   useEffect(() => {
     let verworfen = false;
+    let abgeschlossen = false;
     let download: VorbereiteterPdfDownload | null = null;
     if (!freigabe.pdf) {
       setPdfLaeuft(false);
@@ -62,6 +65,12 @@ export function SchrittExport({
     setPdfLaeuft(true);
     setPdfFehler(null);
     setPdfDownload(null);
+    const abbruchZeitgeber = window.setTimeout(() => {
+      if (verworfen || abgeschlossen) return;
+      abgeschlossen = true;
+      setPdfFehler('PDF-Erzeugung dauert zu lange. Bitte erneut vorbereiten.');
+      setPdfLaeuft(false);
+    }, PDF_VORBEREITUNG_TIMEOUT_MS);
     const zeitgeber = window.setTimeout(() => {
       void bereiteBelegungsPdfDownload(
         projekt,
@@ -71,16 +80,20 @@ export function SchrittExport({
           null,
       ).then(
         (fertig) => {
-          if (verworfen) {
+          if (verworfen || abgeschlossen) {
             fertig.aufraeumen();
             return;
           }
+          abgeschlossen = true;
+          window.clearTimeout(abbruchZeitgeber);
           download = fertig;
           setPdfDownload(fertig);
           setPdfLaeuft(false);
         },
         (e) => {
-          if (verworfen) return;
+          if (verworfen || abgeschlossen) return;
+          abgeschlossen = true;
+          window.clearTimeout(abbruchZeitgeber);
           setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
           setPdfLaeuft(false);
         },
@@ -90,6 +103,7 @@ export function SchrittExport({
     return () => {
       verworfen = true;
       window.clearTimeout(zeitgeber);
+      window.clearTimeout(abbruchZeitgeber);
       download?.aufraeumen();
     };
   }, [freigabe.pdf, pdfVersuch, projekt, result]);

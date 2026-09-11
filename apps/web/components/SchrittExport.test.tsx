@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { modulById, neuesProjekt, vollFeldFuer } from '../lib/model';
 
@@ -109,5 +109,21 @@ describe('Exportfunktionen', () => {
     expect((erneut as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(erneut);
     await waitFor(() => expect(pdfMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('beendet auch einen nie auflösenden PDF-Aufruf mit Wiederholungsmöglichkeit', async () => {
+    vi.useFakeTimers();
+    pdfMock.mockImplementationOnce(() => new Promise(() => undefined));
+    const { getByRole, getByText } = render(
+      <SchrittExport projekt={freigegebenesProjekt()} onChange={vi.fn()} />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(getByText('PDF-Erzeugung dauert zu lange. Bitte erneut vorbereiten.')).toBeTruthy();
+    expect((getByRole('button', { name: 'PDF erneut vorbereiten' }) as HTMLButtonElement).disabled).toBe(false);
+    vi.useRealTimers();
   });
 });
