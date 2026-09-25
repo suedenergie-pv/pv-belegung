@@ -54,6 +54,37 @@ afterEach(() => {
 });
 
 describe('Exportfunktionen', () => {
+  it('startet den nativen Speichern-Dialog synchron beim Klick und verhindert Doppelklicks', async () => {
+    let fertig!: () => void;
+    const teilen = vi.fn(() => new Promise<void>((resolve) => { fertig = resolve; }));
+    pdfMock.mockResolvedValue({ href: 'data:application/pdf;base64,x', dateiname: 'plan.pdf', teilen, aufraeumen: pdfAufraeumenMock });
+    const { findByText, getByRole } = render(<SchrittExport projekt={freigegebenesProjekt()} onChange={vi.fn()} />);
+    await findByText(/In Dateien sichern/);
+    const link = getByRole('button', { name: 'PDF herunterladen' });
+    expect(fireEvent.click(link)).toBe(false);
+    expect(teilen).toHaveBeenCalledTimes(1);
+    fireEvent.click(link);
+    expect(teilen).toHaveBeenCalledTimes(1);
+    await act(async () => fertig());
+    fireEvent.click(link);
+    expect(teilen).toHaveBeenCalledTimes(2);
+    await act(async () => fertig());
+  });
+
+  it.each(['AbortError', 'NotAllowedError', 'sync'])('behandelt den Speichern-Dialog bei %s ohne stillen Fehlschlag', async (name) => {
+    const teilen = vi.fn(() => {
+      if (name === 'sync') throw new Error('gesperrt');
+      return Promise.reject(new DOMException('gesperrt', name));
+    });
+    pdfMock.mockResolvedValue({ href: 'data:application/pdf;base64,x', dateiname: 'plan.pdf', teilen, aufraeumen: pdfAufraeumenMock });
+    const { findByText, getByRole, queryByRole } = render(<SchrittExport projekt={freigegebenesProjekt()} onChange={vi.fn()} />);
+    await findByText(/In Dateien sichern/);
+    await act(async () => { fireEvent.click(getByRole('button', { name: 'PDF herunterladen' })); });
+    if (name === 'AbortError') expect(queryByRole('alert')).toBeNull();
+    else expect(getByRole('link', { name: 'Direkter PDF-Download' }).getAttribute('download')).toBe('plan.pdf');
+    fireEvent.click(getByRole('button', { name: 'PDF herunterladen' }));
+    await waitFor(() => expect(teilen).toHaveBeenCalledTimes(2));
+  });
   it('erzeugt PDF und kopiert den vollständigen JSON-Payload', async () => {
     const projekt = freigegebenesProjekt();
     const { getByRole, getByText } = render(<SchrittExport projekt={projekt} onChange={vi.fn()} />);

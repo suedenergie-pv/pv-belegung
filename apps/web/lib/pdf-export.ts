@@ -331,6 +331,7 @@ export async function baueBelegungsPdf(
 export interface VorbereiteterPdfDownload {
   href: string;
   dateiname: string;
+  teilen?: () => Promise<void>;
   aufraeumen: () => void;
 }
 
@@ -350,17 +351,25 @@ export function pdfDownloadFuerBrowser(
   dateiname: string,
   userAgent = navigator.userAgent,
 ): VorbereiteterPdfDownload {
+  const datei = new File([doc.output('arraybuffer')], dateiname, {
+    type: 'application/pdf',
+  });
   if (istIosWebviewBrowser(userAgent)) {
+    // Datei vor dem Tap vorbereiten: share() braucht die unmittelbare
+    // Nutzeraktivierung. Ein Download-Link allein ist auf iOS nicht verlässlich.
+    let kannTeilen = false;
+    try {
+      kannTeilen = typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' && navigator.canShare({ files: [datei] });
+    } catch { /* Eingebettete Browser können die Fähigkeit sperren. */ }
     return {
       href: doc.output('datauristring', { filename: dateiname }),
       dateiname,
+      teilen: kannTeilen ? () => navigator.share({ files: [datei] }) : undefined,
       aufraeumen: () => undefined,
     };
   }
 
-  const datei = new File([doc.output('arraybuffer')], dateiname, {
-    type: 'application/pdf',
-  });
   const href = URL.createObjectURL(datei);
   return {
     href,

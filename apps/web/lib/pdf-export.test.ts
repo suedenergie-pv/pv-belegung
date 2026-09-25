@@ -94,6 +94,31 @@ describe('PDF-Generator', () => {
 });
 
 describe('Vorbereiteter PDF-Download', () => {
+  it('übergibt auf iOS eine fertige PDF-Datei erst beim Antippen an den nativen Dialog', async () => {
+    const bytes = new TextEncoder().encode('%PDF-1.7\nTest');
+    const doc = { output: vi.fn((format) => format === 'arraybuffer' ? bytes.buffer : 'data:application/pdf;base64,JVBERi0=') } as unknown as import('jspdf').jsPDF;
+    const share = vi.fn().mockResolvedValue(undefined);
+    const canShare = vi.fn(() => true);
+    vi.stubGlobal('navigator', { share, canShare });
+    const download = pdfDownloadFuerBrowser(doc, 'plan.pdf', 'iPhone');
+    expect(share).not.toHaveBeenCalled();
+    expect(download.teilen).toBeTypeOf('function');
+    await download.teilen!();
+    const datei = share.mock.calls[0]![0].files[0] as File;
+    expect(datei.name).toBe('plan.pdf');
+    expect(datei.type).toBe('application/pdf');
+    expect(datei.size).toBe(bytes.length);
+    expect(canShare).toHaveBeenCalledWith({ files: [datei] });
+  });
+
+  it.each([false, 'throw'])('behält den Dateilink bei nicht verfügbarem Dateiteilen (%s)', (faehigkeit) => {
+    vi.stubGlobal('navigator', {
+      share: vi.fn(),
+      canShare: () => { if (faehigkeit === 'throw') throw new Error('gesperrt'); return false; },
+    });
+    const doc = { output: vi.fn(() => new ArrayBuffer(3)) } as unknown as import('jspdf').jsPDF;
+    expect(pdfDownloadFuerBrowser(doc, 'plan.pdf', 'iPhone').teilen).toBeUndefined();
+  });
   it('erkennt Safari, Chrome, Google-App, Firefox und Edge auf iOS', () => {
     expect(istIosWebviewBrowser('Mozilla/5.0 CriOS/140.0 Mobile/15E148')).toBe(true);
     expect(istIosWebviewBrowser('Mozilla/5.0 GSA/384.0 Mobile/15E148')).toBe(true);

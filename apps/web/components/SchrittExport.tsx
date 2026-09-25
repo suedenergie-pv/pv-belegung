@@ -46,6 +46,8 @@ export function SchrittExport({
   const [pdfVersuch, setPdfVersuch] = useState(0);
   const [eskalationsgrund, setEskalationsgrund] = useState(projekt.eskalationsgrund ?? '');
   const renderRef = useRef<HTMLDivElement>(null);
+  const teilenLaeuft = useRef(false);
+  const [teilenFehler, setTeilenFehler] = useState<string | null>(null);
 
   const stringExportGesperrt = freigabe.jsonFehler.some((f) => f.bereich === 'stringplan');
   const exportGesperrt = !freigabe.json;
@@ -64,6 +66,7 @@ export function SchrittExport({
 
     setPdfLaeuft(true);
     setPdfFehler(null);
+    setTeilenFehler(null);
     setPdfDownload(null);
     const abbruchZeitgeber = window.setTimeout(() => {
       if (verworfen || abgeschlossen) return;
@@ -185,6 +188,26 @@ export function SchrittExport({
               role="button"
               href={pdfDownload.href}
               download={pdfDownload.dateiname}
+              onClick={(event) => {
+                if (!pdfDownload.teilen) return;
+                event.preventDefault();
+                if (teilenLaeuft.current) return;
+                teilenLaeuft.current = true;
+                setTeilenFehler(null);
+                const fehlgeschlagen = (fehler: unknown) => {
+                  if (fehler && typeof fehler === 'object' && 'name' in fehler && fehler.name === 'AbortError') return;
+                  setTeilenFehler('PDF konnte nicht an den Speichern-Dialog übergeben werden. Bitte erneut versuchen oder den direkten Download verwenden.');
+                };
+                try {
+                  // Kein await vor teilen(): Die PDF ist bereits vollständig fertig.
+                  void pdfDownload.teilen().catch(fehlgeschlagen).finally(() => {
+                    teilenLaeuft.current = false;
+                  });
+                } catch (fehler) {
+                  teilenLaeuft.current = false;
+                  fehlgeschlagen(fehler);
+                }
+              }}
               className="ml-auto inline-flex h-12 items-center rounded-xl bg-akzent px-6 text-sm font-semibold text-white transition hover:bg-akzent/90"
             >
               PDF herunterladen
@@ -204,6 +227,17 @@ export function SchrittExport({
             </button>
           )}
         </div>
+        {pdfDownload?.teilen && (
+          <p className="text-sm text-slate-500">Zum Speichern im folgenden Dialog „In Dateien sichern“ wählen.</p>
+        )}
+        {teilenFehler && pdfDownload && (
+          <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p>{teilenFehler}</p>
+            <a href={pdfDownload.href} download={pdfDownload.dateiname} className="inline-flex min-h-12 items-center font-semibold underline">
+              Direkter PDF-Download
+            </a>
+          </div>
+        )}
         {result && !result.valid && (
           <p className="text-sm text-slate-500">
             Der aktuelle Stringplan ist ungültig und wird im PDF weggelassen.

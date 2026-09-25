@@ -411,7 +411,47 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
   }
 });
 
+// Diese Tests simulieren nur die Web-Share-Schnittstelle, kein echtes iOS.
+test.describe('PDF-Dateiübergabe an iOS (Schnittstellentest)', () => {
+  test.use({ userAgent: 'Mozilla/5.0 (iPhone) Version/18.0 Mobile/15E148 Safari/604.1', hasTouch: true });
+
+  test('übergibt gültige PDF-Bytes mit aktiver Nutzergeste und bietet bei Fehler einen Download', async ({ page }, testInfo) => {
+    test.skip(!['desktop', 'mobil-hoch'].includes(testInfo.project.name));
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'canShare', { value: ({ files }: ShareData) => files?.[0]?.type === 'application/pdf' });
+      Object.defineProperty(navigator, 'share', { value: async ({ files }: ShareData) => {
+        const aktiv = navigator.userActivation.isActive;
+        const datei = files![0]!;
+        document.documentElement.dataset.geteiltePdf = JSON.stringify({
+          aktiv, name: datei.name, typ: datei.type,
+          kopf: await datei.slice(0, 5).text(), groesse: datei.size,
+        });
+        throw new DOMException('Test: Dialog gesperrt', 'NotAllowedError');
+      } });
+    });
+    await page.goto('/');
+    await fotoKalibrieren(page);
+    await page.getByTestId('arbeitsbereich-p1').getByRole('button', { name: 'Automatisch belegen' }).click();
+    await page.getByRole('button', { name: '3. Export' }).click();
+    await expect(page.getByText(/In Dateien sichern/)).toBeVisible({ timeout: 25_000 });
+    await page.screenshot({ path: resolve('.debug-shots', `ios-export-${testInfo.project.name}.png`), fullPage: true });
+    await page.getByRole('button', { name: 'PDF herunterladen' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'PDF konnte nicht' })).toBeVisible();
+    const datei = JSON.parse(await page.locator('html').getAttribute('data-geteilte-pdf') ?? '{}');
+    expect(datei).toMatchObject({ aktiv: true, typ: 'application/pdf', kopf: '%PDF-' });
+    expect(datei.name).toMatch(/\.pdf$/);
+    expect(datei.groesse).toBeGreaterThan(1000);
+    await page.screenshot({ path: resolve('.debug-shots', `ios-export-fehler-${testInfo.project.name}.png`), fullPage: true });
+    const heruntergeladen = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Direkter PDF-Download' }).click();
+    expect(await (await heruntergeladen).failure()).toBeNull();
+  });
+});
+
 test.describe('PDF-Ausgabe auf dem iPad', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'canShare', { value: () => false }));
+  });
   test.use({
     userAgent:
       'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
@@ -441,6 +481,9 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
 });
 
 test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'canShare', { value: () => false }));
+  });
   test.use({
     userAgent:
       'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/140.0.0.0 Mobile/15E148 Safari/604.1',
@@ -464,6 +507,9 @@ test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
 });
 
 test.describe('PDF-Ausgabe in der Google-App auf dem iPad', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'canShare', { value: () => false }));
+  });
   test.use({
     userAgent:
       'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 GSA/384.0 Mobile/15E148 Safari/604.1',
