@@ -489,6 +489,11 @@ die Gesamtanlagengröße in kWp, damit Dateien außerhalb des Tools eindeutig bl
 Der PDF-Download darf auch ohne Kunde, Adresse und Erfasser erfolgen (nackter
 Belegungsplan); diese Angaben bleiben für den Ticketsystem-JSON-Export Pflicht.
 
+PDF-Bildlayout (30.09.2026): Mehrere Belegungsfotos stehen auf eigenen A4-Seiten
+groß untereinander, höchstens zwei Fotos je Seite. Bilder behalten ihr Seitenverhältnis
+und werden nicht beschnitten. Ein einzelnes Foto bleibt bei ausreichendem Platz
+auf der Zusammenfassungsseite.
+
 ---
 
 ## 14. ⛔ KALIBRIERUNGS-GATE (Pflicht vor Produktiveinsatz)

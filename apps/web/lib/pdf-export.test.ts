@@ -91,6 +91,61 @@ describe('PDF-Generator', () => {
     expect(inhalt).toContain('Flächenübersicht \\(Fortsetzung\\)');
     expect(inhalt).toContain('Belegungsübersicht');
   });
+  it.each([
+    [2, 9 / 16],
+    [3, 3 / 4],
+    [5, 3 / 2],
+  ])('ordnet %i Fotos ohne Beschnitt mit höchstens zwei Bildern pro Seite an', async (anzahl, verhaeltnis) => {
+    const projekt = projektMitFlaechen();
+    projekt.fotos = Array.from({ length: anzahl }, (_, i) => ({
+      ...projekt.fotos[0]!, id: `foto-${i + 1}`, name: `Drohnenfoto ${i + 1}`,
+    }));
+    projekt.flaechen[0]!.fotoZuordnungen = projekt.fotos.map((foto) => ({
+      ...projekt.flaechen[0]!.fotoZuordnungen![0]!, fotoId: foto.id,
+    }));
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, {
+      ...optionen,
+      rastereSvg: async () => ({ dataUrl: 'data:image/jpeg;base64,eA==', seitenverhaeltnis: verhaeltnis }),
+    });
+    const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages
+      .slice(1).map((seite) => seite.join('\n'));
+    expect(seiten).toHaveLength(1 + Math.ceil(anzahl / 2));
+    expect(seiten[0]).not.toContain('Belegungsübersicht');
+    expect(seiten[0]).not.toMatch(/\/I\d+ Do/);
+
+    for (const [index, seite] of seiten.slice(1).entries()) {
+      // Die tatsächlichen PDF-Bildmatrizen prüfen (Punkte, Ursprung unten links).
+      const bilder = [...seite.matchAll(/([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm\s+\/I\d+ Do/g)]
+        .map((treffer) => {
+          const [b, h, x, unten] = treffer.slice(1).map((wert) => Number(wert) * 25.4 / 72);
+          return { b: b!, h: h!, x: x!, y: 297 - unten! - h! };
+        });
+      expect(bilder).toHaveLength(Math.min(2, anzahl - index * 2));
+      expect(seite).toContain('Belegungsübersicht');
+      for (const [bildIndex, bild] of bilder.entries()) {
+        expect(seite).toContain(`Drohnenfoto ${index * 2 + bildIndex + 1}`);
+        expect(bild.h / bild.b).toBeCloseTo(verhaeltnis, 5);
+        expect(bild.x + bild.b / 2).toBeCloseTo(105, 5);
+        expect(bild.y).toBeGreaterThanOrEqual(35.9);
+        expect(bild.y + bild.h).toBeLessThanOrEqual(277.1);
+        if (verhaeltnis <= 0.75) expect(bild.b).toBeGreaterThanOrEqual(145);
+        if (bildIndex > 0) expect(bild.y).toBeGreaterThan(bilder[bildIndex - 1]!.y + bilder[bildIndex - 1]!.h);
+      }
+    }
+  });
+
+  it.each([1, 35, 42])('hält Überschrift und Einzelbild bei %i Flächen zusammen', async (anzahl) => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projektMitFlaechen(anzahl), null, () => svg, optionen);
+    const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages
+      .slice(1).map((seite) => seite.join('\n'));
+    if (anzahl === 1) expect(seiten).toHaveLength(1);
+    expect(seiten.filter((seite) => /\/I\d+ Do/.test(seite))).toHaveLength(1);
+    for (const seite of seiten) {
+      expect(seite.includes('Belegungsübersicht')).toBe(/\/I\d+ Do/.test(seite));
+    }
+  });
 });
 
 describe('Vorbereiteter PDF-Download', () => {
