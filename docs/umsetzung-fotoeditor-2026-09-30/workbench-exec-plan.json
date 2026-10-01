@@ -1,0 +1,171 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "loop_type": "build-repair",
+  "objective": "Die ausdrücklich beauftragte Workbench in den vorhandenen internen Fotoeditor integrieren und den statischen Releaseweg absichern.",
+  "source_package": "orchestrate-agent-work",
+  "authorization": "01.10.2026: Nutzer bestätigt konkreten Workbench-Aufbau mit „dann plan es und setz es um“. Lokale Umsetzung und Prüfungen autorisiert; kein Push/Deploy, keine native iPad-Abnahme behaupten.",
+  "budget": {
+    "max_parallel_agents": 3,
+    "max_total_agent_tasks": 8,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": true,
+    "reason_codes": [
+      "professional_practice",
+      "design_decision"
+    ],
+    "freshness": "current",
+    "route": "research-phase",
+    "artifact": "docs/umsetzung-fotoeditor-2026-09-30/workbench-plan.md"
+  },
+  "tasks": [
+    {
+      "task_id": "evidence",
+      "kind": "professional_practice_research",
+      "agent": "primary",
+      "depends_on": [],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Aktuelle Render, Nutzerkritik und geöffnete Adobe-Primärquellen"
+      ],
+      "outputs": [
+        "docs/umsetzung-fotoeditor-2026-09-30/workbench-plan.md"
+      ],
+      "checks": [
+        "Referenzprinzipien auf den konkreten Dacheditor übertragen"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    },
+    {
+      "task_id": "contract",
+      "kind": "evidence_compaction",
+      "agent": "primary",
+      "depends_on": [
+        "evidence"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Nutzerfreigabe des konkreten Workbench-Aufbaus"
+      ],
+      "outputs": [
+        "SPEC.md",
+        "docs/umsetzung-fotoeditor-2026-09-30/workbench-plan.md"
+      ],
+      "checks": [
+        "Scope, Hierarchie, Abnahme und Grenzen dokumentiert"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    },
+    {
+      "task_id": "workbench",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "SPEC und bestehende Editorhandler"
+      ],
+      "outputs": [
+        "Integrierte Workbench in apps/web"
+      ],
+      "checks": [
+        "Foto dominiert; feste Werkzeuge und Eigenschaften; Entwurfsschutz bleibt"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    },
+    {
+      "task_id": "release",
+      "kind": "implementation",
+      "agent": "release_pipeline",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Vorhandener Pages-Workflow und Next-Dokumentation"
+      ],
+      "outputs": [
+        "Isolierter statischer Build und CI-Sperren"
+      ],
+      "checks": [
+        "Basepath, Assets, Tests, Typecheck und statischer Smoke"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    },
+    {
+      "task_id": "qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "workbench",
+        "release"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Integrierter aktueller Arbeitsstand"
+      ],
+      "outputs": [
+        "Headless-Captures und Testergebnisse"
+      ],
+      "checks": [
+        "Unit/Engine/Typecheck/Build; Desktop/Tablet/Smartphone; Touch; Export"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "workbench_review",
+      "depends_on": [
+        "qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Aktueller Code, Render und bindender Vertrag"
+      ],
+      "outputs": [
+        "Unabhängige Reviewbefunde"
+      ],
+      "checks": [
+        "Keine offenen Blocker oder Majors in Funktion und Gestaltung"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    },
+    {
+      "task_id": "finish",
+      "kind": "completion",
+      "agent": "primary",
+      "depends_on": [
+        "review"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Bestandene Prüfungen"
+      ],
+      "outputs": [
+        "Lokale Preview und knappe Release-Evidenz"
+      ],
+      "checks": [
+        "Kein Push; offene native iPad-Abnahme ehrlich benannt"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder nach maximal drei Reparaturen bzw. zweimal unverändertem Fehler konkrete Evidence und verbleibende Grenze melden."
+    }
+  ]
+}

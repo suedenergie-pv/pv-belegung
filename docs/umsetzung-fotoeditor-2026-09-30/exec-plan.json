@@ -1,0 +1,391 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "loop_type": "creative-eval",
+  "objective": "Den bestätigten Fotoeditor-Plan in kleinen geprüften Paketen implementieren; konkreten Entwurf vor Integration freigeben lassen.",
+  "source_package": "orchestrate-agent-work",
+  "authorization": "Nutzerauftrag vom 30.09.2026; konkrete reduzierte Editoransicht mit realem Foto in echtfoto-entwurf.md gezeigt, unabhängiger Ansichtsreview PASS. Zustimmung „ok. Kannst mir ne preview geben zum klicken? lokal“ und anschließende Klarstellung des Implementierungsstands. Reguläre Integration des bestätigten Plans, keine Sonderversion mit Kundendaten. Live-Deploy weiterhin nur nach ausdrücklicher Freigabe.",
+  "budget": {
+    "max_parallel_agents": 3,
+    "max_total_agent_tasks": 24,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": true,
+    "reason_codes": [
+      "professional_practice",
+      "design_decision"
+    ],
+    "freshness": "current",
+    "route": "research-phase",
+    "artifact": "docs/umsetzung-fotoeditor-2026-09-30/evidence.md"
+  },
+  "tasks": [
+    {
+      "task_id": "research",
+      "kind": "professional_practice_research",
+      "agent": "primary",
+      "depends_on": [],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Bestehender UX-Audit; W3C, NN/g, OpenSolar, GoodWe Primärquellen"
+      ],
+      "outputs": [
+        "Quellen und belegte Befunde"
+      ],
+      "checks": [
+        "Quellen tatsächlich aufgerufen; keine elektrischen Werte aus dem Web"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "evidence",
+      "kind": "evidence_compaction",
+      "agent": "primary",
+      "depends_on": [
+        "research"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Quellen und belegte Befunde"
+      ],
+      "outputs": [
+        "docs/umsetzung-fotoeditor-2026-09-30/evidence.md"
+      ],
+      "checks": [
+        "Befunde, Ableitungen und Grenzen getrennt"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "contract",
+      "kind": "contract_capture",
+      "agent": "primary",
+      "depends_on": [
+        "evidence"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Genehmigter Nutzerplan",
+        "SPEC.md"
+      ],
+      "outputs": [
+        "SPEC.md"
+      ],
+      "checks": [
+        "Fachliche Änderungen vor Code dokumentiert"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "history",
+      "kind": "implementation",
+      "agent": "history",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "SPEC.md",
+        "apps/web/app/page.tsx",
+        "apps/web/components/SchrittBelegung.tsx"
+      ],
+      "outputs": [
+        "Zentrale Sitzungshistorie und Regressionstests"
+      ],
+      "checks": [
+        "20 Änderungen je Projekt; Schrittwechsel, Fotos, Halteaktionen, Formulare, Redo"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "measure",
+      "kind": "implementation",
+      "agent": "measure",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "SPEC.md",
+        "apps/web/lib/model.ts"
+      ],
+      "outputs": [
+        "Maßstatus, Migration und zentrale Freigabe mit Tests"
+      ],
+      "checks": [
+        "Bestand bleibt nutzbar; neue offene Maße sperren Belegung; Sicherung roundtrip"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "reliability",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "SPEC.md"
+      ],
+      "outputs": [
+        "Statusmeldungen, Kontrast und sichere Maßübernahme"
+      ],
+      "checks": [
+        "Keine Änderung der Engine-Ergebnisse"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "directions",
+      "kind": "editor_directions",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Genehmigte Fotoeditor-Richtung",
+        "docs/umsetzung-fotoeditor-2026-09-30/evidence.md"
+      ],
+      "outputs": [
+        "Drei vollständige Arbeitsansichten: Einrichtung, Belegung, Korrektur"
+      ],
+      "checks": [
+        "Desktop, Tablet und Smartphone rendern; echte strukturelle Unterschiede"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "design-qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "directions"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Drei vollständige Arbeitsansichten"
+      ],
+      "outputs": [
+        "Headless Screenshots und Layoutmessungen"
+      ],
+      "checks": [
+        "Keine abgeschnittenen Hauptaktionen; Arbeitsfläche sichtbar; Touchziele 44px"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "structure",
+      "kind": "structural_slop_critic",
+      "agent": "structure",
+      "depends_on": [
+        "design-qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Unbenannte Entwürfe und Nutzeraufgaben"
+      ],
+      "outputs": [
+        "Strukturkritik"
+      ],
+      "checks": [
+        "Keine Kenntnis einer Autorenpräferenz; alle Zustände und Größen prüfen"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "brand",
+      "kind": "brand_differentiation_critic",
+      "agent": "brand",
+      "depends_on": [
+        "design-qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Unbenannte Entwürfe und bestehende SüdEnergie-Oberfläche"
+      ],
+      "outputs": [
+        "Marken- und Dichtekritik"
+      ],
+      "checks": [
+        "Moduloptik bleibt kanonisch; kein generisches Dashboard statt Arbeitsfläche"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "grounding",
+      "kind": "reference_grounding_eval",
+      "agent": "grounding",
+      "depends_on": [
+        "design-qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Unbenannte Entwürfe",
+        "docs/umsetzung-fotoeditor-2026-09-30/evidence.md"
+      ],
+      "outputs": [
+        "Referenz- und Bedienkritik"
+      ],
+      "checks": [
+        "Belege von Gestaltungsurteilen unterscheiden"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "select",
+      "kind": "selector",
+      "agent": "selector",
+      "depends_on": [
+        "structure",
+        "brand",
+        "grounding"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Entwürfe und unabhängige Kritik"
+      ],
+      "outputs": [
+        "Begründete Auswahl mit offenen Befunden"
+      ],
+      "checks": [
+        "Keine ungelösten wesentlichen Fehler im empfohlenen Entwurf"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "approve",
+      "kind": "human_creative_gate",
+      "agent": "primary",
+      "depends_on": [
+        "select"
+      ],
+      "risk": "product_decision",
+      "gate": "human",
+      "inputs": [
+        "Vollständige Entwürfe aller Zustände und Bildschirmgrößen"
+      ],
+      "outputs": [
+        "Konkrete Nutzerfreigabe eines Editorentwurfs"
+      ],
+      "checks": [
+        "Freigabe betrifft Aufbau, Einrichtung, Belegung, Korrektur und schmale Ansichten"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "editor",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "approve",
+        "history",
+        "measure",
+        "reliability"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Freigegebener Entwurf",
+        "Bestehende Renderer"
+      ],
+      "outputs": [
+        "Gemeinsamer Editor, Touchgesten, Entwürfe und Exportvorschau"
+      ],
+      "checks": [
+        "Engine unverändert; UI-Zustand separat; zentrale Freigabe"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "regression",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "editor"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Implementierter Editor"
+      ],
+      "outputs": [
+        "Vitest, Playwright, Typecheck, Build und geprüfte Screenshots"
+      ],
+      "checks": [
+        "1440x900,1024x768,768x1024,375x812,812x375; iOS-Pfad; native iPad-Prüfung separat"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "review",
+      "depends_on": [
+        "regression"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Implementierter Editor und Testevidence"
+      ],
+      "outputs": [
+        "Unabhängiger UX- und Code-Review"
+      ],
+      "checks": [
+        "Kein ungelöster Blocker oder Major; höchstens drei Reparaturrunden"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    },
+    {
+      "task_id": "release",
+      "kind": "release",
+      "agent": "primary",
+      "depends_on": [
+        "review"
+      ],
+      "risk": "external_write",
+      "gate": "human",
+      "inputs": [
+        "Review und Prüfergebnisse"
+      ],
+      "outputs": [
+        "Freigabe für Push auf main"
+      ],
+      "checks": [
+        "Live-Deploy nur mit ausdrücklicher Freigabe; echte iPad-Praxisabnahme separat ausweisen"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "Prüfungen erfüllt oder wesentliche Abweichung nach drei Reparaturen konkret melden."
+    }
+  ]
+}
