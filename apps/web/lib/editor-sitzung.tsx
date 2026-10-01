@@ -10,12 +10,13 @@ export interface EditorSitzung {
   ansichtJeFlaeche: Record<string, string>;
   modus: { art: 'feld_neu' | 'zellen'; flaecheId: string } | null;
   auswahl: { flaecheId: string; indices: number[] } | null;
+  mehrfachauswahl: boolean;
   ansichten: Record<string, EditorAnsicht>;
   verschieben: boolean;
   panel: string;
 }
 export const leereEditorSitzung = (): EditorSitzung => ({
-  aktiveFlaecheId: null, ansichtJeFlaeche: {}, modus: null, auswahl: null,
+  aktiveFlaecheId: null, ansichtJeFlaeche: {}, modus: null, auswahl: null, mehrfachauswahl: false,
   ansichten: {}, verschieben: false, panel: '',
 });
 type Patch = Partial<EditorSitzung> | ((alt: EditorSitzung) => Partial<EditorSitzung>);

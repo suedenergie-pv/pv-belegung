@@ -102,7 +102,7 @@ const kopiereEcken = (ecken: Ecken): Ecken =>
 /** Laufende Zeiger-Geste — lebt nur im State, wird erst beim Loslassen committet. */
 type Drag =
   | { art: 'neu'; flaecheId: string; start: PunktM; aktuell: PunktM }
-  | { art: 'move'; flaecheId: string; start: PunktM; aktuell: PunktM; indices: number[] }
+  | { art: 'move'; flaecheId: string; start: PunktM; aktuell: PunktM; indices: number[]; treffer: number; mehrfach: boolean }
   | {
       art: 'resize';
       flaecheId: string;
@@ -1038,7 +1038,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
 
   // ---- Zeiger-Gesten im Felder-Werkzeug ----
 
-  const onDownM = (f: Flaeche, p: PunktM, nurNeuesFeld = false) => {
+  const onDownM = (f: Flaeche, p: PunktM, nurNeuesFeld = false, mehrfach = false) => {
     if (!massFreigabe(f).belegen) return;
     // Der ausdrückliche Zeichenmodus muss auch dann ein neues Feld beginnen,
     // wenn der Startpunkt in einem vorhandenen Feld liegt. Sonst wäre bei einem
@@ -1074,8 +1074,8 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     }
     // Feld aus der Auswahl angefasst → ganze Auswahl bewegen, sonst nur dieses
     const gewaehlt = auswahlVon(f);
-    const indices = gewaehlt.includes(treffer) ? gewaehlt : [treffer];
-    starteDrag({ art: 'move', flaecheId: f.id, start: p, aktuell: p, indices });
+    const indices = gewaehlt.includes(treffer) ? gewaehlt : mehrfach ? [...gewaehlt, treffer] : [treffer];
+    starteDrag({ art: 'move', flaecheId: f.id, start: p, aktuell: p, indices, treffer, mehrfach });
   };
 
   const onUpM = (f: Flaeche, p: PunktM) => {
@@ -1086,13 +1086,13 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     const dragAmEnde = { ...drag, aktuell: p } as Drag;
     const weit = Math.hypot(p[0] - dragAmEnde.start[0], p[1] - dragAmEnde.start[1]) >= KLICK_SCHWELLE_M;
     if (!weit) {
-      // Klick: ins Leere = Auswahl aufheben; auf ein Feld = an-/abwählen;
+      // Klick wählt genau das getroffene Feld. Nur ausdrückliche Mehrfachauswahl toggelt.
       // auf einen Griff = nichts (Auswahl behalten, sonst verlöre man sie sofort)
       if (dragAmEnde.art === 'neu') setAuswahl(null);
       else if (dragAmEnde.art === 'move') {
-        const i = dragAmEnde.indices[dragAmEnde.indices.length - 1]!;
+        const i = dragAmEnde.treffer;
         const alt = auswahlVon(f);
-        const neu = alt.includes(i) ? alt.filter((x) => x !== i) : [...alt, i];
+        const neu = dragAmEnde.mehrfach ? alt.includes(i) ? alt.filter((x) => x !== i) : [...alt, i] : [i];
         setAuswahl(neu.length ? { flaecheId: f.id, indices: neu } : null);
       }
       dragPunkt.current = null;
@@ -1134,6 +1134,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
             : feld,
         ),
       });
+      if (dragAmEnde.art === 'move') setAuswahl({ flaecheId: f.id, indices: dragAmEnde.indices });
     }
     dragPunkt.current = null;
     setDrag(null);
@@ -1163,6 +1164,19 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
   });
 
   /** Live-Vorschau beim Aufziehen: Rechteck + wie viele Module hineinpassen. */
+  useEffect(() => {
+    const abwaehlen = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || !auswahl?.indices.length) return;
+      if (perspektivEntwurf || geometrieVorschau || document.querySelector('dialog[open]')) return;
+      if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable=true]')) return;
+      event.preventDefault();
+      verwerfeGeste();
+      patchSitzung({ auswahl: null, mehrfachauswahl: false });
+    };
+    window.addEventListener('keydown', abwaehlen);
+    return () => window.removeEventListener('keydown', abwaehlen);
+  });
+
   const vorschauFuer = (f: Flaeche) => {
     if (!drag || drag.flaecheId !== f.id || drag.art !== 'neu') return null;
     const rect = rechteckAus(drag.start, drag.aktuell);
@@ -1426,6 +1440,28 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     </div>
   </div>;
 
+  const waehleBelegungsWerkzeug = (art: WerkzeugArt | null) => navigation.weiter(() => {
+    verwerfeGeste();
+    patchSitzung({ panel: '', verschieben: false, mehrfachauswahl: false });
+    setPerspektivEntwurf(null);
+    setGeometrieVorschau(null);
+    setzeModus(f, art);
+  });
+  const wechsleMehrfachauswahl = () => navigation.weiter(() => {
+    verwerfeGeste();
+    patchSitzung({ panel: '', modus: null, verschieben: false, mehrfachauswahl: !sitzung.mehrfachauswahl });
+    setPerspektivEntwurf(null);
+    setGeometrieVorschau(null);
+  });
+  const waehleAlleFelder = () => {
+    patchSitzung({ panel: '', modus: null, verschieben: false });
+    setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) });
+  };
+  const auswahlOptionen = <div className={styles.auswahlOptionen}>
+    <button className={`${aktionKlasse} ${styles.nurKompakt}`} aria-pressed={sitzung.mehrfachauswahl} onClick={wechsleMehrfachauswahl}>Mehrere Felder auswählen</button>
+    <button className={aktionKlasse} onClick={waehleAlleFelder}>Alle auswählen</button>
+    <p>{sitzung.mehrfachauswahl ? 'Mehrfachauswahl aktiv: Antippen fügt Felder hinzu oder entfernt sie.' : 'Antippen wählt ein Feld. Mit Shift, Strg oder ⌘ weitere auswählen.'}</p>
+  </div>;
   const auswahlPanel = <>
     <p className="mb-3 text-sm font-semibold">{gewaehlt.length} von {felder.length} ausgewählt</p>
     <div className={styles.kontextAktionen}>
@@ -1445,10 +1481,10 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
       <button className={aktionKlasse} onClick={() => setAuswahl(null)}>Auswahl aufheben</button>
     </div>
     <p className="mt-3 text-sm text-slate-600">Aktionen gelten für {gewaehlt.length === 1 ? 'das ausgewählte Feld' : `alle ${gewaehlt.length} ausgewählten Felder`}. Griffe ändern die Größe; Shift + Pfeil ebenfalls.</p>
+    {auswahlOptionen}
   </>;
   const mehrPanel = <div className={styles.kontextAktionen}>
-    <button className={aktionKlasse} disabled={!felder.length} onClick={() => { patchSitzung({ panel: '', modus: null, verschieben: false }); setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) }); }}>Alle auswählen</button>
-    <button className={aktionKlasse} disabled={!belegungZeigen || !felder.length} onClick={() => { patchSitzung({ panel: '' }); setzeModus(f, 'zellen'); }}>Module aus-/einblenden</button>
+    <button className={aktionKlasse} disabled={!felder.length} onClick={waehleAlleFelder}>Alle auswählen</button>
     {belegungZeigen && <button className={aktionKlasse} onClick={() => { automatischFuellen(f); patchSitzung({ panel: '' }); }}>Automatisch belegen</button>}
     <button className={aktionKlasse} aria-pressed={sitzung.verschieben} onClick={() => navigation.weiter(() => { verwerfeGeste(); patchSitzung({ verschieben: !sitzung.verschieben, panel: '' }); })}>Ansicht verschieben</button>
     <button className={aktionKlasse} aria-pressed={masseZeigen} onClick={() => setMasseZeigen(!masseZeigen)}>Maße {masseZeigen ? 'ausblenden' : 'einblenden'}</button>
@@ -1466,8 +1502,8 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     <label>Neue Felder<select aria-label="Ausrichtung neuer Felder" className={aktionKlasse} value={f.ausrichtung} disabled={artVon(f) === 'flachdach'} onChange={(e) => patchFlaeche(f.id, { ausrichtung: e.target.value as 'hoch' | 'quer' })}><option value="hoch">Hochkant</option><option value="quer">Quer</option></select></label>
     <button className={aktionKlasse} onClick={() => setzeModus(f, null)}>Abbrechen</button>
   </div>;
-  const zellenPanel = <div className={styles.werkzeugOptionen}><p>Module der aktiven Fläche antippen, um sie aus- oder einzublenden.</p>
-    {leerZahl > 0 && <button className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>Alle anschalten ({leerZahl})</button>}
+  const zellenPanel = <div className={styles.werkzeugOptionen}><p>Ein Modul antippen, um es zu entfernen. Eine leere Position antippen, um es zurückzuholen. Gilt für alle Felder der aktiven Fläche.</p>
+    {leerZahl > 0 && <button className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>Alle Module zurückholen ({leerZahl})</button>}
     <button className={aktionKlasse} onClick={() => setzeModus(f, null)}>Fertig</button></div>;
   const bedienPanel = perspektiveHier ? perspektivPanel : sitzung.panel === 'fotos' ? fotosPanel : sitzung.panel === 'details' ? detailsPanel : sitzung.panel === 'mehr' ? mehrPanel : feldNeuWerkzeug ? feldPanel : modusArt(f) === 'zellen' ? zellenPanel : gewaehlt.length && felderWerkzeug ? auswahlPanel : null;
   const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachdetails & Maße' : sitzung.panel === 'mehr' ? 'Weitere Werkzeuge' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
@@ -1477,6 +1513,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     {!mass.belegen && <p className={styles.hinweis}>{mass.meldung} <button className={aktionKlasse} onClick={() => oeffnePanel(f.gaubenTyp ? 'gauben' : 'details')}>Maße bestätigen</button></p>}
     {belegungZeigen && !felder.length && <><p>Die Fläche ist bereit für die erste Belegung.</p><button className={styles.primaer} onClick={() => setzeModus(f, 'feld_neu')}>+ Belegungsbereich zeichnen</button><button className={aktionKlasse} onClick={() => automatischFuellen(f)}>Automatisch belegen</button></>}
     {belegungZeigen && !!felder.length && !raster.positionen.length && <p className={styles.hinweis}>Kein Modul passt in die nutzbare Fläche. Feldgröße, Rand und Aussparungen prüfen.</p>}
+    {belegungZeigen && !!felder.length && !sitzung.verschieben && auswahlOptionen}
     {sitzung.verschieben && <p>Im Foto ziehen. Zwei Finger verschieben und zoomen immer nur die Ansicht.</p>}
   </div>;
   const renderArbeitsbereich = ({ bild, steuerung, hinweis, bildSeitenverhaeltnis, abbrechen, punktSteuerung }: { bild: ReactNode; steuerung?: ReactNode; hinweis?: ReactNode; bildSeitenverhaeltnis: number; abbrechen?: () => void; punktSteuerung?: FotoPunktSteuerung }) => <>
@@ -1521,14 +1558,14 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     geister={modusArt(f) === 'zellen' ? leerePositionenFuer(fEff, modul).map((p) => ({ key: posKey(p), xM: p.xM, yM: p.yM, wM: p.wM, hM: p.hM })) : undefined}
     pointer={!sitzung.verschieben && (felderWerkzeug || feldNeuWerkzeug) ? {
       onGriffDownM: felderWerkzeug ? (index, griff, p) => starteDrag({ art: 'resize', flaecheId: f.id, start: p, aktuell: p, index, griff }) : undefined,
-      onDownM: (p) => { if (!(feldNeuWerkzeug && zweiPunkte)) onDownM(f, p, feldNeuWerkzeug); },
+      onDownM: (p, mehrfach) => { if (!(feldNeuWerkzeug && zweiPunkte)) onDownM(f, p, feldNeuWerkzeug, mehrfach || sitzung.mehrfachauswahl); },
       onMoveM: (p) => { if (p && dragAktiv.current) aktualisiereDrag(f.id, p); },
       onUpM: (p) => feldNeuWerkzeug && zweiPunkte ? beendeZweiPunkte(p) : onUpM(f, p),
     } : undefined}
     perspektivEditor={perspektiveHier ? { ecken: perspektiveHier.roh, pruefung: perspektiveHier.pruefung, ausgewaehlt: perspektiveHier.ausgewaehlt,
       onAuswaehlen: (ausgewaehlt) => setPerspektivEntwurf((alt) => alt ? { ...alt, ausgewaehlt } : alt), onAendern: aenderePerspektivEntwurf, onAbbrechen: () => setPerspektivEntwurf(null) } : undefined}
     tastatur={{ onPfeil: felderWerkzeug && gewaehlt.length ? (sx, sy, skalieren) => skalieren ? skaliereAuswahl(f, sx, sy) : bewegeAuswahl(f, sx, sy) : undefined,
-      onEscape: () => { verwerfeGeste(); setAuswahl(null); setModus(null); } }}
+      onEscape: () => { verwerfeGeste(); patchSitzung({ auswahl: null, modus: null, mehrfachauswahl: false }); } }}
     onToggle={!geometrieEntwurfAktiv && !sitzung.verschieben && modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
     fotoOverlay={fotoAsset ? (clipIdPrefix) => fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `modul-${f.id}`, clipIdPrefix, modulDarstellung: ziehtHier ? 'kontur' : 'detail' }) : undefined} />;
 
@@ -1549,8 +1586,10 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     </div>
     <div className={styles.werkzeugZeile}>
     <div className={styles.werkzeuge} role="toolbar" aria-label={`Werkzeuge für ${f.name}`}>
-      <button type="button" aria-label="Auswählen" aria-pressed={belegungZeigen && !sitzung.verschieben && modusArt(f) === null && !markierungOffen && sitzung.panel !== 'gauben' && !perspektiveHier} disabled={!belegungZeigen} onClick={() => navigation.weiter(() => { patchSitzung({ panel: '', verschieben: false }); setPerspektivEntwurf(null); setGeometrieVorschau(null); setzeModus(f, null); })}><WorkbenchIcon symbol="auswahl" /><span>Auswählen</span></button>
-      <button type="button" aria-label="+ Feld zeichnen" aria-pressed={feldNeuWerkzeug} disabled={!belegungZeigen} onClick={() => navigation.weiter(() => { patchSitzung({ panel: '', verschieben: false }); setzeModus(f, 'feld_neu'); })}><WorkbenchIcon symbol="feld" /><span>Feld zeichnen</span></button>
+      <button type="button" aria-label="Auswählen" aria-pressed={belegungZeigen && !sitzung.verschieben && modusArt(f) === null && !markierungOffen && sitzung.panel !== 'gauben' && !perspektiveHier} disabled={!belegungZeigen} onClick={() => { waehleBelegungsWerkzeug(null); }}><WorkbenchIcon symbol="auswahl" /><span>Auswählen</span></button>
+      <button type="button" className={styles.zusatzWerkzeug} aria-label="Mehrfachauswahl" aria-pressed={sitzung.mehrfachauswahl} disabled={!belegungZeigen || !felder.length} onClick={wechsleMehrfachauswahl}><WorkbenchIcon symbol="mehrfach" /><span>Mehrfach<br />auswählen</span></button>
+      <button type="button" aria-label="+ Feld zeichnen" aria-pressed={feldNeuWerkzeug} disabled={!belegungZeigen} onClick={() => waehleBelegungsWerkzeug('feld_neu')}><WorkbenchIcon symbol="feld" /><span>Feld zeichnen</span></button>
+      <button type="button" aria-label="Module entfernen" aria-pressed={modusArt(f) === 'zellen'} disabled={!belegungZeigen || !felder.length} onClick={() => waehleBelegungsWerkzeug('zellen')}><WorkbenchIcon symbol="module" /><span>Module<br />entfernen</span></button>
       {!historie.zentral && <>
         <button className={aktionKlasse} disabled={!historie.canUndo} onClick={() => navigation.weiter(historie.undo)}>↶ Rückgängig{historie.undoCount ? ` (${historie.undoCount})` : ''}</button>
         <button className={aktionKlasse} disabled={!historie.canRedo} onClick={() => navigation.weiter(historie.redo)}>↷ Wiederherstellen</button>

@@ -106,8 +106,9 @@ describe('Belegungsbedienung', () => {
     art: 'pointerdown' | 'pointermove' | 'pointerup',
     clientX: number,
     clientY: number,
+    tasten: MouseEventInit = {},
   ) => {
-    const event = new MouseEvent(art, { bubbles: true, clientX, clientY });
+    const event = new MouseEvent(art, { bubbles: true, clientX, clientY, ...tasten });
     Object.defineProperty(event, 'pointerId', { value: 17 });
     fireEvent(ziel, event);
   };
@@ -389,6 +390,61 @@ describe('Belegungsbedienung', () => {
     sendePointer(svg, 'pointerup', 900, 150);
     expect(onChange).not.toHaveBeenCalled();
     expect(ui.getByRole('button', { name: 'Auswählen' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it.each(['shiftKey', 'ctrlKey', 'metaKey'] as const)('wählt einzeln, mit %s mehrfach und zieht die Gruppe ohne versehentlich abzuwählen', (tastenName) => {
+    const start = projektMitFreiraum([{ xM: 1, yM: 1, breiteM: 3, hoeheM: 3, quer: false }, { xM: 6, yM: 1, breiteM: 3, hoeheM: 3, quer: false }]);
+    let stand = start;
+    function App() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={(neu) => { stand = neu; setProjekt(neu); }} />;
+    }
+    const ui = render(<App />);
+    const svg = ui.getByRole('img', { name: /^Belegungsfläche/ });
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
+    const klick = (x: number, tasten: MouseEventInit = {}) => {
+      sendePointer(svg, 'pointerdown', x, 333, tasten);
+      sendePointer(svg, 'pointerup', x, 333, tasten);
+    };
+    klick(350);
+    klick(650);
+    expect(ui.getByText('1 von 2 ausgewählt')).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'nach rechts' }));
+    expect(stand.flaechen[0]!.felder!.map((x) => x.xM)).toEqual([1, 6.1]);
+    klick(350, { [tastenName]: true });
+    expect(ui.getByText('2 von 2 ausgewählt')).toBeTruthy();
+    sendePointer(svg, 'pointerdown', 350, 333);
+    sendePointer(svg, 'pointermove', 380, 333);
+    sendePointer(svg, 'pointerup', 380, 333);
+    expect(stand.flaechen[0]!.felder!.map((x) => x.xM)).toEqual([1.5, 6.6]);
+    expect(ui.getByText('2 von 2 ausgewählt')).toBeTruthy();
+    // Das zuerst ausgewählte Feld anklicken: tatsächlicher Treffer, nicht letzter Gruppenindex.
+    klick(650);
+    expect(ui.getByText('1 von 2 ausgewählt')).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'nach rechts' }));
+    expect(stand.flaechen[0]!.felder!.map((x) => x.xM)).toEqual([1.5, 6.7]);
+    // Escape funktioniert auch mit Fokus auf einer Pfeilaktion außerhalb des SVG.
+    fireEvent.keyDown(ui.getByRole('button', { name: 'nach rechts' }), { key: 'Escape' });
+    expect(ui.queryByText('1 von 2 ausgewählt')).toBeNull();
+  });
+
+  it('entfernt Module beider Felder ohne Auswahl und stellt sie einzeln oder per Undo wieder her', () => {
+    const start = projektMitFreiraum([{ xM: 1, yM: 1, breiteM: 3, hoeheM: 3, quer: false }, { xM: 6, yM: 1, breiteM: 3, hoeheM: 3, quer: false }]);
+    let stand = start;
+    function App() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={(neu) => { stand = neu; setProjekt(neu); }} />;
+    }
+    const ui = render(<App />);
+    fireEvent.click(ui.getByRole('button', { name: 'Module entfernen' }));
+    for (const index of [0, 1]) fireEvent.click(ui.container.querySelector(`[data-modul-key^="f${index}:"]`)!);
+    expect(stand.flaechen[0]!.felder!.map((x) => x.leer?.length)).toEqual([1, 1]);
+    expect(ui.queryByText(/von 2 ausgewählt/)).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: /Rückgängig/ }));
+    expect(stand.flaechen[0]!.felder!.map((x) => x.leer?.length ?? 0)).toEqual([1, 0]);
+    fireEvent.click(ui.getByRole('button', { name: 'Module entfernen' }));
+    fireEvent.click(ui.container.querySelector('[data-modul-leer="true"]')!);
+    expect(stand.flaechen[0]!.felder!.map((x) => x.leer?.length ?? 0)).toEqual([0, 0]);
   });
 
   it('legt ein Feld mit zwei einzelnen Eckpunkten als genau eine Änderung an', () => {

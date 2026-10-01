@@ -122,7 +122,7 @@ export function griffPunkte(r: RechteckM): { id: GriffId; p: PunktM }[] {
  * Touch/Stift auf dem Tablet dieselbe Bahn nehmen.
  */
 export interface PointerProps {
-  onDownM: (p: PunktM) => void;
+  onDownM: (p: PunktM, mehrfach: boolean) => void;
   onGriffDownM?: (index: number, griff: GriffId, p: PunktM) => void;
   /** null = Zeiger hat die Fläche verlassen / Geste abgebrochen */
   onMoveM: (p: PunktM | null) => void;
@@ -256,7 +256,7 @@ function pointerHandler(
       // Ziehen nicht verhindern.
       const griff = e.target instanceof Element ? e.target.closest('[data-feld-griff]') : null;
       if (griff && p.onGriffDownM) p.onGriffDownM(Number(griff.getAttribute('data-feld-index')), griff.getAttribute('data-feld-griff') as GriffId, m);
-      else p.onDownM(m);
+      else p.onDownM(m, e.shiftKey || e.ctrlKey || e.metaKey);
       try {
         e.currentTarget.setPointerCapture(e.pointerId); // Zeiger darf die Fläche verlassen
       } catch {
@@ -365,6 +365,7 @@ export function moduleAufHomographie({
       <g
         key={key}
         data-modul-darstellung={darstellung}
+        data-modul-key={key}
         opacity={aus ? 0.3 : 1}
         className={toggle ? 'cursor-pointer' : undefined}
         onClick={toggle ? () => toggle(key) : undefined}
@@ -790,6 +791,8 @@ export function DachSvg({
       {(geister ?? []).map((g) => (
         <g
           key={g.key}
+          data-modul-key={g.key}
+          data-modul-leer="true"
           className={toggle ? 'cursor-pointer' : undefined}
           onClick={toggle ? () => toggle(g.key) : undefined}
         >
@@ -911,6 +914,7 @@ export function DachSvg({
         return (
           <g
             key={key}
+            data-modul-key={key}
             opacity={aus ? 0.25 : 1}
             className={toggle ? 'cursor-pointer' : undefined}
             onClick={toggle ? () => toggle(key) : undefined}
@@ -1165,6 +1169,8 @@ export function DachSvg({
                     strokeWidth={foto.breitePx * 0.002}
                     strokeDasharray={`${foto.breitePx * 0.006} ${foto.breitePx * 0.004}`}
                     className={toggle ? 'cursor-pointer' : undefined}
+                    data-modul-key={g.key}
+                    data-modul-leer="true"
                     onClick={toggle ? () => toggle(g.key) : undefined}
                   />
                 ) : null;

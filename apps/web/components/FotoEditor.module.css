@@ -9,6 +9,7 @@
 .werkzeuge,.dachWerkzeuge,.weitereWerkzeuge{display:flex;flex-direction:column;gap:3px}.dachWerkzeuge,.weitereWerkzeuge{border-top:1px solid #41494e;padding-top:10px}
 .werkzeugZeile button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:61px;width:100%;padding:5px 2px;color:#dce2e6;background:transparent;border:1px solid transparent;border-radius:4px;font-size:11px;font-weight:500;line-height:1.2;position:relative}
 .werkzeugZeile button svg{width:22px;height:22px;flex:none}.werkzeugZeile button:disabled{color:#859096;opacity:.5}.werkzeugZeile button:hover:not(:disabled){background:#303b42}
+.auswahlOptionen{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.auswahlOptionen p{width:100%;color:var(--muted)}.nurKompakt{display:none}
 .werkzeugZeile button[aria-pressed=true],.werkzeugZeile button[aria-expanded=true]{background:#3d302a;color:#ffb494;border-color:#72513d}.werkzeugZeile button[aria-pressed=true]:before,.werkzeugZeile button[aria-expanded=true]:before{content:"";position:absolute;left:-6px;top:7px;bottom:7px;width:3px;background:#e8603a}
 .bereich{grid-column:2;grid-row:2;min-height:0;min-width:0;overflow:hidden;display:flex;flex-direction:column}
 .arbeitsbereich{display:grid;grid-template-columns:minmax(0,1fr) 304px;min-width:0;min-height:0;flex:1;height:100%}
@@ -51,6 +52,7 @@
 @media(max-height:500px) and (orientation:landscape){.arbeitsbereich{grid-template-columns:minmax(0,1fr) 260px;grid-template-rows:minmax(0,1fr)}.arbeitsbereich[data-kontext-offen=true]{grid-template-rows:minmax(0,1fr)}.ebenen:not([open])>summary{min-height:44px}.kontextKopf>div>span{display:none}.anleitung{font-size:10px;padding:4px 10px}.werkzeugZeile button{flex-direction:row;gap:7px;font-size:11px;min-height:52px}.werkzeugZeile .panWerkzeug{display:flex}.kopf select{max-width:230px}.ergebnis>span{display:block;font-size:11px}.ergebnis{gap:10px}}
 
 /* Bestehende Messlogik wird im Inspektor als Formular statt verschachtelter Karten gezeigt. */
+@media(max-width:600px),(max-height:500px) and (orientation:landscape){.werkzeugZeile .zusatzWerkzeug{display:none}.nurKompakt{display:inline-flex;align-items:center;justify-content:center}}
 .kontextInhalt :global([data-gauben-steuerung]){border:0;background:transparent;padding:0;margin:0}
 .kontextInhalt :global([data-gauben-steuerung])>div:first-child strong{display:none}
 .kontextInhalt :global([data-gauben-steuerung])>div:first-child span{color:#53616a;font-size:12px}
