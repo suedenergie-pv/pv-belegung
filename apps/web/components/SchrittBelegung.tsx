@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from 'react';
 import { feldSchrittmasse, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import { dateiZuBild } from '../lib/bild';
 import {
@@ -12,6 +12,7 @@ import {
   fotoZuordnungenVon,
   fmtDe,
   leerePositionenFuer,
+  massFreigabe,
   modulById,
   modulMasse,
   naechsteZone,
@@ -26,7 +27,6 @@ import {
   rasterFuer,
   umrissVon,
   vollFeldFuer,
-  zonenVon,
   type Flaeche,
   type FotoZuordnung,
   type Projekt,
@@ -34,9 +34,10 @@ import {
   type PunktM,
   type RechteckM,
 } from '../lib/model';
-import { DachSvg, griffPunkte, type GriffId } from './DachSvg';
+import { DachSvg, ModulAsset, griffPunkte, type GriffId } from './DachSvg';
 import { FlaechenInlineEditor } from './FlaechenInlineEditor';
 import { FotoHintergrund } from './FotoHintergrund';
+import { useTouchBedienung } from '../lib/touch-bedienung';
 import {
   aktualisiereGaubenAussparungen,
   wendeGaubenMarkierungAn,
@@ -52,41 +53,23 @@ import {
   type AktualisierteGaubenMarkierung,
   type NeueGaubeAusFoto,
 } from './GaubenEditor';
-import { fotoFlaechenInhalt, ProjektFotoSvg } from './GesamtSvg';
+import { fotoFlaechenInhalt } from './GesamtSvg';
 import {
-  IconFeld,
   IconFoto,
-  IconHindernis,
-  IconLeeren,
-  IconMasse,
   IconModulHoch,
-  IconModulLoeschen,
   IconModulQuer,
-  IconUmriss,
 } from './icons';
-import { HoldButton, Karte, KartenTitel, ToggleButton } from './ui';
-
-/** Laufende Zeichnung (Umriss oder Hindernis) — immer nur eine Fläche gleichzeitig */
-interface Zeichnung {
-  flaecheId: string;
-  art: 'umriss' | 'hindernis';
-  punkte: PunktM[];
-}
-
-/** Kompakter Undo-Stand: bewusst ohne die großen Foto-Data-URLs. */
-type GeometrieFlaeche = Omit<Flaeche, 'foto'> & {
-  foto?: Omit<NonNullable<Flaeche['foto']>, 'dataUrl'>;
-};
-
-interface GeometrieStand {
-  flaechen: GeometrieFlaeche[];
-  mppts: Projekt['mppts'];
-}
+import { HoldButton } from './ui';
+import { LokaleProjektHistorie, useProjektHistorie } from '../lib/projekt-historie-context';
+import { useEditorSitzung, STANDARD_ANSICHT } from '../lib/editor-sitzung';
+import { useEntwurfNavigation } from '../lib/entwurf-navigation';
+import { EditorViewport, type FotoPunktSteuerung } from './EditorViewport';
+import { WorkbenchIcon } from './WorkbenchIcon';
+import styles from './FotoEditor.module.css';
 
 /**
  * Werkzeuge der Belegung (16.07.2026, Genrih: „Belegungsautomatismus mildern").
- * null = AUSWAHL (Standard): Felder auswählen und verschieben; auf freier Fläche
- * kann weiterhin direkt ein Feld aufgezogen werden.
+ * null = AUSWAHL (Standard): ausschließlich Felder auswählen und verschieben.
  * 'feld_neu' = ein weiteres Feld aufziehen, auch über einem bestehenden Feld.
  * 'zellen' = einzelne Module im Feld antippen und dauerhaft entfernen.
  */
@@ -279,33 +262,45 @@ function WerkzeugKnopf({
   );
 }
 
-export function SchrittBelegung({
-  projekt,
-  onChange,
-}: {
-  projekt: Projekt;
-  onChange: (p: Projekt) => void;
-}) {
+export function SchrittBelegung(props: { projekt: Projekt; onChange: (p: Projekt) => void }) {
+  const historie = useProjektHistorie();
+  return historie ? <SchrittBelegungInhalt {...props} /> : (
+    <LokaleProjektHistorie {...props}>
+      {(onChange) => <SchrittBelegungInhalt {...props} onChange={onChange} />}
+    </LokaleProjektHistorie>
+  );
+}
+
+function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChange: (p: Projekt) => void }) {
+  const historie = useProjektHistorie()!;
+  const navigation = useEntwurfNavigation();
+  const [touchBedienung, aktiviereTouch] = useTouchBedienung();
+  const [perspektivCursor, setPerspektivCursor] = useState<[number, number]>([0, 0]);
+  const [perspektivGriff, setPerspektivGriff] = useState<number | null>(null);
+  const [sitzung, patchSitzung] = useEditorSitzung();
+  const { ansichtJeFlaeche, modus, auswahl } = sitzung;
+  const setAnsichtJeFlaeche = (aktion: SetStateAction<Record<string, string>>) => patchSitzung((alt) => ({ ansichtJeFlaeche: typeof aktion === 'function' ? aktion(alt.ansichtJeFlaeche) : aktion }));
+  const setModus = (modus: { art: WerkzeugArt; flaecheId: string } | null) => patchSitzung({ modus, verschieben: false });
+  const setAuswahl = (auswahl: { flaecheId: string; indices: number[] } | null) => patchSitzung({ auswahl });
   const modul = modulById(projekt.modulId);
-  const [zeichnung, setZeichnung] = useState<Zeichnung | null>(null);
   // Maße einblenden — beim Kunden vor Ort abschaltbar (Genrih 07.07.)
-  const [masseZeigen, setMasseZeigen] = useState(true);
-  const [fotoFokusId, setFotoFokusId] = useState<string | null>(null);
+  const [masseZeigen, setMasseZeigen] = useState(false);
+  const [massVorschlag, setMassVorschlag] = useState<{ flaecheId: string; masse: { breiteM: number; hoeheM: number } } | null>(null);
   /** Aktive Foto-Perspektive je Fläche. */
-  const [ansichtJeFlaeche, setAnsichtJeFlaeche] = useState<Record<string, string>>({});
   // Aktives Werkzeug (exklusiv je Fläche); null = Felder-Werkzeug (Standard)
-  const [modus, setModus] = useState<{ art: WerkzeugArt; flaecheId: string } | null>(null);
   // Schrittweite der Pfeil-Bewegung in cm
   const [schrittCm, setSchrittCm] = useState(10);
   // Ausgewählte Felder (Indices in Flaeche.felder) — Mehrfachauswahl per Antippen
-  const [auswahl, setAuswahl] = useState<{ flaecheId: string; indices: number[] } | null>(null);
+  const [geometrieVorschau, setGeometrieVorschau] = useState<Flaeche | null>(null);
+  const [zweiPunkte, setZweiPunkte] = useState(false);
+  const [ersteFeldEcke, setErsteFeldEcke] = useState<PunktM | null>(null);
+  const [gesteAbbruchRevision, setGesteAbbruchRevision] = useState(0);
+  const [markierungsRevision, setMarkierungsRevision] = useState(0);
   // Laufende Zeiger-Geste (Aufziehen/Verschieben) — NICHT im Projekt, s. mitDrag()
   const [drag, setDrag] = useState<Drag | null>(null);
-  const [historie, setHistorie] = useState<GeometrieStand[]>([]);
   const [perspektivEntwurf, setPerspektivEntwurf] = useState<PerspektivEntwurf | null>(null);
   const [gaubenBearbeitung, setGaubenBearbeitung] = useState<{ elternId: string; gruppenId: string } | null>(null);
   const [gaubenStatus, setGaubenStatus] = useState('');
-  const legacyFotoDaten = useRef(new Map<string, string>());
   /**
    * Läuft gerade eine Geste? Als Ref, damit `onUpM` doppelt aufgerufen werden darf
    * (SVG-Handler + Sicherheitsnetz unten) und trotzdem genau EINMAL committet — ein
@@ -333,6 +328,14 @@ export function SchrittBelegung({
       window.cancelAnimationFrame(dragFrame.current);
     }
     dragFrame.current = null;
+  };
+
+  const verwerfeGeste = () => {
+    stoppeDragFrame();
+    dragAktiv.current = false;
+    dragPunkt.current = null;
+    setDrag(null);
+    setErsteFeldEcke(null);
   };
 
   const starteDrag = (neu: Drag) => {
@@ -370,36 +373,7 @@ export function SchrittBelegung({
    */
   const projektRef = useRef(projekt);
   projektRef.current = projekt;
-  for (const flaeche of projekt.flaechen) {
-    if (flaeche.foto?.dataUrl) legacyFotoDaten.current.set(flaeche.id, flaeche.foto.dataUrl);
-  }
-
-  const merkeGeometrie = (stand: Projekt) => {
-    const kompakt: GeometrieStand = structuredClone({
-      flaechen: stand.flaechen.map(({ foto, ...flaeche }) => ({
-        ...flaeche,
-        ...(foto
-          ? {
-              foto: {
-                breitePx: foto.breitePx,
-                hoehePx: foto.hoehePx,
-                traufePx: foto.traufePx,
-                ...(foto.eckenPx ? { eckenPx: foto.eckenPx } : {}),
-                ...(foto.perspektiveBestaetigt !== undefined
-                  ? { perspektiveBestaetigt: foto.perspektiveBestaetigt }
-                  : {}),
-                ...(foto.pxProM !== undefined ? { pxProM: foto.pxProM } : {}),
-              },
-            }
-          : {}),
-      })),
-      mppts: stand.mppts,
-    });
-    setHistorie((alt) => [...alt.slice(-19), kompakt]);
-  };
-
   const patchFlaeche = (id: string, patch: Partial<Flaeche>) => {
-    merkeGeometrie(projektRef.current);
     const neu = {
       ...projektRef.current,
       flaechen: projektRef.current.flaechen.map((x) => (x.id === id ? { ...x, ...patch } : x)),
@@ -409,55 +383,23 @@ export function SchrittBelegung({
   };
 
   /** Projektänderung ebenfalls über den aktuellen Ref-Stand, nicht über alte Render-Closures. */
-  const aendereProjekt = (fn: (p: Projekt) => Projekt, mitHistorie = true) => {
+  const aendereProjekt = (fn: (p: Projekt) => Projekt) => {
     const vorher = projektRef.current;
     const neu = fn(vorher);
-    if (mitHistorie) merkeGeometrie(vorher);
     projektRef.current = neu;
     onChange(neu);
   };
 
-  const rueckgaengig = () => {
-    const stand = historie[historie.length - 1];
-    if (!stand) return;
-    const neu: Projekt = {
-      ...projektRef.current,
-      flaechen: structuredClone(stand.flaechen).map((flaeche) => {
-        if (!flaeche.foto) return flaeche as Flaeche;
-        const dataUrl = legacyFotoDaten.current.get(flaeche.id);
-        const { foto, ...rest } = flaeche;
-        return dataUrl ? { ...rest, foto: { ...foto, dataUrl } } : (rest as Flaeche);
-      }),
-      mppts: structuredClone(stand.mppts),
-    };
-    projektRef.current = neu;
-    setHistorie((alt) => alt.slice(0, -1));
+  const letzteHistorienRevision = useRef(historie.revision);
+  useEffect(() => {
+    if (letzteHistorienRevision.current === historie.revision) return;
+    letzteHistorienRevision.current = historie.revision;
     setAuswahl(null);
-    setDrag(null);
-    setZeichnung(null);
+    verwerfeGeste();
     setModus(null);
     setPerspektivEntwurf(null);
     setGaubenBearbeitung(null);
-    setGaubenStatus('Letzte Geometrieänderung wurde vollständig zurückgenommen.');
-    onChange(neu);
-  };
-
-  /** Grundmaße ändern den Maßstab, nicht die gesetzten Fotoecken. */
-  const patchGrunddaten = (id: string, patch: Partial<Flaeche>) => {
-    aendereProjekt((p) => ({
-      ...p,
-      flaechen: p.flaechen.map((f) =>
-        f.id === id ? patchFlaechenGeometrie(f, patch) : f,
-      ),
-    }));
-    setAuswahl(null);
-    setDrag(null);
-    if (fotoFokusId === id) {
-      window.requestAnimationFrame(() =>
-        window.requestAnimationFrame(() => scrolleZuFotoMitMassen(id)),
-      );
-    }
-  };
+  }, [historie.revision]);
 
   const fuegeHauptflaecheHinzu = () => {
     const p = projektRef.current;
@@ -470,6 +412,7 @@ export function SchrittBelegung({
       ...aktuell,
       flaechen: [...aktuell.flaechen, neu],
     }));
+    patchSitzung({ aktiveFlaecheId: neu.id, panel: 'fotos', auswahl: null, modus: null });
     window.setTimeout(() => {
       document.getElementById(`belegung-${neu.id}`)?.scrollIntoView({
         behavior: 'smooth',
@@ -494,24 +437,6 @@ export function SchrittBelegung({
         mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
       };
     });
-  };
-
-  const scrolleZuFotoMitMassen = (flaecheId: string) => {
-    const ziel = document.getElementById(`foto-masse-${flaecheId}`);
-    if (!ziel) return;
-    const massLeiste = document.getElementById(`flaechen-masse-${flaecheId}`);
-    const abstand = (massLeiste?.getBoundingClientRect().height ?? 96) + 12;
-    const top = ziel.getBoundingClientRect().top + window.scrollY - abstand;
-    const reduzierteBewegung = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({
-      top: Math.max(0, top),
-      behavior: reduzierteBewegung ? 'auto' : 'smooth',
-    });
-  };
-
-  const aktiviereFotoFokus = (flaecheId: string) => {
-    setFotoFokusId(flaecheId);
-    window.requestAnimationFrame(() => scrolleZuFotoMitMassen(flaecheId));
   };
 
   const waehleFotoDatei = (ziel: FotoUploadZiel) => {
@@ -602,22 +527,21 @@ export function SchrittBelegung({
           return neu;
         }),
       };
-    }, false);
+    });
     if (ziel.art === 'perspektive' && neueId) {
       setAnsichtJeFlaeche((alt) => ({ ...alt, [ziel.flaecheId]: neueId }));
       setAuswahl(null);
       setDrag(null);
-      setZeichnung(null);
       setModus(null);
     }
-    setFotoUpload({ status: 'erfolg', meldung: 'Foto wurde verarbeitet und lokal gespeichert.' });
+    if (ziel.art === 'perspektive') patchSitzung({ panel: '' });
+    setFotoUpload({ status: 'erfolg', meldung: 'Foto wurde verarbeitet und dem Projekt hinzugefügt.' });
   };
 
   /** Eine weitere Perspektive derselben Fläche anlegen. */
   const fuegeFotoZuordnungHinzu = (flaecheId: string, fotoId: string) => {
     setAuswahl(null);
     setDrag(null);
-    setZeichnung(null);
     setModus(null);
     aendereProjekt((p) => ({
       ...p,
@@ -639,7 +563,7 @@ export function SchrittBelegung({
         delete neu.markierungFertig;
         return neu;
       }),
-    }), false);
+    }));
     setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: fotoId }));
   };
 
@@ -647,7 +571,6 @@ export function SchrittBelegung({
   const loeseFotoZuordnung = (flaecheId: string, fotoId: string) => {
     setAuswahl(null);
     setDrag(null);
-    setZeichnung(null);
     setModus(null);
     aendereProjekt((p) => ({
       ...p,
@@ -660,7 +583,7 @@ export function SchrittBelegung({
         delete neu.markierungFertig;
         return neu;
       }),
-    }), false);
+    }));
     setAnsichtJeFlaeche((alt) => ({ ...alt, [flaecheId]: '' }));
   };
 
@@ -689,7 +612,7 @@ export function SchrittBelegung({
         delete neu.markierungFertig;
         return neu;
       }),
-    }), false);
+    }));
   };
 
   /** FotoHintergrund arbeitet weiter mit DachFoto; hier zurück ins neue Modell übersetzen. */
@@ -762,6 +685,7 @@ export function SchrittBelegung({
       const gemeinsameWerte = {
         breiteM: daten.breiteM,
         hoeheM: daten.hoeheM,
+        massStatus: 'bestaetigt' as const,
         gaubenMessung: daten.messung,
         inaktiv: [] as string[],
       };
@@ -868,6 +792,8 @@ export function SchrittBelegung({
         mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
       };
     });
+    setGaubenBearbeitung(null);
+    setGaubenStatus('Gaube gelöscht. Rückgängig stellt die vollständige Gaubengruppe wieder her.');
   };
 
   const aendereGaubenMarkierung = (
@@ -905,10 +831,10 @@ export function SchrittBelegung({
       ...p,
       flaechen: p.flaechen.map((f) => {
         if ((f.gaubenGruppeId ?? f.id) !== gruppeId || !f.gaubenTyp) return f;
-        // Messquelle gilt für die ganze Gaube; das konkrete Seitenmaß wird nur
-        // an der gewählten Dachseite geändert.
-        if (f.id !== flaecheId) return { ...f, gaubenMessung: messung };
-        return patchFlaechenGeometrie(f, { breiteM, hoeheM, gaubenMessung: messung });
+        // Eine bestätigte Seite ist kein Messnachweis für ihre Nachbarseite.
+        if (f.id !== flaecheId) return f;
+        const neu = patchFlaechenGeometrie(f, { breiteM, hoeheM, gaubenMessung: messung });
+        return massFreigabe(neu).gueltig ? { ...neu, massStatus: 'bestaetigt' } : f;
       }),
     }));
   };
@@ -920,24 +846,13 @@ export function SchrittBelegung({
     modus?.flaecheId === f.id ? modus.art : null;
 
   /**
-   * Werkzeug wechseln. Räumt JEDEN losen Zustand des vorherigen Werkzeugs auf —
-   * beim Wechsel darf nichts Halbfertiges liegenbleiben (Genrih 16.07.). Eine
-   * laufende Umriss-/Hindernis-Zeichnung ist ein Entwurf und wird verworfen; alles
-   * andere (abgeschaltete Module, Felder) ist ohnehin sofort im Projekt.
+   * Werkzeug wechseln. Laufende Feldgesten verwerfen, Auswahl aufheben.
+   * Geometrieentwürfe werden vor dem Aufruf durch EntwurfNavigation geschützt.
    */
   const setzeModus = (f: Flaeche, art: WerkzeugArt | null) => {
     setModus(art ? { art, flaecheId: f.id } : null);
     setAuswahl(null);
-    setDrag(null);
-    setZeichnung(null);
-  };
-
-  /** Umriss-/Hindernis-Zeichnen starten — beendet das aktive Werkzeug sauber. */
-  const starteZeichnung = (f: Flaeche, art: 'umriss' | 'hindernis') => {
-    setModus(null);
-    setAuswahl(null);
-    setDrag(null);
-    setZeichnung({ flaecheId: f.id, art, punkte: [] });
+    verwerfeGeste();
   };
 
   const felderVon = (f: Flaeche): BelegungsFeldM[] => f.felder ?? [];
@@ -952,7 +867,7 @@ export function SchrittBelegung({
   const ausrichtungAktiv = (f: Flaeche): 'hoch' | 'quer' | null => {
     const felder = felderVon(f);
     const indices = auswahlVon(f);
-    const betroffen = indices.length ? felder.filter((_, i) => indices.includes(i)) : felder;
+    const betroffen = felder.filter((_, i) => indices.includes(i));
     if (betroffen.length === 0) return f.ausrichtung;
     if (betroffen.every((x) => x.quer)) return 'quer';
     if (betroffen.every((x) => !x.quer)) return 'hoch';
@@ -970,6 +885,9 @@ export function SchrittBelegung({
   const startePerspektivBearbeitung = (flaeche: Flaeche, fotoId: string) => {
     const ecken = fotoZuordnungVon(flaeche, fotoId)?.eckenPx;
     if (!ecken) return;
+    const bild = dachFotoVon(projektRef.current, flaeche, fotoId);
+    setPerspektivCursor([bild ? bild.breitePx / 2 : ecken[0][0], bild ? bild.hoehePx / 2 : ecken[0][1]]);
+    setPerspektivGriff(null);
     const roh = kopiereEcken(ecken);
     setPerspektivEntwurf({
       flaecheId: flaeche.id,
@@ -981,7 +899,6 @@ export function SchrittBelegung({
     });
     setAuswahl(null);
     setDrag(null);
-    setZeichnung(null);
     setModus(null);
   };
 
@@ -1000,8 +917,6 @@ export function SchrittBelegung({
           pruefung.status === 'fehler' ? alt.letzteGueltige : kopiereEcken(roh),
       };
     });
-    setGaubenBearbeitung(null);
-    setGaubenStatus('Gaube gelöscht. Mit Rückgängig kann die vollständige Gaubengruppe wiederhergestellt werden.');
   };
 
   const speicherePerspektivEntwurf = () => {
@@ -1124,6 +1039,7 @@ export function SchrittBelegung({
   // ---- Zeiger-Gesten im Felder-Werkzeug ----
 
   const onDownM = (f: Flaeche, p: PunktM, nurNeuesFeld = false) => {
+    if (!massFreigabe(f).belegen) return;
     // Der ausdrückliche Zeichenmodus muss auch dann ein neues Feld beginnen,
     // wenn der Startpunkt in einem vorhandenen Feld liegt. Sonst wäre bei einem
     // großen ersten Feld kein zweites Rechteck mehr möglich.
@@ -1153,7 +1069,7 @@ export function SchrittBelegung({
       }
     }
     if (treffer < 0) {
-      starteDrag({ art: 'neu', flaecheId: f.id, start: p, aktuell: p });
+      setAuswahl(null);
       return;
     }
     // Feld aus der Auswahl angefasst → ganze Auswahl bewegen, sonst nur dieses
@@ -1239,10 +1155,10 @@ export function SchrittBelegung({
       else setDrag(null);
     };
     window.addEventListener('pointerup', ende);
-    window.addEventListener('pointercancel', ende);
+    window.addEventListener('pointercancel', verwerfeGeste);
     return () => {
       window.removeEventListener('pointerup', ende);
-      window.removeEventListener('pointercancel', ende);
+      window.removeEventListener('pointercancel', verwerfeGeste);
     };
   });
 
@@ -1261,6 +1177,7 @@ export function SchrittBelegung({
   // ---- Aktionen ----
 
   const automatischFuellen = (f: Flaeche) => {
+    if (!massFreigabe(f).belegen) return;
     const feld = vollFeldFuer(f, modul);
     if (feld.breiteM <= 0 || feld.hoeheM <= 0) return; // passt kein Modul
     if (felderVon(f).length > 0 && !window.confirm('Bestehende Felder ersetzen?')) return;
@@ -1283,14 +1200,14 @@ export function SchrittBelegung({
 
   /**
    * Quer/Hochkant (16.07.2026, Genrih: „funktioniert nicht"): der Knopf dreht die
-   * MODULE — sonst passiert beim Klicken sichtbar nichts. Sind Felder ausgewählt,
-   * gilt es nur für die (gemischte Dächer bleiben möglich), sonst für alle. Der
-   * Wert ist gleichzeitig die Ausrichtung für neu gezogene Felder.
+   * MODULE ausschließlich in der ausdrücklich ausgewählten Feldmenge.
+   * Die Vorgabe neuer Felder bleibt davon unabhängig.
    */
   const setzeAusrichtung = (f: Flaeche, ausrichtung: 'hoch' | 'quer') => {
     const quer = ausrichtung === 'quer';
     const indices = auswahlVon(f);
-    const betroffen = (i: number) => indices.length === 0 || indices.includes(i);
+    if (indices.length === 0) return;
+    const betroffen = (i: number) => indices.includes(i);
     const geloeschteModule = felderVon(f).reduce(
       (sum, feld, i) => sum + (betroffen(i) && feld.quer !== quer ? (feld.leer?.length ?? 0) : 0),
       0,
@@ -1302,7 +1219,6 @@ export function SchrittBelegung({
       )
     ) return;
     patchFlaeche(f.id, {
-      ausrichtung,
       felder: felderVon(f).map((feld, i) =>
         // leer verwerfen: nach dem Drehen meinen die Zellnummern andere Module
         betroffen(i) && feld.quer !== quer ? { ...feld, quer, leer: undefined } : feld,
@@ -1347,37 +1263,6 @@ export function SchrittBelegung({
   const aktionKlasse =
     'touch-target inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-40';
 
-  const klickM = (f: Flaeche, p: PunktM) => {
-    if (!zeichnung || zeichnung.flaecheId !== f.id) return;
-    if (zeichnung.art === 'umriss') {
-      // Klick nahe am ersten Punkt schließt das Polygon (ab 3 Ecken)
-      const schwelle = Math.max(0.25, 0.02 * Math.max(f.breiteM, f.hoeheM));
-      const erster = zeichnung.punkte[0];
-      if (
-        zeichnung.punkte.length >= 3 &&
-        erster &&
-        Math.hypot(p[0] - erster[0], p[1] - erster[1]) <= schwelle
-      ) {
-        patchFlaeche(f.id, { umrissM: zeichnung.punkte });
-        setZeichnung(null);
-        return;
-      }
-      setZeichnung({ ...zeichnung, punkte: [...zeichnung.punkte, p] });
-      return;
-    }
-    // Hindernis: 2 Klicks = gegenüberliegende Ecken; Modus bleibt aktiv für weitere
-    if (zeichnung.punkte.length === 0) {
-      setZeichnung({ ...zeichnung, punkte: [p] });
-      return;
-    }
-    const [a] = zeichnung.punkte as [PunktM];
-    const rect = rechteckAus(a, p);
-    if (rect.breiteM > 0.02 && rect.hoeheM > 0.02) {
-      patchFlaeche(f.id, { hindernisse: [...(f.hindernisse ?? []), rect] });
-    }
-    setZeichnung({ ...zeichnung, punkte: [] });
-  };
-
   // Hauptdach und zugehörige Gauben bleiben im Vertriebsflow beieinander. Intern
   // sind die Gauben weiterhin eigenständige Ebenen; nur die UI-Reihenfolge wird
   // hierarchisch statt nach Erstellzeit aufgebaut (SPEC §4.3).
@@ -1386,839 +1271,326 @@ export function SchrittBelegung({
     [projekt.flaechen],
   );
 
-  return (
-    <div id="belegung-start" className="space-y-4">
-      <p className="sr-only" aria-live="polite">{gaubenStatus}</p>
-      <Karte className="border-akzent/30 bg-gradient-to-r from-white to-akzent/5">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <div>
-            <span className="text-4xl font-bold text-slate-900">{fmtDe(kwp, 2)}</span>
-            <span className="ml-1 text-lg font-semibold text-slate-500">kWp</span>
-          </div>
-          <div className="text-sm text-slate-500">
-            {gesamt} Module · {modul.name}
-          </div>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="touch-target h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 disabled:opacity-40"
-              disabled={historie.length === 0}
-              onClick={rueckgaengig}
-            >
-              ↶ Rückgängig{historie.length > 0 ? ` (${historie.length})` : ''}
-            </button>
-            <button
-              type="button"
-              className="h-11 rounded-xl border border-akzent/40 bg-white px-4 text-sm font-semibold text-akzent hover:bg-akzent/5"
-              onClick={fuegeHauptflaecheHinzu}
-            >
-              + Dachfläche
-            </button>
-            <ToggleButton aktiv={masseZeigen} onClick={() => setMasseZeigen((v) => !v)}>
-              <IconMasse />
-              {masseZeigen ? 'Maße an' : 'Maße aus'}
-            </ToggleButton>
-          </div>
-        </div>
-      </Karte>
+  const f = belegungsReihenfolge.find((x) => x.id === sitzung.aktiveFlaecheId) ?? belegungsReihenfolge[0];
+  const wechsleFlaeche = (id: string) => navigation.weiter(() => {
+    verwerfeGeste();
+    setGeometrieVorschau(null);
+    setPerspektivEntwurf(null);
+    patchSitzung({ aktiveFlaecheId: id, panel: '', auswahl: null, modus: null, verschieben: false });
+  });
+  const oeffnePanel = (panel: string, werkzeugStart = false) => navigation.weiter(() => {
+    verwerfeGeste();
+    setGeometrieVorschau(null);
+    setPerspektivEntwurf(null);
+    if (werkzeugStart) setMarkierungsRevision((revision) => revision + 1);
+    patchSitzung({ panel: !werkzeugStart && sitzung.panel === panel ? '' : panel, verschieben: false, auswahl: null, modus: null });
+  });
 
-      <input
-        ref={fotoInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        aria-label="Drohnenfoto auswählen"
-        className="hidden"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (file) await fotoDateiGewaehlt(file);
-        }}
-      />
+  useEffect(() => {
+    if (!['gauben', 'umriss', 'aussparungen'].includes(sitzung.panel)) return;
+    if (window.matchMedia('(max-width: 600px), (max-height: 500px)').matches) {
+      document.getElementById('belegung-start')?.scrollIntoView({ block: 'start' });
+    }
+  }, [sitzung.panel, markierungsRevision]);
 
-      <div aria-live="polite" aria-atomic="true">
-        {fotoUpload.status === 'laden' && (
-          <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-            Foto wird geprüft und verkleinert …
-          </p>
-        )}
-        {fotoUpload.status === 'fehler' && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
-            <span className="mr-auto"><strong>Foto nicht geladen:</strong> {fotoUpload.grund}</span>
-            <button type="button" className="h-11 rounded-lg border border-red-300 bg-white px-4 font-semibold" onClick={() => waehleFotoDatei(fotoUpload.ziel)}>
-              Andere Datei wählen
-            </button>
-          </div>
-        )}
-        {fotoUpload.status === 'erfolg' && <span className="sr-only">{fotoUpload.meldung}</span>}
-      </div>
+  useEffect(() => {
+    if (!perspektivEntwurf) return;
+    const flaeche = projekt.flaechen.find((x) => x.id === perspektivEntwurf.flaecheId);
+    if (!flaeche) return;
+    const ecken = fotoZuordnungVon(flaeche, perspektivEntwurf.fotoId)?.eckenPx;
+    if (JSON.stringify(ecken) === JSON.stringify(perspektivEntwurf.roh)) return;
+    return navigation.registriere('hauptdach-perspektive', {
+      name: 'Perspektive',
+      gueltig: () => perspektivEntwurf.pruefung.status !== 'fehler',
+      uebernehmen: speicherePerspektivEntwurf,
+      verwerfen: () => setPerspektivEntwurf(null),
+    });
+  }, [perspektivEntwurf, projekt.flaechen, navigation]);
 
-      <Karte className={projekt.fotos.length === 0 ? '!p-3' : ''}>
-        <div
-          className={`flex flex-wrap items-center gap-3 ${projekt.fotos.length === 0 ? '' : 'mb-3'}`}
-        >
-          <div>
-            <KartenTitel>Belegungsfotos</KartenTitel>
-            {projekt.fotos.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                Fotos fügst du direkt bei der jeweiligen Dachfläche hinzu. Für die
-                Belegung ist mindestens ein kalibriertes Drohnenfoto erforderlich.
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-500">
-                Hier kannst du hochgeladene Bilder umbenennen, ersetzen oder löschen.
-                Weitere Perspektiven fügst du direkt an der Dachfläche hinzu.
-              </p>
-            )}
-          </div>
-        </div>
+  if (!f) return <button className={aktionKlasse} onClick={fuegeHauptflaecheHinzu}>+ Dachfläche</button>;
+  const fotoZuordnungen = fotoZuordnungenVon(f);
+  const fotoZuordnung = fotoZuordnungVon(f, ansichtJeFlaeche[f.id]) ?? fotoZuordnungen[0];
+  const fotoId = fotoZuordnung?.fotoId;
+  const fotoAsset = fotoId ? projektFotoVon(projekt, f, fotoId) : undefined;
+  const foto = fotoId ? dachFotoVon(projekt, f, fotoId) : undefined;
+  const fMitFoto: Flaeche = foto ? { ...f, foto, markierungFertig: fotoZuordnung?.markierungFertig } : f;
+  const perspektiveHier = perspektivEntwurf?.flaecheId === f.id && perspektivEntwurf.fotoId === fotoId ? perspektivEntwurf : null;
+  const perspektivGriffAmKreuz = perspektiveHier && foto ? perspektiveHier.roh.findIndex((p) => Math.hypot(p[0] - perspektivCursor[0], p[1] - perspektivCursor[1]) < foto.breitePx * .022) : -1;
+  const perspektivPunktSteuerung: FotoPunktSteuerung | undefined = perspektiveHier && foto ? {
+    aktiv: touchBedienung, aktivieren: aktiviereTouch, punkt: perspektivCursor,
+    breitePx: foto.breitePx, hoehePx: foto.hoehePx, onBewegen: setPerspektivCursor,
+    aktion: perspektivGriff !== null ? 'Ecke hier ablegen' : 'Ecke greifen',
+    deaktiviert: perspektivGriff === null && perspektivGriffAmKreuz < 0,
+    onBestaetigen: () => {
+      if (perspektivGriff !== null) {
+        const neu = kopiereEcken(perspektiveHier.roh);
+        neu[perspektivGriff] = [...perspektivCursor];
+        aenderePerspektivEntwurf(neu);
+        setPerspektivGriff(null);
+      } else if (perspektivGriffAmKreuz >= 0) setPerspektivGriff(perspektivGriffAmKreuz);
+    },
+  } : undefined;
+  const fotoEff = foto && perspektiveHier ? { ...foto, eckenPx: perspektiveHier.letzteGueltige, perspektiveBestaetigt: true } : foto;
+  const fEffBasis = mitDrag(geometrieVorschau?.id === f.id ? geometrieVorschau : f);
+  let fEff: Flaeche = fotoEff ? { ...fEffBasis, foto: fotoEff, markierungFertig: fotoZuordnung?.markierungFertig } : fEffBasis;
+  if (perspektiveHier && !f.gaubenTyp) fEff = { ...fEff, gaubenAussparungen: aktualisiereGaubenAussparungen(fEff, f.gaubenAussparungen) };
+  const raster = rasterFuer(fEff, modul);
+  const aktiv = aktiveModule(fEff, raster);
+  const mass = massFreigabe(f);
+  const markierungsWerkzeug = sitzung.panel === 'umriss' ? 'umriss' : sitzung.panel === 'aussparungen' ? 'hindernis' : undefined;
+  const markierungOffen = sitzung.panel === 'markierung' || !!markierungsWerkzeug;
+  const belegungZeigen = mass.belegen && (foto ? !!fotoZuordnung?.markierungFertig || !!foto.traufePx : !!f.felder?.length);
+  const felder = felderVon(fEff);
+  const gewaehlt = auswahlVon(f);
+  // Die Vorschau projiziert mit Entwurfsmaßen. Ihr Bild darf keine Aktionen auf
+  // die gespeicherte Geometrie auslösen, bevor der Maßentwurf übernommen wurde.
+  const geometrieEntwurfAktiv = geometrieVorschau?.id === f.id;
+  const feldNeuWerkzeug = modusArt(f) === 'feld_neu' && belegungZeigen && !perspektiveHier && !geometrieEntwurfAktiv;
+  const felderWerkzeug = modusArt(f) === null && belegungZeigen && !perspektiveHier && !geometrieEntwurfAktiv;
+  const ziehtHier = drag?.flaecheId === f.id;
+  const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
+  const ansichtKey = `${f.id}:${fotoId ?? 'ohne-foto'}`;
+  const bildFlaechen = fotoId ? belegungsReihenfolge.filter((x) => fotoZuordnungVon(x, fotoId)?.eckenPx) : [];
+  const eltern = f.gaubenTyp ? projekt.flaechen.find((x) => x.id === f.elternFlaecheId) : f;
+  const elternFoto = eltern ? dachFotoVon(projekt, eltern, fotoZuordnungenVon(eltern)[0]?.fotoId) : undefined;
+  const elternMitFoto = eltern && elternFoto ? { ...eltern, foto: elternFoto } : undefined;
 
-        {projekt.fotos.length > 0 && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {projekt.fotos.map((foto) => {
-              const verwendetVon = projekt.flaechen.filter(
-                (f) =>
-                  !f.gaubenTyp &&
-                  fotoZuordnungenVon(f).some((z) => z.fotoId === foto.id),
-              ).length;
-              return (
-                <section key={foto.id} className="rounded-xl border border-slate-200 p-3">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <input
-                      value={foto.name}
-                      aria-label="Name des Drohnenfotos"
-                      onChange={(e) => {
-                        const name = e.target.value;
-                        aendereProjekt((p) => ({
-                          ...p,
-                          fotos: p.fotos.map((x) => (x.id === foto.id ? { ...x, name } : x)),
-                        }), false);
-                      }}
-                      className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800"
-                    />
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      onClick={() => waehleFotoDatei({ art: 'ersetzen', fotoId: foto.id })}
-                    >
-                      Ersetzen
-                    </button>
-                    <button
-                      type="button"
-                      className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
-                      onClick={() => loescheFoto(foto)}
-                    >
-                      Löschen
-                    </button>
-                  </div>
+  const beendeZweiPunkte = (p: PunktM) => {
+    if (!ersteFeldEcke) { setErsteFeldEcke(p); return; }
+    const rect = rechteckAus(ersteFeldEcke, p);
+    const { w, h } = modulMasse(modul, f.ausrichtung === 'quer');
+    if (rect.breiteM < w / 2 || rect.hoeheM < h / 2) return;
+    const vorher = felderVon(frisch(f));
+    patchFlaeche(f.id, { felder: [...vorher, { ...rect, quer: f.ausrichtung === 'quer' }] });
+    setAuswahl({ flaecheId: f.id, indices: [vorher.length] });
+    setModus(null);
+    setErsteFeldEcke(null);
+  };
+  const wechsleAnsicht = (id: string) => navigation.weiter(() => {
+    verwerfeGeste();
+    patchSitzung({ ansichtJeFlaeche: { ...sitzung.ansichtJeFlaeche, [f.id]: id }, auswahl: null, modus: null });
+  });
+  const panelSchliessen = () => navigation.weiter(() => {
+    setGeometrieVorschau(null);
+    setPerspektivEntwurf(null);
+    patchSitzung({ panel: '' });
+  });
 
-                  <div
-                    className="mx-auto mb-3 w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
-                    style={{
-                      aspectRatio: `${foto.breitePx} / ${foto.hoehePx}`,
-                      maxHeight: 300,
-                      maxWidth: (300 * foto.breitePx) / foto.hoehePx,
-                    }}
-                  >
-                    <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    {verwendetVon === 0
-                      ? 'Aktuell keiner Dachfläche zugeordnet'
-                      : `In ${verwendetVon} ${verwendetVon === 1 ? 'Dachfläche' : 'Dachflächen'} verwendet`}
-                  </p>
-                </section>
-              );
-            })}
-          </div>
-        )}
-      </Karte>
-
-      {belegungsReihenfolge.map((f) => {
-        const i = projekt.flaechen.indexOf(f);
-        const fotoZuordnungen = fotoZuordnungenVon(f);
-        const gewuenschteAnsicht = ansichtJeFlaeche[f.id];
-        const fotoZuordnung = fotoZuordnungVon(f, gewuenschteAnsicht) ?? fotoZuordnungen[0];
-        const fotoId = fotoZuordnung?.fotoId;
-        const fotoAsset = fotoId ? projektFotoVon(projekt, f, fotoId) : undefined;
-        const foto = fotoId ? dachFotoVon(projekt, f, fotoId) : undefined;
-        const fMitFoto: Flaeche = foto
-          ? { ...f, foto, markierungFertig: fotoZuordnung?.markierungFertig }
-          : f;
-        const perspektiveHier =
-          perspektivEntwurf?.flaecheId === f.id && perspektivEntwurf.fotoId === fotoId
-            ? perspektivEntwurf
-            : null;
-        const fotoEff = foto && perspektiveHier
-          ? { ...foto, eckenPx: perspektiveHier.letzteGueltige, perspektiveBestaetigt: true }
-          : foto;
-        const fEffBasis = mitDrag(f);
-        let fEff: Flaeche = fotoEff
-          ? { ...fEffBasis, foto: fotoEff, markierungFertig: fotoZuordnung?.markierungFertig }
-          : fEffBasis;
-        if (perspektiveHier && !f.gaubenTyp) {
-          fEff = {
-            ...fEff,
-            gaubenAussparungen: aktualisiereGaubenAussparungen(
-              fEff,
-              f.gaubenAussparungen,
-            ),
-          };
-        }
-        const raster = rasterFuer(fEff, modul);
-        const aktiv = aktiveModule(fEff, raster);
-        const zeichneHier = zeichnung?.flaecheId === f.id ? zeichnung : null;
-        // Foto-only-Workflow (06.08.2026): Umriss und Hindernisse werden immer in
-        // FotoHintergrund markiert. Eine synthetische Draufsicht gibt es nicht mehr.
-        const zeichenbar = false;
-        const belegungZeigen = !!foto && (!!fotoZuordnung?.markierungFertig || !!foto.traufePx);
-        const felder = felderVon(fEff);
-        const gewaehlt = auswahlVon(f);
-        const gaubenAufFlaeche = projekt.flaechen.filter(
-          (x) => x.elternFlaecheId === f.id && !!x.gaubenTyp,
-        );
-        // Auswahl und ausdrückliches Neu-Zeichnen teilen die Zeiger-Ebene, haben
-        // aber absichtlich verschiedene Trefferregeln (bestehendes Feld vs. neu).
-        const feldNeuWerkzeug = modusArt(f) === 'feld_neu' && !zeichneHier && belegungZeigen && !perspektiveHier;
-        const felderWerkzeug = modusArt(f) === null && !zeichneHier && belegungZeigen && !perspektiveHier;
-        const feldPointerAktiv = felderWerkzeug || feldNeuWerkzeug;
-        const ziehtHier = drag?.flaecheId === f.id;
-        const leerZahl = leereZellen(f, gewaehlt.length ? gewaehlt : felder.map((_, k) => k));
-
-        const karte = (
-          <Karte key={f.id} id={`belegung-${f.id}`}>
-            {!f.gaubenTyp && (
-              <FlaechenInlineEditor
-                projekt={projekt}
-                flaeche={f}
-                index={i}
-                onProjektChange={(neu) => {
-                  merkeGeometrie(projektRef.current);
-                  projektRef.current = neu;
-                  onChange(neu);
-                  setAuswahl(null);
-                  setDrag(null);
-                }}
-                onPatch={(patch) => patchGrunddaten(f.id, patch)}
-                onFotoPruefen={
-                  foto && belegungZeigen ? () => aktiviereFotoFokus(f.id) : undefined
-                }
-                fotoFokusAktiv={fotoFokusId === f.id}
-                flaecheKwp={(aktiv * modul.pmaxW) / 1000}
-                gesamtKwp={kwp}
-                onLoeschen={
-                  projekt.flaechen.filter((x) => !x.gaubenTyp).length > 1
-                    ? () => loescheHauptflaeche(f)
-                    : undefined
-                }
-              />
-            )}
-            <div
-              data-testid={`arbeitsbereich-${f.id}`}
-              className={belegungZeigen ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start lg:gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_21rem]' : ''}
-            >
-            <div
-              role="toolbar"
-              aria-label={`Werkzeuge für ${f.name}`}
-              className={`${belegungZeigen ? 'relative z-10 lg:sticky lg:top-44 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:mb-0 lg:self-start' : 'relative z-10'} -mx-2 mb-3 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur`}
-            >
-              <div className={`min-w-0 flex flex-wrap items-center gap-2 ${belegungZeigen ? 'lg:flex-col lg:items-stretch' : ''}`}>
-                {f.gaubenTyp && (
-                  <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                    Gaube{f.gaubenSeite ? ` · ${f.gaubenSeite}` : ''}
-                  </span>
-                )}
-                {f.gaubenTyp && <span className="text-sm font-semibold text-slate-800">{f.name}</span>}
-                {!f.gaubenTyp && belegungZeigen && fotoZuordnung?.eckenPx && !perspektiveHier && (
-                  <button
-                    type="button"
-                    className={`${aktionKlasse} h-11`}
-                    onClick={() => startePerspektivBearbeitung(f, fotoId!)}
-                  >
-                    Perspektive bearbeiten
-                  </button>
-                )}
-                {perspektiveHier && (
-                  <div className="w-full rounded-lg border border-orange-200 bg-orange-50 p-2 text-sm text-slate-800" data-testid="perspektiv-editor-steuerung">
-                    <strong className="block">Perspektive bearbeiten</strong>
-                    <p className={`mt-1 text-xs ${perspektiveHier.pruefung.status === 'fehler' ? 'text-red-700' : perspektiveHier.pruefung.status === 'warnung' ? 'text-amber-700' : 'text-slate-600'}`} role="status">
-                      {perspektiveHier.pruefung.status === 'ok'
-                        ? 'Ecken ziehen oder per Pfeiltaste verschieben. Module und Aussparungen folgen live.'
-                        : perspektiveHier.pruefung.meldungen.join(' ')}
-                    </p>
-                    <div className="mt-2 grid gap-2">
-                      <button
-                        type="button"
-                        className="touch-target h-11 rounded-lg bg-emerald-600 px-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-                        disabled={perspektiveHier.pruefung.status === 'fehler'}
-                        onClick={speicherePerspektivEntwurf}
-                      >
-                        Speichern
-                      </button>
-                      <button type="button" className={`${aktionKlasse} h-11`} onClick={() => setPerspektivEntwurf(null)}>
-                        Abbrechen
-                      </button>
-                      <button
-                        type="button"
-                        className={`${aktionKlasse} h-11`}
-                        onClick={() => aenderePerspektivEntwurf(traufeWechseln(perspektiveHier.roh))}
-                      >
-                        Traufe wechseln
-                      </button>
-                      <button type="button" className="h-11 rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-700" onClick={markierePerspektiveKomplettNeu}>
-                        Komplett neu markieren
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {!f.gaubenTyp && fotoZuordnungen.length > 0 && <label className="min-w-0 flex items-center gap-1.5 text-sm text-slate-500 lg:justify-between">
-                  Ansicht
-                  <select
-                    aria-label={`Ansicht für ${f.name}`}
-                    value={fotoId ?? ''}
-                    onChange={(e) => {
-                      setAnsichtJeFlaeche((alt) => ({ ...alt, [f.id]: e.target.value }));
-                      setAuswahl(null);
-                      setDrag(null);
-                      setZeichnung(null);
-                      setModus(null);
-                    }}
-                    className="touch-target h-9 min-w-0 max-w-56 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
-                  >
-                    {fotoZuordnungen.map((z, index) => {
-                      const asset = projekt.fotos.find((x) => x.id === z.fotoId);
-                      return asset ? (
-                      <option key={z.fotoId} value={z.fotoId}>
-                        Perspektive {index + 1} · {asset.name}
-                      </option>
-                      ) : null;
-                    })}
-                  </select>
-                </label>}
-                {!f.gaubenTyp && (
-                  <button
-                    type="button"
-                    className={`touch-target inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-sm font-semibold text-akzent hover:bg-akzent/10 ${belegungZeigen ? 'lg:w-full' : ''}`}
-                    onClick={() =>
-                      waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })
-                    }
-                  >
-                    <IconFoto />
-                    {fotoZuordnungen.length === 0 ? 'Foto hinzufügen' : 'Weitere Perspektive'}
-                  </button>
-                )}
-                {!f.gaubenTyp && projekt.fotos.some(
-                  (x) => !fotoZuordnungen.some((z) => z.fotoId === x.id),
-                ) && (
-                  <select
-                    value=""
-                    aria-label={`Vorhandenes Foto für ${f.name} verwenden`}
-                    onChange={(e) => {
-                      if (e.target.value) fuegeFotoZuordnungHinzu(f.id, e.target.value);
-                    }}
-                    className={`touch-target h-9 max-w-60 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600 ${belegungZeigen ? 'lg:w-full lg:max-w-none' : ''}`}
-                  >
-                    <option value="">Vorhandenes Foto verwenden …</option>
-                    {projekt.fotos
-                      .filter((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id))
-                      .map((x) => (
-                        <option key={x.id} value={x.id}>{x.name}</option>
-                      ))}
-                  </select>
-                )}
-                {!f.gaubenTyp && fotoId && (
-                  <button
-                    type="button"
-                    className={`h-9 rounded-lg px-2 text-sm font-medium text-red-600 hover:bg-red-50 ${belegungZeigen ? 'lg:w-full' : ''}`}
-                    onClick={() => loeseFotoZuordnung(f.id, fotoId)}
-                  >
-                    Perspektive entfernen
-                  </button>
-                )}
-                <span className={`ml-auto rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white ${belegungZeigen ? 'lg:ml-0 lg:text-center' : 'whitespace-nowrap'}`}>
-                  {aktiv} {aktiv === 1 ? 'Modul' : 'Module'} · {fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp
-                  {felder.length > 0 && ` · ${felder.length} ${felder.length === 1 ? 'Feld' : 'Felder'}`}
-                </span>
-              </div>
-
-              {belegungZeigen && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 lg:flex-col lg:items-stretch">
-                  <span className="hidden text-xs font-bold uppercase tracking-wide text-slate-400 lg:block">Werkzeuge</span>
-                  <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-1">
-                    <WerkzeugKnopf
-                      aktiv={modusArt(f) === null && !zeichneHier}
-                      title="Belegungsfelder auswählen, verschieben und in der Größe ändern"
-                      onClick={() => setzeModus(f, null)}
-                    >
-                      <IconFeld />
-                      Auswählen/verschieben
-                    </WerkzeugKnopf>
-                    <WerkzeugKnopf
-                      aktiv={modusArt(f) === 'feld_neu'}
-                      title="Ein weiteres Belegungsfeld aufziehen – auch über einem vorhandenen Feld"
-                      onClick={() => setzeModus(f, 'feld_neu')}
-                    >
-                      <IconFeld />
-                      + Feld zeichnen
-                    </WerkzeugKnopf>
-                    <WerkzeugKnopf
-                      aktiv={modusArt(f) === 'zellen'}
-                      disabled={felder.length === 0}
-                      title={felder.length === 0 ? 'Erst einen Belegungsbereich anlegen' : 'Einzelne Module an- oder ausschalten'}
-                      onClick={() => setzeModus(f, modusArt(f) === 'zellen' ? null : 'zellen')}
-                    >
-                      <IconModulLoeschen />
-                      Module
-                    </WerkzeugKnopf>
-                  </div>
-                  <p className="text-xs text-slate-500 lg:text-center">
-                    {modusArt(f) === 'zellen'
-                      ? 'Aktiver Modus: einzelne Module an- oder ausschalten.'
-                      : modusArt(f) === 'feld_neu'
-                        ? 'Neues blaues Rechteck aufziehen – Start auch über einem bestehenden Feld möglich.'
-                        : 'Felder auswählen oder verschieben; Bereiche dürfen über das Dach hinausreichen.'}
-                  </p>
-
-                  {artVon(f) === 'flachdach' ? (
-                    <span className="whitespace-nowrap text-sm text-slate-500 lg:text-center">
-                      {f.flachdach?.aufstaenderung === 'ostwest'
-                        ? `Ost-West ${f.flachdach.winkelDeg}° · quer`
-                        : `Süd ${f.flachdach?.winkelDeg ?? 10}° · quer`}
-                    </span>
-                  ) : (
-                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-2">
-                      <WerkzeugKnopf
-                        aktiv={ausrichtungAktiv(fEff) === 'quer'}
-                        title={gewaehlt.length > 0 ? `${gewaehlt.length} ausgewählte Felder quer legen` : 'Alle Module quer legen'}
-                        onClick={() => setzeAusrichtung(f, 'quer')}
-                      >
-                        <IconModulQuer />
-                        Quer
-                      </WerkzeugKnopf>
-                      <WerkzeugKnopf
-                        aktiv={ausrichtungAktiv(fEff) === 'hoch'}
-                        title={gewaehlt.length > 0 ? `${gewaehlt.length} ausgewählte Felder hochkant stellen` : 'Alle Module hochkant stellen'}
-                        onClick={() => setzeAusrichtung(f, 'hoch')}
-                      >
-                        <IconModulHoch />
-                        Hochkant
-                      </WerkzeugKnopf>
-                    </div>
-                  )}
-
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-slate-600 lg:justify-between">
-                    Rand
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={Math.round(randVon(f) * 100)}
-                      onChange={(e) => {
-                        const cm = Number.parseInt(e.target.value, 10);
-                        if (!Number.isFinite(cm) || cm < 0) return;
-                        patchFlaeche(f.id, { randM: cm / 100 });
-                      }}
-                      className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
-                    />
-                    cm
-                  </label>
-
-                  {zeichenbar && !zeichneHier && (
-                    <>
-                      <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 lg:grid lg:grid-cols-2">
-                        <WerkzeugKnopf aktiv={false} title="Dachumriss zeichnen" onClick={() => starteZeichnung(f, 'umriss')}>
-                          <IconUmriss /> Umriss
-                        </WerkzeugKnopf>
-                        <WerkzeugKnopf aktiv={false} title="Kamin, Fenster oder SAT markieren" onClick={() => starteZeichnung(f, 'hindernis')}>
-                          <IconHindernis /> Hindernis
-                        </WerkzeugKnopf>
-                      </div>
-                      {f.umrissM && (
-                        <button type="button" className={aktionKlasse} onClick={() => patchFlaeche(f.id, { umrissM: undefined })}>
-                          Umriss entfernen ({f.umrissM.length})
-                        </button>
-                      )}
-                      {(f.hindernisse ?? []).map((h, hi) => (
-                        <button
-                          key={hi}
-                          type="button"
-                          title="Hindernis entfernen"
-                          className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300 lg:w-full"
-                          onClick={() => patchFlaeche(f.id, { hindernisse: (f.hindernisse ?? []).filter((_, j) => j !== hi) })}
-                        >
-                          {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m ✕
-                        </button>
-                      ))}
-                    </>
-                  )}
-
-                  <div className="ml-auto flex flex-wrap gap-2 lg:ml-0 lg:grid lg:grid-cols-1">
-                    <button type="button" className={aktionKlasse} onClick={() => automatischFuellen(f)}>
-                      <IconFeld /> Automatisch belegen
-                    </button>
-                    {felder.length > 0 && (
-                      <button
-                        type="button"
-                        aria-label="Belegung entfernen"
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
-                        title="Alle Belegungsfelder dieser Fläche entfernen"
-                        onClick={() => alleFelderLoeschen(f)}
-                      >
-                        <IconLeeren /> Alles entfernen
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {belegungZeigen && zeichneHier && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 text-sm text-sky-900 lg:flex-col lg:items-stretch">
-                  <strong>{zeichneHier.art === 'umriss' ? 'Umriss zeichnen' : 'Hindernis markieren'}</strong>
-                  {zeichneHier.art === 'umriss' ? (
-                    <button
-                      type="button"
-                      disabled={zeichneHier.punkte.length < 3}
-                      className="h-9 rounded-lg bg-akzent px-3 font-semibold text-white disabled:opacity-40"
-                      onClick={() => {
-                        patchFlaeche(f.id, { umrissM: zeichneHier.punkte });
-                        setZeichnung(null);
-                      }}
-                    >
-                      ✓ Fertig ({zeichneHier.punkte.length})
-                    </button>
-                  ) : (
-                    <button type="button" className={aktionKlasse} onClick={() => setZeichnung(null)}>✓ Fertig</button>
-                  )}
-                  {zeichneHier.art === 'umriss' && (
-                    <button
-                      type="button"
-                      disabled={zeichneHier.punkte.length === 0}
-                      className={aktionKlasse}
-                      onClick={() => setZeichnung({ ...zeichneHier, punkte: zeichneHier.punkte.slice(0, -1) })}
-                    >
-                      ↶ Punkt zurück
-                    </button>
-                  )}
-                  <button type="button" className={aktionKlasse} onClick={() => setZeichnung(null)}>Abbrechen</button>
-                  <span>{zeichneHier.art === 'umriss' ? 'Ecke für Ecke am Dachrand entlang.' : zeichneHier.punkte.length === 0 ? 'Erste Ecke anklicken.' : 'Gegenüberliegende Ecke anklicken.'}</span>
-                </div>
-              )}
-
-              {feldNeuWerkzeug && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 text-sm text-sky-900 lg:flex-col lg:items-stretch">
-                  <strong>Weiteres Belegungsfeld zeichnen</strong>
-                  <span>Beliebiges blaues Rechteck aufziehen – auch über einem vorhandenen Feld.</span>
-                  <button type="button" className={aktionKlasse} onClick={() => setzeModus(f, null)}>Abbrechen</button>
-                </div>
-              )}
-
-              {felderWerkzeug && felder.length > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 lg:flex-col lg:items-stretch">
-                  <span className="text-sm font-semibold text-sky-900">
-                    {gewaehlt.length > 0 ? `${gewaehlt.length} von ${felder.length} ausgewählt` : 'Feld antippen oder aufziehen'}
-                  </span>
-                  {gewaehlt.length < felder.length && (
-                    <button
-                      type="button"
-                      className={aktionKlasse}
-                      onClick={() => setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) })}
-                    >
-                      Alle auswählen
-                    </button>
-                  )}
-                  {gewaehlt.length > 0 && (
-                    <>
-                      <div className="flex items-center gap-1 lg:justify-center" aria-label="Auswahl verschieben">
-                        <HoldButton className={pfeilKlasse} title="nach links" onTrigger={() => bewegeAuswahl(f, -1, 0)}>←</HoldButton>
-                        <HoldButton className={pfeilKlasse} title="nach oben" onTrigger={() => bewegeAuswahl(f, 0, -1)}>↑</HoldButton>
-                        <HoldButton className={pfeilKlasse} title="nach unten" onTrigger={() => bewegeAuswahl(f, 0, 1)}>↓</HoldButton>
-                        <HoldButton className={pfeilKlasse} title="nach rechts" onTrigger={() => bewegeAuswahl(f, 1, 0)}>→</HoldButton>
-                      </div>
-                      <label className="flex items-center gap-1 whitespace-nowrap text-sm text-slate-600 lg:justify-between">
-                        Schritt
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          max={100}
-                          value={schrittCm}
-                          onChange={(e) => {
-                            const n = Number.parseInt(e.target.value, 10);
-                            if (Number.isFinite(n) && n >= 1) setSchrittCm(n);
-                          }}
-                          className="h-9 w-16 rounded-lg border border-slate-300 px-2 text-base"
-                        />
-                        cm
-                      </label>
-                      <button type="button" className={aktionKlasse} onClick={() => setAuswahl(null)}>Auswahl aufheben</button>
-                      {leerZahl > 0 && (
-                        <button type="button" className={aktionKlasse} onClick={() => zellenZurueckholen(f, gewaehlt)}>
-                          Module zurückholen ({leerZahl})
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
-                        onClick={() => auswahlLoeschen(f)}
-                      >
-                        🗑 Feld löschen{gewaehlt.length > 1 ? ` (${gewaehlt.length})` : ''}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {belegungZeigen && modusArt(f) === 'zellen' && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-100 px-2 py-1.5 text-sm text-slate-700 lg:flex-col lg:items-stretch">
-                  <strong>Module antippen zum An- oder Ausschalten.</strong>
-                  {leerZahl > 0 && (
-                    <button type="button" className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>
-                      Alle anschalten ({leerZahl})
-                    </button>
-                  )}
-                  <button type="button" className={aktionKlasse} onClick={() => setzeModus(f, null)}>✓ Fertig</button>
-                </div>
-              )}
-            </div>
-
-            {/* Die Belegung ist das Arbeitsobjekt: Canvas vor Einstellungen und Sonderwerkzeugen. */}
-            {!belegungZeigen ? null : (
-              <div
-                id={`foto-masse-${f.id}`}
-                className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 lg:col-start-1 lg:row-start-1 lg:mb-0"
-              >
-                <DachSvg
-                  flaeche={fEff}
-                  raster={raster}
-                  modul={modul}
-                  masse={masseZeigen}
-                  maxHoehe={560}
-                  modulDarstellung={ziehtHier ? 'kontur' : 'detail'}
-                  felderAnzeige={felder.map((feld, k) => ({
-                    rect: feld,
-                    ausgewaehlt: gewaehlt.includes(k),
-                  }))}
-                  feldVorschau={vorschauFuer(f)}
-                  geister={
-                    modusArt(f) === 'zellen'
-                      ? leerePositionenFuer(fEff, modul).map((p) => ({
-                          key: posKey(p),
-                          xM: p.xM,
-                          yM: p.yM,
-                          wM: p.wM,
-                          hM: p.hM,
-                        }))
-                      : undefined
-                  }
-                  pointer={
-                    feldPointerAktiv
-                      ? {
-                          onDownM: (p) => onDownM(f, p, feldNeuWerkzeug),
-                          // Ein ungültiger Einzelpunkt (z. B. nahe der projektiven
-                          // Fluchtgrenze) darf eine laufende Geste nicht abbrechen.
-                          onMoveM: (p) => {
-                            if (p) aktualisiereDrag(f.id, p);
-                          },
-                          onUpM: (p) => onUpM(f, p),
-                        }
-                      : undefined
-                  }
-                  perspektivEditor={
-                    perspektiveHier
-                      ? {
-                          ecken: perspektiveHier.roh,
-                          pruefung: perspektiveHier.pruefung,
-                          ausgewaehlt: perspektiveHier.ausgewaehlt,
-                          onAuswaehlen: (ausgewaehlt) =>
-                            setPerspektivEntwurf((alt) => alt ? { ...alt, ausgewaehlt } : alt),
-                          onAendern: aenderePerspektivEntwurf,
-                          onAbbrechen: () => setPerspektivEntwurf(null),
-                        }
-                      : undefined
-                  }
-                  tastatur={{
-                    onPfeil:
-                      felderWerkzeug && gewaehlt.length > 0
-                        ? (sx, sy, skalieren) =>
-                            skalieren ? skaliereAuswahl(f, sx, sy) : bewegeAuswahl(f, sx, sy)
-                        : undefined,
-                    onEscape: () => {
-                      setAuswahl(null);
-                      setDrag(null);
-                      setZeichnung(null);
-                    },
-                  }}
-                  zeichnen={
-                    zeichneHier
-                      ? { aktiv: true, punkteM: zeichneHier.punkte, onKlickM: (p) => klickM(f, p) }
-                      : undefined
-                  }
-                  onToggle={modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
-                  fotoOverlay={
-                    fotoAsset
-                      ? (clipIdPrefix) =>
-                          fotoFlaechenInhalt({
-                            projekt,
-                            foto: fotoAsset,
-                            ausblendenId: f.id,
-                            assetId: `modul-${f.id}`,
-                            clipIdPrefix,
-                            modulDarstellung: ziehtHier ? 'kontur' : 'detail',
-                          })
-                      : undefined
-                  }
-                />
-              </div>
-            )}
-            </div>
-
-            {!foto && (
-              <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
-                <strong className="block text-base text-slate-800">
-                  {f.gaubenTyp ? 'Drohnenfoto der Gaube fehlt' : 'Noch kein Drohnenbild zugeordnet'}
-                </strong>
-                <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500">
-                  {f.gaubenTyp
-                    ? 'Die Gaube wird im Foto ihres Hauptdachs angelegt. Bitte dort die Fotozuordnung und Markierung prüfen.'
-                    : 'Foto hinzufügen oder ein vorhandenes Projektfoto verwenden. Danach Perspektive, Dachrand und Hindernisse direkt im Bild markieren.'}
-                </p>
-              </div>
-            )}
-
-            {belegungZeigen && felder.length === 0 && !zeichneHier && (
-              <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                <strong className="block">Noch kein Belegungsbereich angelegt.</strong>
-                <p className="mt-1">Du kannst einen Bereich frei im Foto aufziehen – auch größer als das Dach – oder die nutzbare Fläche automatisch füllen.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="touch-target h-11 rounded-lg bg-akzent px-4 font-semibold text-white"
-                    onClick={() => {
-                      setzeModus(f, 'feld_neu');
-                      document.querySelector<SVGSVGElement>(`#belegung-${f.id} svg`)?.focus();
-                    }}
-                  >
-                    + Belegungsbereich zeichnen
-                  </button>
-                  <button type="button" className={`${aktionKlasse} h-11`} onClick={() => automatischFuellen(f)}>
-                    Automatisch belegen
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {foto && !f.gaubenTyp && fotoZuordnungen[0]?.fotoId === fotoId && (
-              <GaubenEditor
-                eltern={fMitFoto}
-                gauben={gaubenAufFlaeche}
-                projekt={projekt}
-                bearbeiteGruppenId={
-                  gaubenBearbeitung?.elternId === f.id ? gaubenBearbeitung.gruppenId : null
-                }
-                onBearbeitungGestartet={() => setGaubenBearbeitung(null)}
-                onErstellen={(daten) => erstelleGaube(f, fotoId, daten)}
-                onLoeschen={(gruppenId) => loescheGaube(f.id, gruppenId)}
-                onMasseAendern={aendereGaubenMasse}
-                onMarkierungAendern={(gruppenId, markierung) =>
-                  aendereGaubenMarkierung(f.id, gruppenId, markierung)
-                }
-              />
-            )}
-
-            {foto && fotoId && (
-              <FotoHintergrund
-                flaeche={fMitFoto}
-                fotoVerwalten={false}
-                zustandsKey={`${f.id}:${fotoAsset?.id ?? 'legacy'}`}
-                geometrieBehalten={fotoZuordnungen.length > 1 || !!f.umrissM}
-                onPatch={(patch) => patchFotoFlaeche(f, fotoId, patch)}
-              />
-            )}
-
-            {belegungZeigen && felder.length > 0 && raster.positionen.length === 0 && (
-              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                Kein Modul passt — Feld zu klein oder außerhalb der nutzbaren Fläche (Randabstand{' '}
-                {Math.round(randVon(f) * 100)} cm
-                {umrissVon(f) ? ', Umriss' : ''}
-                {(f.hindernisse?.length ?? 0) > 0 ? ', Hindernis' : ''}).
-              </p>
-            )}
-            {belegungZeigen && (
-              <p className="mt-2 text-xs text-slate-400">
-                Randabstand {Math.round(randVon(f) * 100)} cm, Klemmfuge 20 mm
-                {f.umrissM ? `, Umriss mit ${f.umrissM.length} Ecken` : ''}
-                {foto ? ' · Kamin/Fenster/SAT über „✎ Markierung ändern" aufs leere Foto setzen.' : ''}
-              </p>
-            )}
-          </Karte>
-        );
-        if (!f.gaubenTyp) return karte;
-        const gruppenGeschwister = projekt.flaechen.filter(
-          (x) =>
-            x.gaubenTyp &&
-            (x.gaubenGruppeId ?? x.id) === (f.gaubenGruppeId ?? f.id),
-        );
-        const ersteSeite = gruppenGeschwister[0]?.id === f.id;
-        const gruppeId = f.gaubenGruppeId ?? f.id;
-        const gaubenGruppen = Array.from(
-          new Set(
-            projekt.flaechen
-              .filter((x) => x.gaubenTyp && x.elternFlaecheId === f.elternFlaecheId)
-              .map((x) => x.gaubenGruppeId ?? x.id),
-          ),
-        );
-        const gaubenNummer = Math.max(1, gaubenGruppen.indexOf(gruppeId) + 1);
-        const titel = `${
-          ersteSeite
-            ? `Gaube ${gaubenNummer} belegen · ${f.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach'}`
-            : `Gaube ${gaubenNummer} · zweite Dachseite`
-        } · ${aktiv} ${aktiv === 1 ? 'Modul' : 'Module'} · ${fmtDe((aktiv * modul.pmaxW) / 1000, 2)} kWp Fläche · ${fmtDe(kwp, 2)} kWp Gesamt`;
-        return (
-          <div
-            key={f.id}
-            className={`rounded-xl border border-sky-200 bg-sky-50/60 p-2 ${ersteSeite ? 'mt-2' : '-mt-3'}`}
-          >
-            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-2">
-              <button
-                type="button"
-                className="min-h-11 min-w-0 flex-1 text-left text-sm font-semibold text-sky-900"
-                aria-label={`${titel} öffnen oder schließen`}
-                onClick={() => {
-                  const details = document.getElementById(`gauben-karte-${f.id}`) as HTMLDetailsElement | null;
-                  if (details) details.open = !details.open;
-                }}
-              >
-                {titel}
-              </button>
-              <button
-                type="button"
-                className="touch-target h-11 rounded-lg border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-900 hover:bg-sky-100"
-                aria-label={`Perspektive von Gaube ${gaubenNummer}${ersteSeite ? '' : ', zweite Dachseite'} bearbeiten`}
-                onClick={() => {
-                  if (f.elternFlaecheId) starteGaubenBearbeitung(f.elternFlaecheId, gruppeId);
-                }}
-              >
-                Perspektive bearbeiten
-              </button>
-              <button
-                type="button"
-                className="touch-target h-11 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 hover:bg-red-50"
-                aria-label={`Gaube ${gaubenNummer}${ersteSeite ? '' : ', zweite Dachseite'} löschen`}
-                onClick={() => {
-                  if (f.elternFlaecheId) loescheGaube(f.elternFlaecheId, gruppeId);
-                }}
-              >
-                Gaube löschen
-              </button>
-            </div>
-            <details id={`gauben-karte-${f.id}`} data-gauben-gruppe={gruppeId}>
-              <summary className="sr-only">{titel}</summary>
-              <div className="mt-2">{karte}</div>
-            </details>
-          </div>
-        );
-      })}
+  const fotosPanel = <>
+    <div className={styles.kontextAktionen}>
+      <button type="button" className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>
+        <IconFoto />{fotoZuordnungen.length ? 'Weitere Perspektive' : 'Foto hinzufügen'}
+      </button>
+      {projekt.fotos.some((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id)) && <select aria-label={`Vorhandenes Foto für ${f.name} verwenden`} value="" className={aktionKlasse}
+        onChange={(e) => { if (e.target.value) navigation.weiter(() => fuegeFotoZuordnungHinzu(f.id, e.target.value)); }}>
+        <option value="">Vorhandenes Foto verwenden …</option>
+        {projekt.fotos.filter((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>}
+      {fotoId && <button type="button" className={aktionKlasse} onClick={() => navigation.weiter(() => loeseFotoZuordnung(f.id, fotoId))}>Perspektive entfernen</button>}
     </div>
-  );
+    {projekt.fotos.map((asset) => <div className={styles.fotoZeile} key={asset.id}>
+      <input aria-label="Name des Drohnenfotos" value={asset.name} onChange={(e) => {
+        const name = e.target.value;
+        aendereProjekt((p) => ({ ...p, fotos: p.fotos.map((x) => x.id === asset.id ? { ...x, name } : x) }));
+      }} />
+      <div className={styles.kontextAktionen}>
+        <button type="button" className={aktionKlasse} onClick={() => navigation.weiter(() => waehleFotoDatei({ art: 'ersetzen', fotoId: asset.id }))}>Ersetzen</button>
+        <button type="button" className={aktionKlasse} onClick={() => navigation.weiter(() => loescheFoto(asset))}>Löschen</button>
+      </div>
+      <p>{projekt.flaechen.filter((x) => fotoZuordnungVon(x, asset.id)).length} zugeordnete Flächen</p>
+    </div>)}
+  </>;
+  const detailsPanel = f.gaubenTyp ? <div className={styles.kontextAktionen}>
+    <p>{f.name} · {fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m</p>
+    <button className={aktionKlasse} onClick={() => oeffnePanel('gauben')}>Maß verbessern</button>
+    <button className={aktionKlasse} onClick={() => navigation.weiter(() => {
+      patchSitzung({ panel: 'gauben' });
+      if (f.elternFlaecheId) starteGaubenBearbeitung(f.elternFlaecheId, f.gaubenGruppeId ?? f.id);
+    })}>Perspektive bearbeiten</button>
+    <button className={aktionKlasse} onClick={() => navigation.weiter(() => { if (f.elternFlaecheId) loescheGaube(f.elternFlaecheId, f.gaubenGruppeId ?? f.id); })}>Gaube löschen</button>
+  </div> : <FlaechenInlineEditor key={f.id} projekt={projekt} flaeche={f} index={projekt.flaechen.indexOf(f)} kompakt initialOffen
+    massVorschlag={massVorschlag?.flaecheId === f.id ? massVorschlag.masse : undefined}
+    onVorschau={setGeometrieVorschau} onSchliessen={panelSchliessen}
+    onProjektChange={(neu) => { projektRef.current = neu; onChange(neu); setAuswahl(null); verwerfeGeste(); }}
+    onPatch={(patch) => patchFlaeche(f.id, patch)} flaecheKwp={(aktiv * modul.pmaxW) / 1000} gesamtKwp={kwp}
+    onLoeschen={projekt.flaechen.filter((x) => !x.gaubenTyp).length > 1 ? () => loescheHauptflaeche(f) : undefined} />;
+
+  const perspektivPanel = perspektiveHier && <div data-testid="perspektiv-editor-steuerung">
+    <p className={styles.hinweis} role="status">{perspektiveHier.pruefung.status === 'ok' ? touchBedienung ? 'Fadenkreuz auf eine Ecke schieben, „Ecke greifen“ drücken und am Ziel ablegen. Anschließend speichern.' : 'Ecken ziehen oder mit den Pfeiltasten verschieben. Änderungen erst nach Übernehmen gespeichert.' : perspektiveHier.pruefung.meldungen.join(' ')}</p>
+    <div className={styles.kontextAktionen}>
+      <button className="rounded-lg bg-akzent px-3 text-sm font-semibold text-white disabled:opacity-40" disabled={perspektiveHier.pruefung.status === 'fehler'} onClick={speicherePerspektivEntwurf}>Speichern</button>
+      <button className={aktionKlasse} onClick={() => setPerspektivEntwurf(null)}>Abbrechen</button>
+      <button className={aktionKlasse} onClick={() => aenderePerspektivEntwurf(traufeWechseln(perspektiveHier.roh))}>Traufe wechseln</button>
+      <button className={aktionKlasse} onClick={markierePerspektiveKomplettNeu}>Komplett neu markieren</button>
+    </div>
+  </div>;
+
+  const auswahlPanel = <>
+    <p className="mb-3 text-sm font-semibold">{gewaehlt.length} von {felder.length} ausgewählt</p>
+    <div className={styles.kontextAktionen}>
+      {artVon(f) !== 'flachdach' && <>
+        <WerkzeugKnopf aktiv={ausrichtungAktiv(fEff) === 'quer'} title={`${gewaehlt.length} ausgewählte Felder quer legen`} onClick={() => setzeAusrichtung(f, 'quer')}><IconModulQuer />Quer</WerkzeugKnopf>
+        <WerkzeugKnopf aktiv={ausrichtungAktiv(fEff) === 'hoch'} title={`${gewaehlt.length} ausgewählte Felder hochkant stellen`} onClick={() => setzeAusrichtung(f, 'hoch')}><IconModulHoch />Hochkant</WerkzeugKnopf>
+      </>}
+      <div className="flex gap-1" aria-label={`${gewaehlt.length} ausgewählte Felder verschieben`}>
+        <HoldButton className={pfeilKlasse} title="nach links" onTrigger={() => bewegeAuswahl(f, -1, 0)}>←</HoldButton>
+        <HoldButton className={pfeilKlasse} title="nach oben" onTrigger={() => bewegeAuswahl(f, 0, -1)}>↑</HoldButton>
+        <HoldButton className={pfeilKlasse} title="nach unten" onTrigger={() => bewegeAuswahl(f, 0, 1)}>↓</HoldButton>
+        <HoldButton className={pfeilKlasse} title="nach rechts" onTrigger={() => bewegeAuswahl(f, 1, 0)}>→</HoldButton>
+      </div>
+      <label>Schritt<input type="number" min={1} max={100} value={schrittCm} onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n) && n >= 1) setSchrittCm(n); }} />cm</label>
+      {leerZahl > 0 && <button className={aktionKlasse} onClick={() => zellenZurueckholen(f, gewaehlt)}>Module zurückholen ({leerZahl})</button>}
+      <button className={aktionKlasse} onClick={() => auswahlLoeschen(f)}>Feld löschen{gewaehlt.length > 1 ? ` (${gewaehlt.length})` : ''}</button>
+      <button className={aktionKlasse} onClick={() => setAuswahl(null)}>Auswahl aufheben</button>
+    </div>
+    <p className="mt-3 text-sm text-slate-600">Aktionen gelten für {gewaehlt.length === 1 ? 'das ausgewählte Feld' : `alle ${gewaehlt.length} ausgewählten Felder`}. Griffe ändern die Größe; Shift + Pfeil ebenfalls.</p>
+  </>;
+  const mehrPanel = <div className={styles.kontextAktionen}>
+    <button className={aktionKlasse} disabled={!felder.length} onClick={() => { patchSitzung({ panel: '', modus: null, verschieben: false }); setAuswahl({ flaecheId: f.id, indices: felder.map((_, k) => k) }); }}>Alle auswählen</button>
+    <button className={aktionKlasse} disabled={!belegungZeigen || !felder.length} onClick={() => { patchSitzung({ panel: '' }); setzeModus(f, 'zellen'); }}>Module aus-/einblenden</button>
+    {belegungZeigen && <button className={aktionKlasse} onClick={() => { automatischFuellen(f); patchSitzung({ panel: '' }); }}>Automatisch belegen</button>}
+    <button className={aktionKlasse} aria-pressed={sitzung.verschieben} onClick={() => navigation.weiter(() => { verwerfeGeste(); patchSitzung({ verschieben: !sitzung.verschieben, panel: '' }); })}>Ansicht verschieben</button>
+    <button className={aktionKlasse} aria-pressed={masseZeigen} onClick={() => setMasseZeigen(!masseZeigen)}>Maße {masseZeigen ? 'ausblenden' : 'einblenden'}</button>
+    {fotoZuordnung?.eckenPx && !f.gaubenTyp && <button className={aktionKlasse} onClick={() => { patchSitzung({ panel: '' }); startePerspektivBearbeitung(f, fotoId!); }}>Perspektive bearbeiten</button>}
+    {foto && <button className={aktionKlasse} onClick={() => oeffnePanel('markierung')}>Aussparungen & Dachrand</button>}
+    {elternMitFoto?.foto?.eckenPx && <button className={aktionKlasse} onClick={() => oeffnePanel('gauben')}>Gauben verwalten</button>}
+    <label>Rand<input type="number" min={0} max={100} value={Math.round(randVon(f) * 100)} onChange={(e) => { const cm = Number(e.target.value); if (Number.isFinite(cm) && cm >= 0) patchFlaeche(f.id, { randM: cm / 100 }); }} />cm</label>
+    {!!felder.length && <button className={aktionKlasse} aria-label="Belegung entfernen" onClick={() => alleFelderLoeschen(f)}>Alle {felder.length} Felder entfernen</button>}
+    <button className={aktionKlasse} onClick={() => navigation.weiter(fuegeHauptflaecheHinzu)}>+ Dachfläche</button>
+  </div>;
+
+  const feldPanel = <div className={styles.werkzeugOptionen}>
+    <p>{zweiPunkte ? ersteFeldEcke ? 'Gegenüberliegende Ecke antippen.' : 'Erste Ecke antippen.' : 'Feld von einer Ecke zur gegenüberliegenden ziehen.'}</p>
+    <button className={aktionKlasse} aria-pressed={zweiPunkte} onClick={() => { verwerfeGeste(); setZweiPunkte(!zweiPunkte); }}>{zweiPunkte ? 'Mit Ziehen zeichnen' : 'Mit zwei Punkten zeichnen'}</button>
+    <label>Neue Felder<select aria-label="Ausrichtung neuer Felder" className={aktionKlasse} value={f.ausrichtung} disabled={artVon(f) === 'flachdach'} onChange={(e) => patchFlaeche(f.id, { ausrichtung: e.target.value as 'hoch' | 'quer' })}><option value="hoch">Hochkant</option><option value="quer">Quer</option></select></label>
+    <button className={aktionKlasse} onClick={() => setzeModus(f, null)}>Abbrechen</button>
+  </div>;
+  const zellenPanel = <div className={styles.werkzeugOptionen}><p>Module der aktiven Fläche antippen, um sie aus- oder einzublenden.</p>
+    {leerZahl > 0 && <button className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>Alle anschalten ({leerZahl})</button>}
+    <button className={aktionKlasse} onClick={() => setzeModus(f, null)}>Fertig</button></div>;
+  const bedienPanel = perspektiveHier ? perspektivPanel : sitzung.panel === 'fotos' ? fotosPanel : sitzung.panel === 'details' ? detailsPanel : sitzung.panel === 'mehr' ? mehrPanel : feldNeuWerkzeug ? feldPanel : modusArt(f) === 'zellen' ? zellenPanel : gewaehlt.length && felderWerkzeug ? auswahlPanel : null;
+  const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachdetails & Maße' : sitzung.panel === 'mehr' ? 'Weitere Werkzeuge' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
+  const standardPanel = <div className={styles.eigenschaften}>
+    <div className={styles.flaechenErgebnis}><strong>{aktiv}<small>Module</small></strong><strong>{fmtDe(aktiv * modul.pmaxW / 1000, 2)}<small>kWp · {f.name}</small></strong></div>
+    <dl><div><dt>Abmessungen</dt><dd>{fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m</dd></div><div><dt>Modul</dt><dd>{modul.pmaxW} Wp</dd></div><div><dt>Belegungsfelder</dt><dd>{felder.length}</dd></div></dl>
+    {!mass.belegen && <p className={styles.hinweis}>{mass.meldung} <button className={aktionKlasse} onClick={() => oeffnePanel(f.gaubenTyp ? 'gauben' : 'details')}>Maße bestätigen</button></p>}
+    {belegungZeigen && !felder.length && <><p>Die Fläche ist bereit für die erste Belegung.</p><button className={styles.primaer} onClick={() => setzeModus(f, 'feld_neu')}>+ Belegungsbereich zeichnen</button><button className={aktionKlasse} onClick={() => automatischFuellen(f)}>Automatisch belegen</button></>}
+    {belegungZeigen && !!felder.length && !raster.positionen.length && <p className={styles.hinweis}>Kein Modul passt in die nutzbare Fläche. Feldgröße, Rand und Aussparungen prüfen.</p>}
+    {sitzung.verschieben && <p>Im Foto ziehen. Zwei Finger verschieben und zoomen immer nur die Ansicht.</p>}
+  </div>;
+  const renderArbeitsbereich = ({ bild, steuerung, hinweis, bildSeitenverhaeltnis, abbrechen, punktSteuerung }: { bild: ReactNode; steuerung?: ReactNode; hinweis?: ReactNode; bildSeitenverhaeltnis: number; abbrechen?: () => void; punktSteuerung?: FotoPunktSteuerung }) => <>
+    <div className={styles.arbeitsbereich} data-kontext-offen={!!(bedienPanel || steuerung)} data-testid={`arbeitsbereich-${f.id}`}>
+      <div className={styles.bildBereich}>
+      {hinweis && <div className={styles.anleitung}>{hinweis}</div>}
+      <div className={styles.canvas} id={`foto-masse-${f.id}`}>
+        <EditorViewport ansicht={sitzung.ansichten[ansichtKey] ?? STANDARD_ANSICHT} bildSeitenverhaeltnis={bildSeitenverhaeltnis}
+          punktSteuerung={punktSteuerung}
+          verschieben={sitzung.verschieben} onGesteAbbrechen={() => { verwerfeGeste(); setGesteAbbruchRevision((wert) => wert + 1); abbrechen?.(); }}
+          onAnsichtChange={(ansicht) => patchSitzung((alt) => ({ ansichten: { ...alt.ansichten, [ansichtKey]: ansicht } }))}>
+          {bild}
+          {belegungZeigen && !steuerung && !perspektiveHier && bildFlaechen.filter((x) => x.id !== f.id).map((x) => {
+            const ecken = fotoZuordnungVon(x, fotoId)!.eckenPx!;
+            const links = ecken.reduce((sum, p) => sum + p[0], 0) / 4 / foto!.breitePx * 100;
+            const oben = ecken.reduce((sum, p) => sum + p[1], 0) / 4 / foto!.hoehePx * 100;
+            return <button key={x.id} type="button" className={styles.bildLabel} style={{ left: `${links}%`, top: `${oben}%` }} aria-label={`${x.name} im Foto auswählen`}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => wechsleFlaeche(x.id)}>{x.name}</button>;
+          })}
+        </EditorViewport>
+      </div>
+      </div>
+      <aside className={styles.inspektor} aria-label="Dachflächen und Eigenschaften">
+        <details className={styles.ebenen} open={!bedienPanel && !steuerung}>
+          <summary><WorkbenchIcon symbol="flaeche" />Dachflächen <span>{projekt.flaechen.length}</span></summary>
+          <div className={styles.ebenenListe} aria-label="Dachflächen im Projekt">
+            {belegungsReihenfolge.map((x) => <button key={x.id} type="button" aria-label={`${x.name} auswählen`} aria-pressed={x.id === f.id} className={`${styles.ebene} ${x.gaubenTyp ? styles.kindEbene : ''}`} onClick={() => wechsleFlaeche(x.id)}><WorkbenchIcon symbol={x.gaubenTyp ? 'gaube' : 'umriss'} /><span>{x.name}</span><span className={styles.ebenenPunkt} aria-hidden="true" /></button>)}
+            <button type="button" className={styles.neueEbene} onClick={() => navigation.weiter(fuegeHauptflaecheHinzu)}>+ Dachfläche hinzufügen</button>
+          </div>
+        </details>
+        <div className={styles.kontext} role="complementary" aria-label="Editor-Einstellungen">
+          <div className={styles.kontextKopf}><div><span>{f.name}</span><h3>{bedienPanel ? panelTitel : steuerung ? sitzung.panel === 'gauben' ? 'Gauben' : markierungOffen ? 'Dach bearbeiten' : 'Fläche einrichten' : 'Eigenschaften'}</h3></div>{(bedienPanel || steuerung) && <button type="button" className={aktionKlasse} aria-label="Bereich schließen" onClick={() => { if (bedienPanel === auswahlPanel) setAuswahl(null); else if (feldNeuWerkzeug || modusArt(f) === 'zellen') setzeModus(f, null); else panelSchliessen(); }}>×</button>}</div>
+          <div className={styles.kontextInhalt}>{bedienPanel ?? steuerung ?? standardPanel}</div>
+        </div>
+      </aside>
+    </div>
+  </>;
+
+  const belegungsBild = <DachSvg flaeche={fEff} raster={raster} modul={modul} masse={masseZeigen} maxHoehe={2000} modulDarstellung={ziehtHier ? 'kontur' : 'detail'}
+    cancelRevision={gesteAbbruchRevision}
+    felderAnzeige={felder.map((feld, k) => ({ rect: feld, ausgewaehlt: gewaehlt.includes(k) }))} feldVorschau={vorschauFuer(f)}
+    geister={modusArt(f) === 'zellen' ? leerePositionenFuer(fEff, modul).map((p) => ({ key: posKey(p), xM: p.xM, yM: p.yM, wM: p.wM, hM: p.hM })) : undefined}
+    pointer={!sitzung.verschieben && (felderWerkzeug || feldNeuWerkzeug) ? {
+      onGriffDownM: felderWerkzeug ? (index, griff, p) => starteDrag({ art: 'resize', flaecheId: f.id, start: p, aktuell: p, index, griff }) : undefined,
+      onDownM: (p) => { if (!(feldNeuWerkzeug && zweiPunkte)) onDownM(f, p, feldNeuWerkzeug); },
+      onMoveM: (p) => { if (p && dragAktiv.current) aktualisiereDrag(f.id, p); },
+      onUpM: (p) => feldNeuWerkzeug && zweiPunkte ? beendeZweiPunkte(p) : onUpM(f, p),
+    } : undefined}
+    perspektivEditor={perspektiveHier ? { ecken: perspektiveHier.roh, pruefung: perspektiveHier.pruefung, ausgewaehlt: perspektiveHier.ausgewaehlt,
+      onAuswaehlen: (ausgewaehlt) => setPerspektivEntwurf((alt) => alt ? { ...alt, ausgewaehlt } : alt), onAendern: aenderePerspektivEntwurf, onAbbrechen: () => setPerspektivEntwurf(null) } : undefined}
+    tastatur={{ onPfeil: felderWerkzeug && gewaehlt.length ? (sx, sy, skalieren) => skalieren ? skaliereAuswahl(f, sx, sy) : bewegeAuswahl(f, sx, sy) : undefined,
+      onEscape: () => { verwerfeGeste(); setAuswahl(null); setModus(null); } }}
+    onToggle={!geometrieEntwurfAktiv && !sitzung.verschieben && modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
+    fotoOverlay={fotoAsset ? (clipIdPrefix) => fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `modul-${f.id}`, clipIdPrefix, modulDarstellung: ziehtHier ? 'kontur' : 'detail' }) : undefined} />;
+
+  return <section id="belegung-start" className={styles.editor} aria-label="Gemeinsamer Fotoeditor">
+    <p className="sr-only" aria-live="polite">{gaubenStatus}</p>
+    <div className={styles.kopf}>
+      <label className="sr-only" htmlFor="aktive-dachflaeche">Aktive Dachfläche</label>
+      <select id="aktive-dachflaeche" className={aktionKlasse} value={f.id} onChange={(e) => wechsleFlaeche(e.target.value)}>
+        {belegungsReihenfolge.map((x) => <option key={x.id} value={x.id}>{x.gaubenTyp ? '↳ ' : ''}{x.name}{x.gaubenSeite ? ` · ${x.gaubenSeite}` : ''}</option>)}
+      </select>
+      <button className={aktionKlasse} aria-expanded={sitzung.panel === 'details'} onClick={() => oeffnePanel('details')}><WorkbenchIcon symbol="details" />Dachdetails</button>
+      <button className={aktionKlasse} aria-expanded={sitzung.panel === 'fotos'} onClick={() => oeffnePanel('fotos')}><WorkbenchIcon symbol="foto" />Fotos</button>
+      {!foto && belegungZeigen && <button className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button>}
+      {fotoZuordnungen.length > 1 && <select className={`${aktionKlasse} ${styles.perspektiven}`} aria-label={`Ansicht für ${f.name}`} value={fotoId} onChange={(e) => wechsleAnsicht(e.target.value)}>
+        {fotoZuordnungen.map((z, i) => <option key={z.fotoId} value={z.fotoId}>Perspektive {i + 1} · {projekt.fotos.find((x) => x.id === z.fotoId)?.name}</option>)}
+      </select>}
+      <span className={styles.ergebnis}><strong>{fmtDe(kwp, 2)} <small>kWp</small></strong><span>{gesamt} Module gesamt</span></span>
+    </div>
+    <div className={styles.werkzeugZeile}>
+    <div className={styles.werkzeuge} role="toolbar" aria-label={`Werkzeuge für ${f.name}`}>
+      <button type="button" aria-label="Auswählen" aria-pressed={belegungZeigen && !sitzung.verschieben && modusArt(f) === null && !markierungOffen && sitzung.panel !== 'gauben' && !perspektiveHier} disabled={!belegungZeigen} onClick={() => navigation.weiter(() => { patchSitzung({ panel: '', verschieben: false }); setPerspektivEntwurf(null); setGeometrieVorschau(null); setzeModus(f, null); })}><WorkbenchIcon symbol="auswahl" /><span>Auswählen</span></button>
+      <button type="button" aria-label="+ Feld zeichnen" aria-pressed={feldNeuWerkzeug} disabled={!belegungZeigen} onClick={() => navigation.weiter(() => { patchSitzung({ panel: '', verschieben: false }); setzeModus(f, 'feld_neu'); })}><WorkbenchIcon symbol="feld" /><span>Feld zeichnen</span></button>
+      {!historie.zentral && <>
+        <button className={aktionKlasse} disabled={!historie.canUndo} onClick={() => navigation.weiter(historie.undo)}>↶ Rückgängig{historie.undoCount ? ` (${historie.undoCount})` : ''}</button>
+        <button className={aktionKlasse} disabled={!historie.canRedo} onClick={() => navigation.weiter(historie.redo)}>↷ Wiederherstellen</button>
+      </>}
+    </div>
+    <div className={styles.dachWerkzeuge} role="group" aria-label="Dach bearbeiten">
+      <button type="button" aria-label="Umriss" aria-expanded={sitzung.panel === 'umriss'} disabled={!foto?.eckenPx || !mass.belegen} title="Dachumriss zeichnen oder ändern · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('umriss', true)}><WorkbenchIcon symbol="umriss" /><span>Umriss</span></button>
+      <button type="button" aria-label="Aussparungen" aria-expanded={sitzung.panel === 'aussparungen'} disabled={!foto?.eckenPx || !mass.belegen} title="Fenster, Kamin oder andere Aussparungen markieren · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('aussparungen', true)}><WorkbenchIcon symbol="aussparung" /><span>Aussparung</span></button>
+      <button type="button" aria-label="Gauben" aria-expanded={sitzung.panel === 'gauben'} disabled={!elternMitFoto?.foto?.eckenPx || !massFreigabe(elternMitFoto).belegen} title="Gauben im Foto anlegen oder bearbeiten · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('gauben')}><WorkbenchIcon symbol="gaube" /><span>Gauben</span></button>
+    </div>
+    <div className={styles.weitereWerkzeuge}>
+      <button type="button" className={styles.panWerkzeug} aria-label="Foto verschieben" aria-pressed={sitzung.verschieben} onClick={() => navigation.weiter(() => { verwerfeGeste(); patchSitzung({ verschieben: !sitzung.verschieben, panel: '' }); })}><WorkbenchIcon symbol="hand" /><span>Verschieben</span></button>
+      <button type="button" aria-label="Mehr" aria-expanded={sitzung.panel === 'mehr'} onClick={() => oeffnePanel('mehr')}><WorkbenchIcon symbol="mehr" /><span>Mehr</span></button>
+    </div>
+    </div>
+    <input ref={fotoInputRef} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Drohnenfoto auswählen" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) await fotoDateiGewaehlt(file); }} />
+    <div className={styles.meldungen} aria-live="polite" aria-atomic="true">
+      {fotoUpload.status === 'laden' && <p className={styles.hinweis}>Foto wird geprüft und verkleinert …</p>}
+      {fotoUpload.status === 'fehler' && <div role="alert" className={styles.hinweis}><strong>Foto nicht geladen:</strong> {fotoUpload.grund}<button className={aktionKlasse} onClick={() => waehleFotoDatei(fotoUpload.ziel)}>Andere Datei wählen</button></div>}
+      {fotoUpload.status === 'erfolg' && <span className="sr-only">{fotoUpload.meldung}</span>}
+    </div>
+    <div className={styles.bereich} id={`belegung-${f.id}`}>
+      {sitzung.panel === 'gauben' && elternMitFoto && eltern ? <GaubenEditor eltern={elternMitFoto} projekt={projekt}
+        initialOffen={!projekt.flaechen.some((x) => x.elternFlaecheId === eltern.id && !!x.gaubenTyp)}
+        gauben={projekt.flaechen.filter((x) => x.elternFlaecheId === eltern.id && !!x.gaubenTyp)}
+        bearbeiteGruppenId={gaubenBearbeitung?.elternId === eltern.id ? gaubenBearbeitung.gruppenId : null}
+        onBearbeitungGestartet={() => setGaubenBearbeitung(null)}
+        onBelegungOeffnen={wechsleFlaeche}
+        onErstellen={(daten) => erstelleGaube(eltern, fotoZuordnungenVon(eltern)[0]!.fotoId, daten)}
+        onLoeschen={(gruppenId) => loescheGaube(eltern.id, gruppenId)} onMasseAendern={aendereGaubenMasse}
+        onMarkierungAendern={(gruppenId, markierung) => aendereGaubenMarkierung(eltern.id, gruppenId, markierung)}
+        renderArbeitsbereich={renderArbeitsbereich} />
+      : foto && fotoId && !perspektiveHier && (!belegungZeigen || markierungOffen) ? <FotoHintergrund key={`${f.id}:${fotoId}:${markierungsRevision}`} flaeche={fMitFoto} fotoVerwalten={false} kompakt initialWerkzeug={markierungsWerkzeug}
+        zustandsKey={`${f.id}:${fotoId}`} geometrieBehalten={fotoZuordnungen.length > 1 || !!f.umrissM}
+        onPatch={(patch) => { patchFotoFlaeche(f, fotoId, patch); if (patch.markierungFertig) patchSitzung({ panel: '' }); }} onMasseBearbeiten={() => oeffnePanel('details')}
+        onMassVorschlag={!f.gaubenTyp ? (masse) => { setMassVorschlag({ flaecheId: f.id, masse }); patchSitzung({ panel: 'details' }); } : undefined}
+        fotoOverlay={fotoAsset ? (clipIdPrefix) => <><defs><ModulAsset id={`setup-modul-${f.id}`} modul={modul} /></defs>{fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `setup-modul-${f.id}`, clipIdPrefix })}</> : undefined}
+        renderArbeitsbereich={renderArbeitsbereich} />
+      : foto || belegungZeigen ? renderArbeitsbereich({ bild: belegungsBild, bildSeitenverhaeltnis: foto ? foto.breitePx / foto.hoehePx : rahmenBreiteVon(f) / f.hoeheM, punktSteuerung: perspektivPunktSteuerung })
+      : renderArbeitsbereich({ bild: <div className={styles.canvasLeer}><strong>Foto für {f.name} hinzufügen</strong><p>Danach Dachmaße bestätigen und die Fläche im Bild markieren.</p><button className="rounded-lg bg-akzent px-4 font-semibold text-white" onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button></div>, bildSeitenverhaeltnis: 1.6 })}
+    </div>
+    <div className={styles.status}><span data-testid="flaechen-status">{f.name}: {aktiv} Module · {felder.length} {felder.length === 1 ? 'Feld' : 'Felder'} · {fmtDe(aktiv * modul.pmaxW / 1000, 2)} kWp</span><span>Maße: {mass.status === 'bestaetigt' ? 'bestätigt' : mass.status === 'bestand' ? 'Bestand' : 'offen'}</span><span>Perspektive: {fotoZuordnung?.perspektiveBestaetigt ? 'bestätigt' : 'offen'}</span></div>
+  </section>;
 }

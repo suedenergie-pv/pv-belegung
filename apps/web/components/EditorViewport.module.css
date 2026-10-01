@@ -1,0 +1,14 @@
+.rahmen{display:flex;flex-direction:column;min-width:0;min-height:0;width:100%;height:100%;background:#303638;overflow:hidden}
+.fenster{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:none;overscroll-behavior:contain}
+.inhalt{position:absolute;transform-origin:center;will-change:transform}
+.inhalt>div{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;aspect-ratio:auto!important;border:0!important;border-radius:0!important;overflow:visible!important}
+.inhalt svg{width:100%;height:100%;max-height:none;max-width:none}
+.inhalt .fadenkreuz{position:absolute;inset:0;pointer-events:none}
+.pan{cursor:grab}.pan:active{cursor:grabbing}
+.leiste{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:2px;min-height:48px;flex-shrink:0;padding:0 8px;border-top:1px solid #151e24;background:#20272b;color:#e0e6e9;font-size:11px}
+.leiste button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:44px;min-height:44px;border-radius:3px;padding:6px 10px;background:transparent;flex-shrink:0}
+.leiste button:hover{background:#364148}.leiste button:focus-visible{outline:2px solid #ffb494;outline-offset:-2px}.leiste button:disabled{opacity:.4}
+.prozent{min-width:42px;text-align:center;font-variant-numeric:tabular-nums}.pfeile{display:flex;margin-right:auto;gap:1px}.hinweis{margin-right:auto;padding-left:7px;color:#b9c4ca}
+.punktAktion{display:flex;align-items:center;gap:12px;margin-right:auto}.punktAktion span{font-size:12px}.leiste .bestaetigen{background:#b83d1e;color:#fff;font-size:14px;font-weight:600;padding:6px 14px;touch-action:manipulation;user-select:none}.leiste .bestaetigen:hover{background:#9a3412}
+@media(max-width:1100px){.punktAktion span{display:none}}
+@media(max-width:600px){.hinweis{display:none}.leiste button{padding:6px}.pfeile{flex-basis:100%;justify-content:center;border-bottom:1px solid #e2e8f0}.allesText{display:none}}

@@ -19,6 +19,7 @@ function freigegebenesProjekt() {
   projekt.kunde = 'Audit Kunde';
   projekt.adresse = 'Musterweg 1';
   projekt.erfasser = 'Test Vertrieb';
+  projekt.flaechen[0]!.massStatus = 'bestaetigt';
   projekt.flaechen[0]!.felder = [vollFeldFuer(projekt.flaechen[0]!, modulById(projekt.modulId))];
   projekt.fotos = [
     { id: 'foto-1', name: 'Foto 1', dataUrl: 'data:image/jpeg;base64,x', breitePx: 100, hoehePx: 80 },

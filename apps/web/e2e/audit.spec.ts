@@ -50,6 +50,33 @@ async function projektPflichtfelder(page: Page) {
   await page.getByLabel('Erfasser (Vertrieb)').fill('Genrih');
 }
 
+async function fotoPunkt(page: Page, x: number, y: number) {
+  const foto = page.getByRole('img', { name: /im Foto markieren/ });
+  if (await page.getByRole('button', { name: 'Punkt setzen', exact: true }).isVisible()) {
+    // iOS-PDF-Fälle verwenden die aktive Touch-Einrichtung. Ein Foto-Mausklick
+    // setzt dort absichtlich keinen Punkt mehr. Gesten selbst deckt die Touchsuite ab.
+    const bewegung = await foto.evaluate((node, ziel) => {
+      const bild = node as SVGSVGElement, b = bild.getBoundingClientRect();
+      const k = document.querySelector('[data-testid="foto-fadenkreuz"]')!;
+      return {
+        dx: (ziel.x - Number(k.getAttribute('data-x')) / bild.viewBox.baseVal.width) * b.width,
+        dy: (ziel.y - Number(k.getAttribute('data-y')) / bild.viewBox.baseVal.height) * b.height,
+      };
+    }, { x, y });
+    await page.getByTestId('editor-viewport').evaluate((node, delta) => {
+      const r = node.getBoundingClientRect();
+      const x = r.x + r.width / 2 - delta.dx / 2, y = r.y + r.height / 2 - delta.dy / 2;
+      for (const [type, px, py] of [['pointerdown', x, y], ['pointermove', x + delta.dx, y + delta.dy], ['pointerup', x + delta.dx, y + delta.dy]] as const) {
+        node.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: 'touch', clientX: px, clientY: py }));
+      }
+    }, bewegung);
+    await page.getByRole('button', { name: 'Punkt setzen', exact: true }).click();
+  } else {
+    const b = (await foto.boundingBox())!;
+    await foto.click({ position: { x: b.width * x, y: b.height * y } });
+  }
+}
+
 async function fotoKalibrieren(
   page: Page,
   dachDirektBelegen = true,
@@ -57,6 +84,8 @@ async function fotoKalibrieren(
   fotoGroesse: { breite: number; hoehe: number } = { breite: 240, hoehe: 160 },
 ) {
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
+  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   const dateiauswahl = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Foto hinzufügen' }).click();
   await (await dateiauswahl).setFiles({
@@ -71,14 +100,14 @@ async function fotoKalibrieren(
   if (!box) throw new Error('Das Kalibrierfoto ist nicht sichtbar.');
   if (traufeZeichnen) {
     for (const x of [0.1, 0.9]) {
-      await foto.click({ position: { x: box.width * x, y: box.height * 0.9 } });
+      await fotoPunkt(page, x, .9);
     }
     await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).hover();
     mkdirSync(resolve('.debug-shots'), { recursive: true });
     await foto.screenshot({ path: resolve('.debug-shots', `traufe-${page.viewportSize()!.width}.png`) });
   }
   for (const [x, y] of [[0.1, 0.9], [0.9, 0.9], [0.85, 0.1], [0.15, 0.1]]) {
-    await foto.click({ position: { x: box.width * x, y: box.height * y } });
+    await fotoPunkt(page, x, y);
   }
   await foto.hover({ position: { x: box.width / 2, y: box.height / 2 } });
   await expect(page.getByTestId('naechste-kante-vorschau')).toHaveCount(0);
@@ -86,7 +115,7 @@ async function fotoKalibrieren(
   await foto.screenshot({ path: resolve('.debug-shots', `perspektive-vier-punkte-${page.viewportSize()!.width}.png`) });
   await page.getByRole('button', { name: '4 Ecken übernehmen' }).click();
   if (!dachDirektBelegen) return;
-  await page.getByRole('button', { name: /Dach belegen/ }).click();
+  await page.getByRole('button', { name: /Aussparungen.*Belegen/ }).click();
   await expect(page.getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeVisible();
 }
 
@@ -128,7 +157,7 @@ async function zeichneZweiFelderUndVerschiebe(page: Page) {
   };
 
   await ziehen(punkt(0.12, 0.18), punkt(0.46, 0.82));
-  await expect(page.getByText(/1 Feld/).first()).toBeVisible();
+  await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
   await page.getByRole('button', { name: '+ Feld zeichnen' }).click();
   await dach.scrollIntoViewIfNeeded();
   const erstesFeld = dach.locator('path[fill="rgba(2,132,199,0.06)"]').first();
@@ -142,13 +171,13 @@ async function zeichneZweiFelderUndVerschiebe(page: Page) {
       y: Math.min(viewport.height - 2, feldBox.y + feldBox.height * 0.98),
     },
   );
-  await expect(page.getByText(/2 Felder/).first()).toBeVisible();
+  await expect(page.getByTestId('flaechen-status')).toContainText('2 Felder');
   await dach.press('ArrowRight');
   await expect(dach.locator('path[fill="rgba(2,132,199,0.06)"]')).toHaveCount(2);
 }
 
 async function satteldachGaubeAnlegen(page: Page) {
-  await page.getByRole('button', { name: '+ Gaube' }).click();
+  await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true }).click();
   await page.getByRole('button', { name: 'Satteldachgaube' }).click();
   await page.getByRole('button', { name: 'Im Foto markieren →' }).click();
   const foto = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
@@ -164,11 +193,12 @@ async function satteldachGaubeAnlegen(page: Page) {
   const anlegen = page.getByRole('button', { name: 'Gaube anlegen & fertig' });
   await expect(anlegen).toBeEnabled();
   await anlegen.click();
-  await expect(page.getByRole('button', { name: 'Perspektive von Gaube 1, zweite Dachseite bearbeiten' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Bereich schließen', exact: true }).click();
 }
 
 test('responsive Ebenen und Touch-Ziele überdecken sich nicht', async ({ page }, testInfo) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
   const pruefung = await page.evaluate(() => {
     const sichtbar = (element: Element) => {
@@ -200,13 +230,29 @@ test('responsive Ebenen und Touch-Ziele überdecken sich nicht', async ({ page }
   });
   expect(pruefung.ueberlauf).toBe(false);
   expect(pruefung.zuKlein).toEqual([]);
-  expect(pruefung.kopfPosition).toBe('sticky');
-  expect(pruefung.werkzeugPosition).toBe('relative');
-  expect(pruefung.massPosition).toBe(testInfo.project.use.viewport!.width >= 1024 ? 'sticky' : 'relative');
+  await expect(page.getByRole('complementary', { name: 'Editor-Einstellungen' })).toHaveCount(1);
+  await expect(page.getByTestId('editor-viewport')).toHaveCount(1);
+  const auswahl = page.getByRole('button', { name: 'Auswählen', exact: true });
+  const werkzeugBox = await auswahl.boundingBox();
+  const canvasBox = await page.getByTestId('editor-viewport').boundingBox();
+  const viewport = page.viewportSize()!;
+  if (viewport.width <= 600 || viewport.height <= 500) {
+    // Das feste Editor-Raster hält die Smartphone-Hauptaktionen unten.
+    expect(werkzeugBox!.y + werkzeugBox!.height).toBeGreaterThanOrEqual(viewport.height - 4);
+    await page.getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).evaluate((toolbar) => {
+      if (![...toolbar.querySelectorAll('button')].every((button) => {
+        const rect = button.getBoundingClientRect();
+        return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      })) throw new Error('Ein Hauptwerkzeug ist durch eine andere Ebene verdeckt.');
+    });
+  } else expect(werkzeugBox!.x + werkzeugBox!.width).toBeLessThanOrEqual(canvasBox!.x);
+  await expect(page.getByTestId('editor-viewport')).toBeInViewport({ ratio: 1 });
+  expect(canvasBox!.height).toBeGreaterThan(100);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight + 1)).toBe(false);
 });
 
 test('ein zweites Belegungsfeld lässt sich aus dem ersten heraus aufziehen', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await projektPflichtfelder(page);
   await fotoKalibrieren(page);
 
@@ -235,8 +281,8 @@ test('ein zweites Belegungsfeld lässt sich aus dem ersten heraus aufziehen', as
   await page.mouse.down();
   await page.mouse.move(erstesEnde.x, erstesEnde.y, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByText(/1 Feld/).first()).toBeVisible();
-  const moduleVorher = Number((await page.getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).textContent())?.match(/(\d+) Module/)?.[1]);
+  await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
+  const moduleVorher = Number((await page.getByTestId('flaechen-status').textContent())?.match(/(\d+) Module/)?.[1]);
 
   // Der Start des zweiten Zugs liegt mitten im ersten blauen Rechteck. Nur der
   // ausdrückliche Neu-Modus darf daraus ein weiteres Feld statt einer Bewegung machen.
@@ -263,10 +309,10 @@ test('ein zweites Belegungsfeld lässt sich aus dem ersten heraus aufziehen', as
   await page.mouse.move(ende.x, ende.y, { steps: 20 });
   await page.mouse.up();
 
-  await expect(page.getByText(/2 Felder/).first()).toBeVisible();
+  await expect(page.getByTestId('flaechen-status')).toContainText('2 Felder');
   await expect(dach.locator('path[fill="rgba(2,132,199,0.06)"]')).toHaveCount(2);
   await expect(page.getByRole('button', { name: '+ Feld zeichnen' })).toHaveAttribute('aria-pressed', 'false');
-  const moduleDanach = Number((await page.getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' }).textContent())?.match(/(\d+) Module/)?.[1]);
+  const moduleDanach = Number((await page.getByTestId('flaechen-status').textContent())?.match(/(\d+) Module/)?.[1]);
   expect(moduleDanach).toBeGreaterThan(moduleVorher);
 });
 
@@ -280,14 +326,13 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
     }
   });
   page.on('pageerror', (fehler) => browserFehler.push(fehler.message));
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await projektPflichtfelder(page);
   await fotoKalibrieren(page);
 
   const werkzeug = page.getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' });
-  expect(await werkzeug.evaluate((element) => getComputedStyle(element).position)).toBe(
-    testInfo.project.use.viewport!.width >= 1024 ? 'sticky' : 'relative',
-  );
+  await expect(werkzeug).toBeVisible();
+  await expect(page.getByTestId('editor-viewport')).toHaveCount(1);
 
   await page.getByRole('button', { name: '+ Belegungsbereich zeichnen' }).click();
   const dach = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ });
@@ -306,7 +351,7 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
   await page.mouse.down();
   await page.mouse.move(ende.x, ende.y, { steps: 5 });
   await page.mouse.up();
-  await expect(page.getByText(/1 Feld/).first()).toBeVisible();
+  await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
 
   // Das ausgewählte Feld über die kalibrierte Dachfläche hinausziehen. Während
   // des Zugs werden nur leichte Konturen aufgebaut; danach kehrt die Detailoptik
@@ -341,9 +386,9 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
   await dach.press('ArrowRight');
   await dach.press('Shift+ArrowDown');
   await page.getByRole('button', { name: /Feld löschen/ }).click();
-  await expect(page.getByText('Noch kein Belegungsbereich angelegt.')).toBeVisible();
+  await expect(page.getByText('Die Fläche ist bereit für die erste Belegung.')).toBeVisible();
   await page.getByRole('button', { name: /Rückgängig/ }).click();
-  await expect(page.getByText(/1 Feld/).first()).toBeVisible();
+  await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
 
   await page.getByRole('button', { name: '3. Export' }).click();
   const pdfKnopf = page.getByRole('button', { name: 'PDF herunterladen' });
@@ -363,7 +408,7 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
   { page },
   testInfo,
 ) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await fotoKalibrieren(page, true, true);
   const grosserUmriss = page
     .getByTestId('arbeitsbereich-p1')
@@ -377,10 +422,9 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
     });
   }
   await page
-    .getByTestId('arbeitsbereich-p1')
-    .getByRole('button', { name: 'Automatisch belegen' })
+    .getByRole('button', { name: 'Automatisch belegen', exact: true })
     .click();
-  const vorschauRahmen = page.getByTestId('dachflaechen-rahmen');
+  const vorschauRahmen = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ }).locator('path[fill="rgba(2,132,199,0.06)"]');
   await expect(vorschauRahmen).toHaveCount(1);
   await expect(vorschauRahmen).toBeVisible();
   if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
@@ -394,7 +438,7 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
   const pdf = page.getByRole('button', { name: 'PDF herunterladen' });
   await expect(pdf).toBeEnabled();
   await expect(page.getByText(/PDF noch gesperrt/)).toHaveCount(0);
-  await expect(page.getByTestId('dachflaechen-rahmen')).toHaveCount(0);
+  await expect(page.locator('path[fill="rgba(2,132,199,0.06)"]')).toHaveCount(0);
   await expect(page.getByTestId('dachflaechen-umriss')).toHaveCount(0);
   if (testInfo.project.name === 'desktop' || testInfo.project.name === 'mobil-hoch') {
     mkdirSync(resolve('.debug-shots'), { recursive: true });
@@ -429,9 +473,9 @@ test.describe('PDF-Dateiübergabe an iOS (Schnittstellentest)', () => {
         throw new DOMException('Test: Dialog gesperrt', 'NotAllowedError');
       } });
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await fotoKalibrieren(page);
-    await page.getByTestId('arbeitsbereich-p1').getByRole('button', { name: 'Automatisch belegen' }).click();
+    await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).click();
     await page.getByRole('button', { name: '3. Export' }).click();
     await expect(page.getByText(/In Dateien sichern/)).toBeVisible({ timeout: 25_000 });
     await page.screenshot({ path: resolve('.debug-shots', `ios-export-${testInfo.project.name}.png`), fullPage: true });
@@ -468,11 +512,10 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
         throw new Error('Blob-URLs sind in diesem iOS-Test deaktiviert.');
       };
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await fotoKalibrieren(page);
     await page
-      .getByTestId('arbeitsbereich-p1')
-      .getByRole('button', { name: 'Automatisch belegen' })
+      .getByRole('button', { name: 'Automatisch belegen', exact: true })
       .click();
     await page.getByRole('button', { name: '3. Export' }).click();
 
@@ -497,7 +540,7 @@ test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
         throw new Error('Blob-URLs sind in diesem iOS-WebView-Test deaktiviert.');
       };
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await fotoKalibrieren(page, true, false, { breite: 1600, hoehe: 1200 });
     await zeichneZweiFelderUndVerschiebe(page);
     await page.getByRole('button', { name: '3. Export' }).click();
@@ -523,11 +566,10 @@ test.describe('PDF-Ausgabe in der Google-App auf dem iPad', () => {
         throw new Error('Blob-URLs sind in diesem iOS-WebView-Test deaktiviert.');
       };
     });
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await fotoKalibrieren(page);
     await page
-      .getByTestId('arbeitsbereich-p1')
-      .getByRole('button', { name: 'Automatisch belegen' })
+      .getByRole('button', { name: 'Automatisch belegen', exact: true })
       .click();
     await page.getByRole('button', { name: '3. Export' }).click();
 
@@ -542,8 +584,9 @@ test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben
   });
   page.on('pageerror', (fehler) => browserFehler.push(fehler.message));
 
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await fotoKalibrieren(page, false);
+  await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Umriss', exact: true }).click();
   const foto = page.getByRole('img', { name: /im Foto markieren/ });
   const box = await foto.boundingBox();
   if (!box) throw new Error('Das Foto für den Dachumriss ist nicht sichtbar.');
@@ -555,7 +598,7 @@ test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben
   await expect(page.getByTestId('umriss-griff').first()).toHaveCSS('cursor', 'crosshair');
   await foto.click({ position: { x: box.width * 0.15, y: box.height * 0.85 } });
   await expect(page.getByRole('button', { name: /Umriss fertig/ })).toHaveCount(0);
-  await page.getByRole('button', { name: /Dachumriss/ }).click();
+  await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).getByRole('button', { name: 'Umriss', exact: true }).click();
 
   const griffe = page.getByTestId('umriss-griff');
   await expect(griffe).toHaveCount(5);
@@ -574,12 +617,12 @@ test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben
   await page.mouse.up();
   await page.getByRole('button', { name: /Umriss übernehmen/ }).click();
 
-  await page.getByRole('button', { name: /Dachumriss/ }).click();
+  await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).getByRole('button', { name: 'Umriss', exact: true }).click();
   await page.getByRole('button', { name: 'Manuellen Umriss entfernen' }).click();
   await expect(page.getByRole('button', { name: 'Manuellen Umriss entfernen' })).toHaveCount(0);
-  await expect(page.getByText(/Kein manueller Dachumriss vorhanden/)).toBeVisible();
+  await expect(page.getByTestId('umriss-griff')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Perspektivrahmen bearbeiten' }).click();
+  await page.getByRole('button', { name: 'Dachecken', exact: true }).click();
   await expect(page.getByRole('button', { name: '4 Ecken übernehmen' })).toBeEnabled();
   expect(browserFehler).toEqual([]);
 });
@@ -592,11 +635,12 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   });
   page.on('pageerror', (fehler) => browserFehler.push(fehler.message));
 
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await projektPflichtfelder(page);
   await fotoKalibrieren(page);
 
   const perspektiveStarten = page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true });
+  await page.getByRole('button', { name: 'Mehr', exact: true }).click();
   await perspektiveStarten.click();
   const hauptSvg = page.getByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ });
   const vorher = await page.getByTestId('perspektiv-griffe').locator('polygon').getAttribute('points');
@@ -605,6 +649,7 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   expect(entwurf).not.toBe(vorher);
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
 
+  await page.getByRole('button', { name: 'Mehr', exact: true }).click();
   await perspektiveStarten.click();
   const nachAbbruch = await page.getByTestId('perspektiv-griffe').locator('polygon').getAttribute('points');
   expect(nachAbbruch).toBe(vorher);
@@ -613,7 +658,9 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await page.getByRole('button', { name: /Rückgängig/ }).click();
 
   await satteldachGaubeAnlegen(page);
-  await page.getByRole('button', { name: 'Perspektive von Gaube 1, zweite Dachseite bearbeiten' }).click();
+  await page.getByRole('combobox', { name: 'Aktive Dachfläche' }).selectOption({ label: '↳ Satteldachgaube rechts · rechts' });
+  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).click();
   const gaubenSvg = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
   const griffe = page.getByRole('button', { name: /Gaubenpunkt/ });
   await expect(griffe).toHaveCount(6);
@@ -651,15 +698,17 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await gaubenSvg.press('ArrowRight');
   await page.getByRole('button', { name: 'Markierung übernehmen' }).click();
 
-  const loeschen = page.getByRole('button', { name: 'Gaube 1, zweite Dachseite löschen' });
+  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  const loeschen = page.getByRole('button', { name: 'Gaube löschen', exact: true });
   page.once('dialog', (dialog) => dialog.dismiss());
   await loeschen.click();
   await expect(loeschen).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await loeschen.click();
-  await expect(page.getByRole('button', { name: /Gaube 1.*löschen/ })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option')).toHaveCount(1);
   await page.getByRole('button', { name: /Rückgängig/ }).click();
-  await expect(page.getByRole('button', { name: 'Gaube 1, zweite Dachseite löschen' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Gaube löschen', exact: true })).toBeVisible();
   if (testInfo.project.name === 'desktop') {
     await page.getByRole('button', { name: '3. Export' }).click();
     const pdf = page.getByRole('button', { name: 'PDF herunterladen' });

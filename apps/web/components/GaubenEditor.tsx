@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTouchBedienung } from '../lib/touch-bedienung';
+import type { FotoPunktSteuerung } from './EditorViewport';
 import {
   gaubenAussparungAusFoto,
   gaubenMasseAusElternfoto,
@@ -23,6 +25,8 @@ import {
   fotoZuordnungenVon,
   modulById,
   perspektiveQuelle,
+  patchFlaechenGeometrie,
+  rasterFuer,
   type Flaeche,
   type GaubenMessung,
   type GaubenTyp,
@@ -32,6 +36,7 @@ import {
 import { ModulAsset } from './DachSvg';
 import { fotoFlaechenInhalt } from './GesamtSvg';
 import { ToggleButton } from './ui';
+import { useEntwurfNavigation, type OffenerEntwurf } from '../lib/entwurf-navigation';
 
 export interface NeueGaubeAusFoto {
   typ: GaubenTyp;
@@ -48,13 +53,21 @@ export type AktualisierteGaubenMarkierung = GaubenMarkierung;
 
 function GaubenMassEditor({
   flaeche,
+  modul,
   onSpeichern,
 }: {
   flaeche: Flaeche;
+  modul: ReturnType<typeof modulById>;
   onSpeichern: (breiteM: number, hoeheM: number, messung: GaubenMessung) => void;
 }) {
   const alt = flaeche.gaubenMessung;
-  const [quelle, setQuelle] = useState<'aufmass' | 'ziegel'>(alt?.quelle === 'ziegel' ? 'ziegel' : 'aufmass');
+  const navigation = useEntwurfNavigation();
+  const [bearbeitet, setBearbeitet] = useState(false);
+  const [formularRevision, setFormularRevision] = useState(0);
+  const aktionen = useRef<OffenerEntwurf | null>(null);
+  const abmelden = useRef<(() => void) | null>(null);
+  const formularRef = useRef<HTMLDetailsElement>(null);
+  const [quelle, setQuelle] = useState<GaubenMessung['quelle']>(alt?.quelle ?? 'aufmass');
   const [breiteM, setBreiteM] = useState(flaeche.breiteM);
   const [hoeheM, setHoeheM] = useState(flaeche.hoeheM);
   const [quer, setQuer] = useState(alt?.ziegelQuer ?? 10);
@@ -63,15 +76,50 @@ function GaubenMassEditor({
   const [abstand, setAbstand] = useState(alt?.reihenabstandCm ?? 34);
   const b = quelle === 'ziegel' ? (quer * deck) / 100 : breiteM;
   const h = quelle === 'ziegel' ? (reihen * abstand) / 100 : hoeheM;
+  const verwerfen = () => {
+    abmelden.current?.(); abmelden.current = null;
+    setQuelle(alt?.quelle ?? 'aufmass'); setBreiteM(flaeche.breiteM); setHoeheM(flaeche.hoeheM);
+    setQuer(alt?.ziegelQuer ?? 10); setDeck(alt?.deckbreiteCm ?? 30); setReihen(alt?.ziegelReihen ?? 8); setAbstand(alt?.reihenabstandCm ?? 34);
+    setBearbeitet(false); setFormularRevision((wert) => wert + 1);
+  };
+  const gueltig = () => {
+    const fehler = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
+    if (fehler) { fehler.focus(); return false; }
+    return Number.isFinite(b) && Number.isFinite(h) && b > 0 && h > 0;
+  };
+  const speichern = () => {
+    if (!gueltig()) return;
+    abmelden.current?.(); abmelden.current = null;
+    onSpeichern(Math.round(b * 100) / 100, Math.round(h * 100) / 100, {
+      quelle,
+      qualitaet: quelle === 'nachbardach' ? 'geschaetzt' : quelle === 'aufmass' ? 'bestaetigt' : 'gemessen',
+      ...(quelle === 'ziegel' ? { ziegelQuer: quer, deckbreiteCm: deck, ziegelReihen: reihen, reihenabstandCm: abstand } : {}),
+    });
+    setBearbeitet(false);
+  };
+  aktionen.current = { name: `${flaeche.name} · Maße`, gueltig, uebernehmen: speichern, verwerfen };
+  useEffect(() => {
+    if (!bearbeitet) return;
+    const ende = navigation.registriere(`gauben-mass-${flaeche.id}`, {
+      name: `${flaeche.name} · Maße`, gueltig: () => aktionen.current!.gueltig(),
+      uebernehmen: () => aktionen.current!.uebernehmen(), verwerfen: () => aktionen.current!.verwerfen(),
+    });
+    abmelden.current = ende;
+    return ende;
+  }, [bearbeitet, flaeche.id, flaeche.name, navigation]);
+  useEffect(() => { if (!bearbeitet) verwerfen(); }, [flaeche.breiteM, flaeche.hoeheM, flaeche.gaubenMessung]);
+  const vorher = rasterFuer(flaeche, modul).positionen.length;
+  const nachher = rasterFuer(patchFlaechenGeometrie(flaeche, { breiteM: b, hoeheM: h }), modul).positionen.length;
   return (
-    <details className="mt-2 border-t border-sky-100 pt-2">
+    <details ref={formularRef} className="mt-2 border-t border-sky-100 pt-2" onChangeCapture={() => setBearbeitet(true)}>
       <summary className="cursor-pointer text-xs font-semibold text-sky-800">Maß verbessern</summary>
       <div className="mt-2 flex flex-wrap gap-2">
-        <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => setQuelle('aufmass')}>Aufmaß</ToggleButton>
-        <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => setQuelle('ziegel')}>Ziegel zählen</ToggleButton>
+        {alt?.quelle === 'nachbardach' && <ToggleButton aktiv={quelle === 'nachbardach'} onClick={() => { setQuelle('nachbardach'); setBearbeitet(true); }}>Bisherige Schätzung</ToggleButton>}
+        <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => { setQuelle('aufmass'); setBearbeitet(true); }}>Aufmaß</ToggleButton>
+        <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => { setQuelle('ziegel'); setBearbeitet(true); }}>Ziegel zählen</ToggleButton>
       </div>
-      <div className={`mt-2 grid gap-2 ${quelle === 'ziegel' ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
-        {quelle === 'aufmass' ? (
+      <div key={formularRevision} className={`mt-2 grid gap-2 ${quelle === 'ziegel' ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
+        {quelle !== 'ziegel' ? (
           <>
             <ZahlenEingabe label="Breite" value={breiteM} onChange={setBreiteM} einheit="m" />
             <ZahlenEingabe label="Traufe bis First" value={hoeheM} onChange={setHoeheM} einheit="m" />
@@ -85,21 +133,15 @@ function GaubenMassEditor({
           </>
         )}
       </div>
+      <p className="mt-3 text-sm text-slate-700">Vorschau: {vorher} → {nachher} Module auf dieser Gaubenseite.</p>
       <button
         type="button"
-        className="mt-2 h-10 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white"
-        onClick={() =>
-          onSpeichern(Math.round(b * 100) / 100, Math.round(h * 100) / 100, {
-            quelle,
-            qualitaet: quelle === 'aufmass' ? 'bestaetigt' : 'gemessen',
-            ...(quelle === 'ziegel'
-              ? { ziegelQuer: quer, deckbreiteCm: deck, ziegelReihen: reihen, reihenabstandCm: abstand }
-              : {}),
-          })
-        }
+        className="mt-2 h-10 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white"
+        onClick={speichern}
       >
         {fmtDe(b, 2)} × {fmtDe(h, 2)} m übernehmen
       </button>
+      <button type="button" className={`${sekundar} mt-2 ml-2`} onClick={verwerfen}>Abbrechen</button>
     </details>
   );
 }
@@ -173,10 +215,17 @@ export function GaubenEditor({
   onLoeschen,
   onMasseAendern,
   onMarkierungAendern,
+  renderArbeitsbereich,
+  onBelegungOeffnen,
+  initialOffen = false,
 }: {
   eltern: Flaeche;
   gauben: Flaeche[];
   projekt: Projekt;
+  renderArbeitsbereich?: (inhalt: { bild: ReactNode; steuerung: ReactNode; hinweis: ReactNode; bildSeitenverhaeltnis: number; abbrechen: () => void; punktSteuerung?: FotoPunktSteuerung }) => ReactNode;
+  onBelegungOeffnen?: (flaecheId: string) => void;
+  /** Erste Gaube direkt anlegen, ohne einen weiteren Aufklappschritt. */
+  initialOffen?: boolean;
   /** Startsignal von einer sichtbaren Gaubenkarte. */
   bearbeiteGruppenId?: string | null;
   onBearbeitungGestartet?: () => void;
@@ -196,7 +245,10 @@ export function GaubenEditor({
   ) => void;
 }) {
   const foto = eltern.foto;
-  const [offen, setOffen] = useState(false);
+  const navigation = useEntwurfNavigation();
+  const entwurfAktionen = useRef<OffenerEntwurf | null>(null);
+  const startPunkte = useRef('[]');
+  const [offen, setOffen] = useState(initialOffen);
   const [typ, setTyp] = useState<GaubenTyp>('flachdach');
   const [quelle, setQuelle] = useState<GaubenMessung['quelle']>('nachbardach');
   const [breiteM, setBreiteM] = useState(3);
@@ -212,7 +264,10 @@ export function GaubenEditor({
   const [ausgewaehlt, setAusgewaehlt] = useState(0);
   const [fallbackGrund, setFallbackGrund] = useState<string | null>(null);
   const [zieht, setZieht] = useState(false);
+  const [touchBedienung, aktiviereTouch] = useTouchBedienung();
+  const [touchGriffIndex, setTouchGriffIndex] = useState<number | null>(null);
   const ziehIndex = useRef<number | null>(null);
+  const ziehStart = useRef<{ punkte: Punkt[]; gueltige: Punkt[] } | null>(null);
   const ziehFrame = useRef<number | null>(null);
   const vorgemerkteZiehPunkte = useRef<Punkt[] | null>(null);
   const [tastaturPunkt, setTastaturPunkt] = useState<Punkt>([
@@ -233,6 +288,7 @@ export function GaubenEditor({
   const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
 
   const bearbeitungStarten = (gruppenId: string, flaechen: Flaeche[]) => {
+    setTouchGriffIndex(null);
     const erster = flaechen[0];
     if (!erster) return;
     setTyp(erster.gaubenTyp ?? 'flachdach');
@@ -244,6 +300,7 @@ export function GaubenEditor({
     const rekonstruiert = rekonstruiereGaubenPunkte(eltern, flaechen, gruppenId);
     if (rekonstruiert.ok) {
       const kopie = rekonstruiert.punkte.map(([x, y]) => [x, y] as Punkt);
+      startPunkte.current = JSON.stringify(kopie);
       setPunkte(kopie);
       setLetzteGueltigePunkte(kopie);
       setFallbackGrund(null);
@@ -267,6 +324,17 @@ export function GaubenEditor({
   useEffect(() => () => {
     if (ziehFrame.current !== null) window.cancelAnimationFrame(ziehFrame.current);
   }, []);
+
+  const geaendert = markieren && punkte.length > 0 && JSON.stringify(punkte) !== startPunkte.current;
+  useEffect(() => {
+    if (!geaendert) return;
+    return navigation.registriere(`gaube-${eltern.id}`, {
+      name: `${eltern.name} · Gaubenmarkierung`,
+      gueltig: () => entwurfAktionen.current?.gueltig() ?? false,
+      uebernehmen: () => entwurfAktionen.current?.uebernehmen(),
+      verwerfen: () => entwurfAktionen.current?.verwerfen(),
+    });
+  }, [geaendert, eltern.id, eltern.name, navigation]);
 
   if (!foto?.eckenPx) return null;
 
@@ -370,6 +438,15 @@ export function GaubenEditor({
     ziehIndex.current = null;
   };
 
+  const ziehgesteAbbrechen = () => {
+    verwerfeVorgemerkteZiehPunkte();
+    if (ziehStart.current) {
+      setPunkte(ziehStart.current.punkte);
+      setLetzteGueltigePunkte(ziehStart.current.gueltige);
+      ziehStart.current = null;
+    }
+  };
+
   const markierungAktuell = markierungAusPunkten(punkte);
   const pruefungAktuell = pruefungAusPunkten(punkte);
   const vorschauPunkte =
@@ -401,6 +478,8 @@ export function GaubenEditor({
         : null;
 
   const reset = () => {
+    setTouchGriffIndex(null);
+    startPunkte.current = '[]';
     verwerfeVorgemerkteZiehPunkte();
     setOffen(false);
     setMarkieren(false);
@@ -412,6 +491,8 @@ export function GaubenEditor({
   };
 
   const starten = () => {
+    setTouchGriffIndex(null);
+    startPunkte.current = '[]';
     setPunkte([]);
     setLetzteGueltigePunkte([]);
     setFallbackGrund(null);
@@ -419,6 +500,7 @@ export function GaubenEditor({
   };
 
   const markierungKomplettNeu = (gruppenId: string, flaechen: Flaeche[]) => {
+    startPunkte.current = '[]';
     setTyp(flaechen[0]?.gaubenTyp ?? 'flachdach');
     setQuelle(flaechen[0]?.gaubenMessung?.quelle ?? 'aufmass');
     setBearbeiteId(gruppenId);
@@ -430,6 +512,7 @@ export function GaubenEditor({
   };
 
   const gleicheGaubeMarkieren = (flaechen: Flaeche[]) => {
+    startPunkte.current = '[]';
     const erste = flaechen[0];
     if (!erste) return;
     const messung = erste.gaubenMessung;
@@ -450,6 +533,8 @@ export function GaubenEditor({
   };
 
   const belegungOeffnen = (gruppenId: string) => {
+    const flaeche = gauben.find((f) => (f.gaubenGruppeId ?? f.id) === gruppenId);
+    if (onBelegungOeffnen && flaeche) { onBelegungOeffnen(flaeche.id); return; }
     const details = Array.from(
       document.querySelectorAll<HTMLDetailsElement>('details[data-gauben-gruppe]'),
     ).filter((element) => element.dataset.gaubenGruppe === gruppenId);
@@ -511,8 +596,225 @@ export function GaubenEditor({
     }
   };
 
-  return (
-    <section id={`gauben-editor-${eltern.id}`} className="mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+  entwurfAktionen.current = {
+    name: `${eltern.name} · Gaubenmarkierung`,
+    gueltig: () => !!markierungAktuell && pruefungAktuell.status !== 'fehler' && (!!bearbeiteId || quelle !== 'nachbardach' || !!sichtbareSchaetzung),
+    uebernehmen: () => erstellen(false),
+    verwerfen: reset,
+  };
+
+  const griffAmKreuz = punkte.findIndex((p) => Math.hypot(p[0] - tastaturPunkt[0], p[1] - tastaturPunkt[1]) < foto.breitePx * .022);
+  const punktBestaetigen = () => {
+    if (touchGriffIndex !== null) {
+      setzePunkteKontrolliert(punkte.map((p, i) => i === touchGriffIndex ? [...tastaturPunkt] as Punkt : p));
+      setTouchGriffIndex(null);
+    } else if (griffAmKreuz >= 0) {
+      setAusgewaehlt(griffAmKreuz);
+      setTouchGriffIndex(griffAmKreuz);
+    } else if (punkte.length < erwartet) {
+      setzePunkteKontrolliert([...punkte, [...tastaturPunkt]], punkte.length === 3);
+    }
+  };
+
+  const bild = markieren ? (
+              <svg
+                viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
+                className="block w-full cursor-crosshair rounded-xl border border-slate-200 bg-slate-100 focus:outline-none focus:ring-4 focus:ring-akzent/40"
+                style={{ aspectRatio: `${foto.breitePx} / ${foto.hoehePx}` }}
+                tabIndex={0}
+                aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
+                onFocus={() => {
+                  if (!Number.isFinite(tastaturPunkt[0]) || !Number.isFinite(tastaturPunkt[1])) {
+                    setTastaturPunkt([foto.breitePx / 2, foto.hoehePx / 2]);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  const richtung: Record<string, Punkt> = {
+                    ArrowLeft: [-1, 0],
+                    ArrowRight: [1, 0],
+                    ArrowUp: [0, -1],
+                    ArrowDown: [0, 1],
+                  };
+                  const v = richtung[e.key];
+                  if (v) {
+                    e.preventDefault();
+                    const schritt = e.shiftKey ? 10 : 1;
+                    if (punkte.length >= erwartet) {
+                      const neu = punkte.map(([x, y]) => [x, y] as Punkt);
+                      const p = neu[ausgewaehlt]!;
+                      neu[ausgewaehlt] = [
+                        Math.max(0, Math.min(foto.breitePx, p[0] + v[0] * schritt)),
+                        Math.max(0, Math.min(foto.hoehePx, p[1] + v[1] * schritt)),
+                      ];
+                      setzePunkteKontrolliert(neu);
+                    } else {
+                      setTastaturPunkt(([x, y]) => [
+                        Math.max(0, Math.min(foto.breitePx, x + v[0] * schritt)),
+                        Math.max(0, Math.min(foto.hoehePx, y + v[1] * schritt)),
+                      ]);
+                    }
+                  } else if (e.key === 'Enter' && punkte.length < erwartet) {
+                    e.preventDefault();
+                    setzePunkteKontrolliert([...punkte, tastaturPunkt], punkte.length === 3);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    if (bearbeiteId) reset();
+                    else {
+                      setPunkte([]);
+                      setLetzteGueltigePunkte([]);
+                      setMarkieren(false);
+                    }
+                  }
+                }}
+                onClick={(e) => {
+                  if (punkte.length >= erwartet) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (!rect.width || !rect.height) return;
+                  setzePunkteKontrolliert([
+                    ...punkte,
+                    [
+                      ((e.clientX - rect.left) / rect.width) * foto.breitePx,
+                      ((e.clientY - rect.top) / rect.height) * foto.hoehePx,
+                    ],
+                  ], punkte.length === 3);
+                }}
+                role="img"
+                aria-label="Gaube im Dachfoto markieren"
+              >
+                <defs>
+                  <ModulAsset id={`gauben-modul-${svgInstanzId}`} modul={modul} />
+                </defs>
+                <image href={foto.dataUrl} x="0" y="0" width={foto.breitePx} height={foto.hoehePx} />
+                {projektFoto && fotoFlaechenInhalt({
+                  projekt: vorschauProjekt,
+                  foto: projektFoto,
+                  beschriftung: false,
+                  assetId: `gauben-modul-${svgInstanzId}`,
+                  clipIdPrefix: `${svgInstanzId}-gauben-vorschau`,
+                  modulDarstellung: zieht ? 'kontur' : 'vorschau',
+                })}
+                {(!renderArbeitsbereich || !touchBedienung) && <g aria-hidden="true" pointerEvents="none" data-testid="foto-fadenkreuz" data-x={tastaturPunkt[0]} data-y={tastaturPunkt[1]}>
+                  <path d={`M${tastaturPunkt[0]},0 V${foto.hoehePx} M0,${tastaturPunkt[1]} H${foto.breitePx}`} fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+                  <path d={`M${tastaturPunkt[0]},0 V${foto.hoehePx} M0,${tastaturPunkt[1]} H${foto.breitePx}`} fill="none" stroke="#0284c7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                  <circle cx={tastaturPunkt[0]} cy={tastaturPunkt[1]} r={foto.breitePx * .006} fill="none" stroke="#0284c7" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                </g>}
+                {punkte.length >= 2 && (
+                  <polyline
+                    points={punkte.slice(0, 4).map((p) => p.join(',')).join(' ')}
+                    fill="none"
+                    stroke={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : '#e8603a'}
+                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
+                  />
+                )}
+                {punkte.length >= 4 && (
+                  <line
+                    x1={punkte[3]![0]}
+                    y1={punkte[3]![1]}
+                    x2={punkte[0]![0]}
+                    y2={punkte[0]![1]}
+                    stroke={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : '#e8603a'}
+                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
+                  />
+                )}
+                {punkte.length >= 5 && (
+                  <line
+                    x1={punkte[4]![0]}
+                    y1={punkte[4]![1]}
+                    x2={punkte[5]?.[0] ?? punkte[4]![0]}
+                    y2={punkte[5]?.[1] ?? punkte[4]![1]}
+                    stroke="#0ea5e9"
+                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
+                    strokeDasharray="10 7"
+                  />
+                )}
+                {punkte.map((p, i) => (
+                  <g key={i}>
+                    <circle
+                      cx={p[0]}
+                      cy={p[1]}
+                      r={Math.max(5, foto.breitePx * 0.006)}
+                      fill="transparent"
+                      stroke="transparent"
+                      strokeWidth={44}
+                      vectorEffect="non-scaling-stroke"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Gaubenpunkt ${i + 1}`}
+                      aria-pressed={ausgewaehlt === i}
+                      style={{ cursor: 'grab', touchAction: 'none' }}
+                      onFocus={() => setAusgewaehlt(i)}
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setAusgewaehlt(i);
+                        ziehIndex.current = i;
+                        ziehStart.current = { punkte, gueltige: letzteGueltigePunkte };
+                        setZieht(true);
+                        e.currentTarget.ownerSVGElement?.focus();
+                        try {
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                        } catch {
+                          // Tastatur bleibt als gleichwertige Alternative verfügbar.
+                        }
+                      }}
+                      onPointerMove={(e) => {
+                        if (ziehIndex.current !== i) return;
+                        const svg = e.currentTarget.ownerSVGElement;
+                        const rect = svg?.getBoundingClientRect();
+                        if (!rect?.width || !rect.height) return;
+                        const basis = vorgemerkteZiehPunkte.current ?? punkte;
+                        const neu = basis.map(([x, y]) => [x, y] as Punkt);
+                        neu[i] = [
+                          Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
+                          Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
+                        ];
+                        planeZiehPunkte(neu);
+                      }}
+                      onPointerUp={(e) => {
+                        if (ziehIndex.current !== i) return;
+                        const svg = e.currentTarget.ownerSVGElement;
+                        const rect = svg?.getBoundingClientRect();
+                        if (rect?.width && rect.height) {
+                          const basis = vorgemerkteZiehPunkte.current ?? punkte;
+                          const neu = basis.map(([x, y]) => [x, y] as Punkt);
+                          neu[i] = [
+                            Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
+                            Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
+                          ];
+                          vorgemerkteZiehPunkte.current = neu;
+                        }
+                        uebernehmeVorgemerkteZiehPunkte();
+                        ziehIndex.current = null;
+                        ziehStart.current = null;
+                        setZieht(false);
+                        if (typeof e.currentTarget.hasPointerCapture === 'function' && e.currentTarget.hasPointerCapture(e.pointerId)) {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                        }
+                      }}
+                      onPointerCancel={ziehgesteAbbrechen}
+                    />
+                    <circle
+                      cx={p[0]}
+                      cy={p[1]}
+                      r={Math.max(6, foto.breitePx * 0.008)}
+                      fill={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : i >= 4 ? '#0ea5e9' : ausgewaehlt === i ? '#0f172a' : '#e8603a'}
+                      stroke="white"
+                      strokeWidth="3"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                    <text x={p[0]} y={p[1]} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.max(10, foto.breitePx * 0.012)} fontWeight="700" style={{ pointerEvents: 'none' }}>{i + 1}</text>
+                  </g>
+                ))}
+              </svg>
+  ) : <svg viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`} role="img" aria-label="Gauben im Dachfoto">
+    <defs><ModulAsset id={`gauben-modul-${svgInstanzId}`} modul={modul} /></defs>
+    <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
+    {projektFoto && fotoFlaechenInhalt({ projekt, foto: projektFoto, beschriftung: false, assetId: `gauben-modul-${svgInstanzId}`, clipIdPrefix: `${svgInstanzId}-gauben-ansicht` })}
+  </svg>;
+
+  const steuerung = (
+    <section data-gauben-steuerung id={`gauben-editor-${eltern.id}`} className="mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <div>
           <strong className="block text-sm text-sky-950">Gauben auf dieser Dachfläche</strong>
@@ -602,6 +904,7 @@ export function GaubenEditor({
                     )}
                     <GaubenMassEditor
                       flaeche={gaubenFlaeche}
+                      modul={modul}
                       onSpeichern={(b, h, messung) =>
                         onMasseAendern(id, gaubenFlaeche.id, b, h, messung)
                       }
@@ -676,8 +979,8 @@ export function GaubenEditor({
           {markieren && (
             <>
               <p className="mb-2 mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">
-                <strong>{punkte.length < 4 ? `Gaubenumriss: ${4 - punkte.length} Ecke(n) anklicken.` : typ === 'satteldach' && punkte.length < 6 ? `Jetzt die Firstlinie: ${6 - punkte.length} Punkt(e) anklicken.` : 'Markierung vollständig.'}</strong>{' '}
-                {bearbeiteId ? 'Alle vorhandenen Punkte können direkt nachgezogen werden.' : 'Jeder gesetzte Punkt kann vor dem Anlegen noch nachgezogen werden.'}
+                <strong>{punkte.length < 4 ? `Gaubenumriss: noch ${4 - punkte.length} Ecke(n) setzen.` : typ === 'satteldach' && punkte.length < 6 ? `Jetzt die Firstlinie: noch ${6 - punkte.length} Punkt(e) setzen.` : 'Markierung vollständig.'}</strong>{' '}
+                {touchBedienung && renderArbeitsbereich ? punkte.length < erwartet ? 'Mit einem Finger das Fadenkreuz verschieben und unten „Punkt setzen“ drücken.' : 'Zum Korrigieren eine Ecke anvisieren, „Ecke greifen“ drücken und am Ziel ablegen.' : bearbeiteId ? 'Alle vorhandenen Punkte können direkt nachgezogen werden.' : 'Jeder gesetzte Punkt kann vor dem Anlegen noch nachgezogen werden.'}
               </p>
               {fallbackGrund && (
                 <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
@@ -690,196 +993,7 @@ export function GaubenEditor({
                   {pruefungAktuell.status === 'fehler' && ' Die Module bleiben auf dem letzten gültigen Stand.'}
                 </p>
               )}
-              <svg
-                viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-                className="block w-full cursor-crosshair rounded-xl border border-slate-200 bg-slate-100 focus:outline-none focus:ring-4 focus:ring-akzent/40"
-                style={{ aspectRatio: `${foto.breitePx} / ${foto.hoehePx}` }}
-                tabIndex={0}
-                aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
-                onFocus={() => {
-                  if (!Number.isFinite(tastaturPunkt[0]) || !Number.isFinite(tastaturPunkt[1])) {
-                    setTastaturPunkt([foto.breitePx / 2, foto.hoehePx / 2]);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  const richtung: Record<string, Punkt> = {
-                    ArrowLeft: [-1, 0],
-                    ArrowRight: [1, 0],
-                    ArrowUp: [0, -1],
-                    ArrowDown: [0, 1],
-                  };
-                  const v = richtung[e.key];
-                  if (v) {
-                    e.preventDefault();
-                    const schritt = e.shiftKey ? 10 : 1;
-                    if (punkte.length >= erwartet) {
-                      const neu = punkte.map(([x, y]) => [x, y] as Punkt);
-                      const p = neu[ausgewaehlt]!;
-                      neu[ausgewaehlt] = [
-                        Math.max(0, Math.min(foto.breitePx, p[0] + v[0] * schritt)),
-                        Math.max(0, Math.min(foto.hoehePx, p[1] + v[1] * schritt)),
-                      ];
-                      setzePunkteKontrolliert(neu);
-                    } else {
-                      setTastaturPunkt(([x, y]) => [
-                        Math.max(0, Math.min(foto.breitePx, x + v[0] * schritt)),
-                        Math.max(0, Math.min(foto.hoehePx, y + v[1] * schritt)),
-                      ]);
-                    }
-                  } else if (e.key === 'Enter' && punkte.length < erwartet) {
-                    e.preventDefault();
-                    setzePunkteKontrolliert([...punkte, tastaturPunkt], punkte.length === 3);
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    if (bearbeiteId) reset();
-                    else {
-                      setPunkte([]);
-                      setLetzteGueltigePunkte([]);
-                      setMarkieren(false);
-                    }
-                  }
-                }}
-                onClick={(e) => {
-                  if (punkte.length >= erwartet) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  if (!rect.width || !rect.height) return;
-                  setzePunkteKontrolliert([
-                    ...punkte,
-                    [
-                      ((e.clientX - rect.left) / rect.width) * foto.breitePx,
-                      ((e.clientY - rect.top) / rect.height) * foto.hoehePx,
-                    ],
-                  ], punkte.length === 3);
-                }}
-                role="img"
-                aria-label="Gaube im Dachfoto markieren"
-              >
-                <defs>
-                  <ModulAsset id={`gauben-modul-${svgInstanzId}`} modul={modul} />
-                </defs>
-                <image href={foto.dataUrl} x="0" y="0" width={foto.breitePx} height={foto.hoehePx} />
-                {projektFoto && fotoFlaechenInhalt({
-                  projekt: vorschauProjekt,
-                  foto: projektFoto,
-                  beschriftung: false,
-                  assetId: `gauben-modul-${svgInstanzId}`,
-                  clipIdPrefix: `${svgInstanzId}-gauben-vorschau`,
-                  modulDarstellung: zieht ? 'kontur' : 'vorschau',
-                })}
-                <g aria-hidden="true" pointerEvents="none">
-                  <line x1={tastaturPunkt[0]} y1="0" x2={tastaturPunkt[0]} y2={foto.hoehePx} stroke="#e8603a" strokeWidth="2" strokeDasharray="8 8" />
-                  <line x1="0" y1={tastaturPunkt[1]} x2={foto.breitePx} y2={tastaturPunkt[1]} stroke="#e8603a" strokeWidth="2" strokeDasharray="8 8" />
-                </g>
-                {punkte.length >= 2 && (
-                  <polyline
-                    points={punkte.slice(0, 4).map((p) => p.join(',')).join(' ')}
-                    fill="none"
-                    stroke={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : '#e8603a'}
-                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
-                  />
-                )}
-                {punkte.length >= 4 && (
-                  <line
-                    x1={punkte[3]![0]}
-                    y1={punkte[3]![1]}
-                    x2={punkte[0]![0]}
-                    y2={punkte[0]![1]}
-                    stroke={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : '#e8603a'}
-                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
-                  />
-                )}
-                {punkte.length >= 5 && (
-                  <line
-                    x1={punkte[4]![0]}
-                    y1={punkte[4]![1]}
-                    x2={punkte[5]?.[0] ?? punkte[4]![0]}
-                    y2={punkte[5]?.[1] ?? punkte[4]![1]}
-                    stroke="#0ea5e9"
-                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
-                    strokeDasharray="10 7"
-                  />
-                )}
-                {punkte.map((p, i) => (
-                  <g key={i}>
-                    <circle
-                      cx={p[0]}
-                      cy={p[1]}
-                      r={Math.max(5, foto.breitePx * 0.006)}
-                      fill="transparent"
-                      stroke="transparent"
-                      strokeWidth={44}
-                      vectorEffect="non-scaling-stroke"
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Gaubenpunkt ${i + 1}`}
-                      aria-pressed={ausgewaehlt === i}
-                      style={{ cursor: 'grab', touchAction: 'none' }}
-                      onFocus={() => setAusgewaehlt(i)}
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setAusgewaehlt(i);
-                        ziehIndex.current = i;
-                        setZieht(true);
-                        e.currentTarget.ownerSVGElement?.focus();
-                        try {
-                          e.currentTarget.setPointerCapture(e.pointerId);
-                        } catch {
-                          // Tastatur bleibt als gleichwertige Alternative verfügbar.
-                        }
-                      }}
-                      onPointerMove={(e) => {
-                        if (ziehIndex.current !== i) return;
-                        const svg = e.currentTarget.ownerSVGElement;
-                        const rect = svg?.getBoundingClientRect();
-                        if (!rect?.width || !rect.height) return;
-                        const basis = vorgemerkteZiehPunkte.current ?? punkte;
-                        const neu = basis.map(([x, y]) => [x, y] as Punkt);
-                        neu[i] = [
-                          Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
-                          Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
-                        ];
-                        planeZiehPunkte(neu);
-                      }}
-                      onPointerUp={(e) => {
-                        const svg = e.currentTarget.ownerSVGElement;
-                        const rect = svg?.getBoundingClientRect();
-                        if (rect?.width && rect.height) {
-                          const basis = vorgemerkteZiehPunkte.current ?? punkte;
-                          const neu = basis.map(([x, y]) => [x, y] as Punkt);
-                          neu[i] = [
-                            Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
-                            Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
-                          ];
-                          vorgemerkteZiehPunkte.current = neu;
-                        }
-                        uebernehmeVorgemerkteZiehPunkte();
-                        ziehIndex.current = null;
-                        setZieht(false);
-                        if (typeof e.currentTarget.hasPointerCapture === 'function' && e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
-                      }}
-                      onPointerCancel={() => {
-                        uebernehmeVorgemerkteZiehPunkte();
-                        ziehIndex.current = null;
-                        setZieht(false);
-                      }}
-                    />
-                    <circle
-                      cx={p[0]}
-                      cy={p[1]}
-                      r={Math.max(6, foto.breitePx * 0.008)}
-                      fill={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : i >= 4 ? '#0ea5e9' : ausgewaehlt === i ? '#0f172a' : '#e8603a'}
-                      stroke="white"
-                      strokeWidth="3"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                    <text x={p[0]} y={p[1]} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.max(10, foto.breitePx * 0.012)} fontWeight="700" style={{ pointerEvents: 'none' }}>{i + 1}</text>
-                  </g>
-                ))}
-              </svg>
+              {!renderArbeitsbereich && bild}
 
               {quelle === 'nachbardach' && sichtbareSchaetzung && (
                 <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -889,7 +1003,7 @@ export function GaubenEditor({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="h-11 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
+                  className="h-11 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-40"
                   disabled={
                     punkte.length < erwartet ||
                     pruefungAktuell.status === 'fehler' ||
@@ -940,4 +1054,16 @@ export function GaubenEditor({
       )}
     </section>
   );
+  return renderArbeitsbereich ? renderArbeitsbereich({
+    bild, steuerung, hinweis: markieren ? `${punkte.length} von ${erwartet} Gaubenpunkten${touchBedienung ? ' · Mit einem Finger das Fadenkreuz verschieben, unten bestätigen.' : ''}` : 'Gaube auswählen oder hinzufügen',
+    bildSeitenverhaeltnis: foto.breitePx / foto.hoehePx,
+    abbrechen: ziehgesteAbbrechen,
+    punktSteuerung: markieren ? {
+      aktiv: touchBedienung, aktivieren: aktiviereTouch,
+      punkt: tastaturPunkt, breitePx: foto.breitePx, hoehePx: foto.hoehePx,
+      onBewegen: setTastaturPunkt, onBestaetigen: punktBestaetigen,
+      aktion: touchGriffIndex !== null ? 'Ecke hier ablegen' : griffAmKreuz >= 0 ? 'Ecke greifen' : 'Punkt setzen',
+      deaktiviert: punkte.length >= erwartet && touchGriffIndex === null && griffAmKreuz < 0,
+    } : undefined,
+  }) : steuerung;
 }

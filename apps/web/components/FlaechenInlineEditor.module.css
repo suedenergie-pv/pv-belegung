@@ -1,0 +1,17 @@
+.kompakt {
+  min-width: 0;
+}
+
+/* Das Formular gehört direkt ins Editorpanel, ohne eine weitere Kartenhülle. */
+.kompakt [data-geometrie-entwurf] > div > section {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.kompakt input,
+.kompakt select {
+  max-width: 100%;
+}

@@ -1,290 +1,120 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
-import {
-  artVon,
-  fmtDe,
-  fotoZuordnungenVon,
-  type Dachform,
-  type Flaeche,
-  type Projekt,
-  zonenVon,
-} from '../lib/model';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { artVon, fmtDe, massFreigabe, modulById, rasterFuer, aktiveModule, type Flaeche, type Projekt, zonenVon } from '../lib/model';
+import { useEntwurfNavigation } from '../lib/entwurf-navigation';
+import { geometrieEntwurfAufStand } from '../lib/geometrie-entwurf';
+import { patchFlaechenGeometrie } from '../lib/model';
 import { SchrittFlaechen } from './SchrittFlaechen';
 import { ZonenBadge } from './ui';
-
-const inputKlasse =
-  'h-11 w-24 rounded-lg border border-slate-300 bg-white px-2 text-base tabular-nums text-slate-800 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30';
-
-function KompaktZahl({
-  label,
-  value,
-  onChange,
-  min,
-  max,
-}: {
-  label: string;
-  value: number;
-  onChange: (wert: number) => void;
-  min?: number;
-  max?: number;
-}) {
-  const [eingabe, setEingabe] = useState(String(value));
-  const fehlerId = useId();
-  useEffect(() => setEingabe(Number.isFinite(value) ? String(value) : ''), [value]);
-  const pruefe = (roh: string): { wert?: number; fehler?: string } => {
-    if (roh.trim() === '') return { fehler: `${label} ist erforderlich.` };
-    const wert = Number(roh);
-    if (!Number.isFinite(wert)) return { fehler: `${label} muss eine Zahl sein.` };
-    if (min !== undefined && wert < min) return { fehler: `${label} muss mindestens ${min} sein.` };
-    if (max !== undefined && wert > max) return { fehler: `${label} darf höchstens ${max} sein.` };
-    return { wert };
-  };
-  const ergebnis = pruefe(eingabe);
-  return (
-    <label className="min-w-0">
-      <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
-      <span className="flex items-center gap-1">
-        <input
-          type="number"
-          inputMode="decimal"
-          min={min}
-          max={max}
-          step={0.1}
-          value={eingabe}
-          aria-invalid={!!ergebnis.fehler}
-          aria-describedby={ergebnis.fehler ? fehlerId : undefined}
-          onChange={(e) => {
-            const roh = e.target.value;
-            setEingabe(roh);
-            const neu = pruefe(roh);
-            if (neu.wert !== undefined) onChange(neu.wert);
-          }}
-          className={`${inputKlasse} ${ergebnis.fehler ? 'border-red-400' : ''}`}
-        />
-        <span className="text-sm text-slate-500">m</span>
-      </span>
-      {ergebnis.fehler && <span id={fehlerId} className="mt-1 block max-w-36 text-xs text-red-600">{ergebnis.fehler}</span>}
-    </label>
-  );
-}
+import styles from './FlaechenInlineEditor.module.css';
 
 export function FlaechenInlineEditor({
-  projekt,
-  flaeche,
-  index,
-  onProjektChange,
-  onPatch,
-  onFotoPruefen,
-  fotoFokusAktiv = false,
-  onLoeschen,
-  flaecheKwp,
-  gesamtKwp,
+  projekt, flaeche, index, onPatch, onFotoPruefen,
+  fotoFokusAktiv = false, onLoeschen, flaecheKwp, massVorschlag,
+  kompakt = false, initialOffen = false, onVorschau, onSchliessen,
 }: {
-  projekt: Projekt;
-  flaeche: Flaeche;
-  index: number;
+  projekt: Projekt; flaeche: Flaeche; index: number;
   onProjektChange: (projekt: Projekt) => void;
   onPatch: (patch: Partial<Flaeche>) => void;
-  onFotoPruefen?: () => void;
-  fotoFokusAktiv?: boolean;
-  onLoeschen?: () => void;
-  flaecheKwp: number;
-  gesamtKwp: number;
+  onFotoPruefen?: () => void; fotoFokusAktiv?: boolean;
+  onLoeschen?: () => void; flaecheKwp: number; gesamtKwp: number;
+  massVorschlag?: { breiteM: number; hoeheM: number };
+  /** Aufrufbares Detailpanel im gemeinsamen Editor, ohne zweite Flächenkarte. */
+  kompakt?: boolean;
+  initialOffen?: boolean;
+  onVorschau?: (flaeche: Flaeche | null) => void;
+  onSchliessen?: () => void;
 }) {
-  const [offen, setOffen] = useState(!flaeche.grunddatenFertig);
-  const art = artVon(flaeche);
-  const form = flaeche.dachform ?? 'rechteck';
-
-  const setForm = (dachform: Dachform) => {
-    if (dachform === form) return;
-    const felder = flaeche.felder?.length ?? 0;
-    const inaktive = flaeche.felder?.reduce((summe, feld) => summe + (feld.leer?.length ?? 0), 0) ?? 0;
-    const perspektiven = fotoZuordnungenVon(flaeche).length;
-    const folgen = [
-      felder > 0 ? `${felder} Belegungsbereich${felder === 1 ? '' : 'e'} wird zurückgesetzt` : '',
-      inaktive > 0 ? `${inaktive} einzeln abgeschaltete Module werden zurückgesetzt` : '',
-      flaeche.umrissM ? 'der manuelle Umriss wird entfernt' : '',
-      perspektiven > 0 ? `die ${perspektiven === 1 ? 'Fotoperspektive bleibt zugeordnet, muss' : 'Fotoperspektiven bleiben zugeordnet, müssen'} neu bestätigt werden` : '',
-    ].filter(Boolean);
-    if (folgen.length > 0 && !window.confirm(`Dachform ändern? ${folgen.join('; ')}.`)) return;
-    const wechselReset: Partial<Flaeche> = {
-      felder: [],
-      inaktiv: [],
-      fotoZuordnungen: fotoZuordnungenVon(flaeche).map((zuordnung) => ({
-        ...zuordnung,
-        perspektiveBestaetigt: false,
-        markierungFertig: false,
-      })),
-    };
-    if (dachform === 'rechteck') {
-      onPatch({
-        ...wechselReset,
-        dachform,
-        firstBreiteM: undefined,
-        firstVersatzM: undefined,
-        umrissM: undefined,
-      });
-    } else if (dachform === 'trapez') {
-      onPatch({
-        ...wechselReset,
-        dachform,
-        firstBreiteM:
-          flaeche.firstBreiteM ?? Math.round(flaeche.breiteM * 0.6 * 10) / 10,
-        firstVersatzM: undefined,
-        umrissM: undefined,
-      });
-    } else {
-      onPatch({
-        ...wechselReset,
-        dachform,
-        firstBreiteM: flaeche.firstBreiteM ?? flaeche.breiteM,
-        firstVersatzM: flaeche.firstVersatzM ?? 1,
-        umrissM: undefined,
-      });
-    }
+  const [entwurf, setEntwurf] = useState<Flaeche | null>(() => initialOffen || !flaeche.grunddatenFertig || !massFreigabe(flaeche).belegen ? flaeche : null);
+  const basis = useRef(flaeche);
+  const [geaendert, setGeaendert] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const formularRef = useRef<HTMLDivElement>(null);
+  const navigation = useEntwurfNavigation();
+  const entwurfAbmelden = useRef<(() => void) | null>(null);
+  const vorschau = useMemo(() => entwurf ? geometrieEntwurfAufStand(basis.current, entwurf, flaeche) : null, [entwurf, flaeche]);
+  const vorschauCallback = useRef(onVorschau);
+  vorschauCallback.current = onVorschau;
+  useEffect(() => { vorschauCallback.current?.(vorschau); }, [vorschau]);
+  useEffect(() => () => vorschauCallback.current?.(null), []);
+  const aktuell = useRef({ entwurf: vorschau, onPatch });
+  aktuell.current = { entwurf: vorschau, onPatch };
+  const verwerfen = (schliessen = true) => {
+    entwurfAbmelden.current?.();
+    entwurfAbmelden.current = null;
+    setEntwurf(null); setGeaendert(false); setFehler(null); vorschauCallback.current?.(null);
+    if (schliessen) onSchliessen?.();
   };
-
-  const breiteLabel = art === 'dach' ? 'Traufe' : 'Breite';
-  const hoeheLabel = art === 'dach' ? 'Sparren' : art === 'fassade' ? 'Höhe' : 'Tiefe';
-
-  return (
-    <>
-      <div
-        id={`flaechen-masse-${flaeche.id}`}
-        className="relative z-20 mb-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur lg:sticky lg:top-16"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="mr-1 flex min-w-40 items-center gap-2 self-center">
-            <ZonenBadge label={zonenVon(flaeche, index)} />
-            <div>
-              <strong className="block text-sm text-slate-800">{flaeche.name}</strong>
-              <span className="text-xs text-slate-500">
-                {art === 'dach' ? 'Schrägdach' : art === 'flachdach' ? 'Flachdach' : 'Fassade'}
-              </span>
-            </div>
-          </div>
-
-          {offen ? (
-            <span className="self-center text-sm text-slate-500">
-              {form === 'rechteck' ? 'Rechteck' : form === 'trapez' ? 'Trapez / Walm' : 'Schief'} ·{' '}
-              {flaeche.breiteM} × {flaeche.hoeheM} m
-            </span>
-          ) : art !== 'flachdach' && (
-            <label>
-              <span className="mb-1 block text-xs font-medium text-slate-500">Form</span>
-              <select
-                aria-label={`Form von ${flaeche.name}`}
-                value={form}
-                onChange={(e) => setForm(e.target.value as Dachform)}
-                className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
-              >
-                <option value="rechteck">Rechteck</option>
-                <option value="trapez">Trapez / Walm</option>
-                <option value="schief">Schief</option>
-              </select>
-            </label>
-          )}
-
-          {!offen && (
-            <>
-              <KompaktZahl
-                label={breiteLabel}
-                value={flaeche.breiteM}
-                min={1}
-                onChange={(breiteM) => onPatch({ breiteM })}
-              />
-              <KompaktZahl
-                label={hoeheLabel}
-                value={flaeche.hoeheM}
-                min={1}
-                onChange={(hoeheM) => onPatch({ hoeheM })}
-              />
-              {(form === 'trapez' || form === 'schief') && art !== 'flachdach' && (
-                <KompaktZahl
-                  label="First"
-                  value={flaeche.firstBreiteM ?? flaeche.breiteM}
-                  min={0}
-                  max={flaeche.breiteM}
-                  onChange={(firstBreiteM) => onPatch({ firstBreiteM })}
-                />
-              )}
-              {form === 'schief' && art !== 'flachdach' && (
-                <KompaktZahl
-                  label="Versatz"
-                  value={flaeche.firstVersatzM ?? 0}
-                  onChange={(firstVersatzM) => onPatch({ firstVersatzM })}
-                />
-              )}
-            </>
-          )}
-
-          <div className="ml-auto flex flex-wrap items-center gap-2 self-end">
-            <span
-              aria-label={`Leistung ${flaeche.name}: ${fmtDe(flaecheKwp, 2)} kWp`}
-              className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-akzent/10 px-3 text-sm text-akzent"
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide">Fläche</span>
-              <strong className="text-base tabular-nums">{fmtDe(flaecheKwp, 2)} kWp</strong>
-            </span>
-            <span
-              aria-label={`Gesamtleistung: ${fmtDe(gesamtKwp, 2)} kWp`}
-              className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm text-white"
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-                Gesamt
-              </span>
-              <strong className="text-base tabular-nums">{fmtDe(gesamtKwp, 2)} kWp</strong>
-            </span>
-            {onFotoPruefen && (
-              <button
-                type="button"
-                aria-pressed={fotoFokusAktiv}
-                className={`h-11 rounded-lg border px-4 text-sm font-semibold transition ${
-                  fotoFokusAktiv
-                    ? 'border-akzent bg-akzent text-white'
-                    : 'border-akzent/40 bg-akzent/5 text-akzent hover:bg-akzent/10'
-                }`}
-                onClick={onFotoPruefen}
-              >
-                {fotoFokusAktiv ? 'Foto im Blick' : 'Am Foto anpassen'}
-              </button>
-            )}
-            <button
-              type="button"
-              aria-expanded={offen}
-              className="h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:border-slate-400"
-              onClick={() => setOffen((wert) => !wert)}
-            >
-              {offen ? 'Details schließen' : 'Details'}
-            </button>
-            {onLoeschen && (
-              <button
-                type="button"
-                className="h-11 rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 hover:bg-red-50"
-                onClick={onLoeschen}
-              >
-                Entfernen
-              </button>
-            )}
-          </div>
-        </div>
+  const gueltig = () => {
+    const stand = aktuell.current.entwurf;
+    const ungueltig = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
+    if (stand && (ungueltig || !massFreigabe(stand).gueltig)) {
+      setFehler('Bitte die markierten Angaben korrigieren. Der bisherige Plan bleibt erhalten.');
+      ungueltig?.focus();
+      return false;
+    }
+    return true;
+  };
+  const uebernehmen = (schliessen = true) => {
+    if (!gueltig() || !aktuell.current.entwurf) return;
+    // Entwurf enthält bereits metrisch skalierte Felder; Elternkomponente übernimmt atomar.
+    aktuell.current.onPatch({ ...aktuell.current.entwurf, grunddatenFertig: true, massStatus: 'bestaetigt' });
+    verwerfen(schliessen);
+  };
+  const callbacks = useRef({ gueltig, uebernehmen, verwerfen });
+  callbacks.current = { gueltig, uebernehmen, verwerfen };
+  useEffect(() => {
+    if (!geaendert) return;
+    const abmelden = navigation.registriere(`masse-${flaeche.id}`, {
+      name: flaeche.name,
+      gueltig: () => callbacks.current.gueltig(),
+      uebernehmen: () => callbacks.current.uebernehmen(false),
+      verwerfen: () => callbacks.current.verwerfen(false),
+    });
+    entwurfAbmelden.current = abmelden;
+    return abmelden;
+  }, [geaendert, flaeche.id, flaeche.name, navigation]);
+  useEffect(() => { if (!geaendert) { basis.current = flaeche; setEntwurf((alt) => alt ? flaeche : null); } }, [flaeche, geaendert]);
+  useEffect(() => {
+    if (!massVorschlag) return;
+    setEntwurf((alt) => patchFlaechenGeometrie(alt ?? basis.current, massVorschlag));
+    setGeaendert(true);
+    setFehler(null);
+    document.getElementById(`flaechen-masse-${basis.current.id}`)?.scrollIntoView?.({ block: 'start' });
+  }, [massVorschlag]);
+  const modul = modulById(projekt.modulId);
+  const vorher = aktiveModule(flaeche, rasterFuer(flaeche, modul));
+  const nachher = vorschau ? aktiveModule(vorschau, rasterFuer(vorschau, modul)) : vorher;
+  const freigabe = massFreigabe(flaeche);
+  const neuKalibrieren = !!vorschau?.fotoZuordnungen?.some((z) => z.perspektiveBestaetigt === false) && !!flaeche.fotoZuordnungen?.some((z) => z.perspektiveBestaetigt === true);
+  return <div id={`flaechen-masse-${flaeche.id}`} className={kompakt ? styles.kompakt : 'mb-4 rounded-xl border border-slate-200 bg-white p-3'} data-masspanel={kompakt || undefined}>
+    <div className="flex flex-wrap items-center gap-3">
+      {!kompakt && <ZonenBadge label={zonenVon(flaeche, index)} />}
+      <div className="min-w-0 flex-1">
+        {!kompakt && <strong className="block text-sm text-slate-800">{flaeche.name}</strong>}
+        <span className="text-sm text-slate-600">{artVon(flaeche) === 'flachdach' ? 'Flachdach' : artVon(flaeche) === 'fassade' ? 'Fassade' : 'Schrägdach'} · {fmtDe(flaeche.breiteM)} × {fmtDe(flaeche.hoeheM)} m</span>
       </div>
-
-      {offen && (
-        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <SchrittFlaechen
-            projekt={projekt}
-            onChange={onProjektChange}
-            nurFlaecheId={flaeche.id}
-            eingebettet
-            onFertig={() => {
-              onPatch({ grunddatenFertig: true });
-              setOffen(false);
-            }}
-          />
-        </div>
-      )}
-    </>
-  );
+      {!kompakt && <span aria-label={`Leistung ${flaeche.name}: ${fmtDe(flaecheKwp, 2)} kWp`} className="text-sm font-semibold text-slate-800">{vorher} Module · {fmtDe(flaecheKwp, 2)} kWp</span>}
+      {!entwurf && <button type="button" onClick={() => { basis.current = flaeche; setEntwurf(flaeche); setFehler(null); }} className="rounded-lg border border-slate-300 px-3 text-sm font-semibold">{freigabe.belegen ? 'Maße & Dachform' : 'Maße bestätigen'}</button>}
+      {onFotoPruefen && <button type="button" aria-pressed={fotoFokusAktiv} onClick={onFotoPruefen} className="rounded-lg border border-slate-300 px-3 text-sm font-semibold">{fotoFokusAktiv ? 'Foto im Blick' : 'Am Foto anpassen'}</button>}
+      {onLoeschen && <button type="button" onClick={() => navigation.weiter(onLoeschen)} className="rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-700">Entfernen</button>}
+    </div>
+    <p className="mt-2 text-xs text-slate-600">Maße: {freigabe.status === 'bestaetigt' ? 'von dir bestätigt' : freigabe.status === 'bestand' ? 'aus bestehender Belegung übernommen' : 'Entwurf · noch nicht bestätigt'}</p>
+    {entwurf && <div ref={formularRef} className="mt-4 border-t border-slate-200 pt-4" data-geometrie-entwurf onChange={() => setGeaendert(true)}>
+      <p className="mb-3 text-sm font-medium text-slate-700">{kompakt ? 'Wahre Maße eingeben und Vorschau prüfen.' : 'Maßentwurf – der bisherige Plan bleibt bis zur Übernahme erhalten.'}</p>
+      <SchrittFlaechen projekt={{ ...projekt, flaechen: projekt.flaechen.map((f) => f.id === vorschau!.id ? vorschau! : f) }} onChange={(p) => {
+        setEntwurf(p.flaechen.find((f) => f.id === flaeche.id) ?? null);
+        setGeaendert(true); setFehler(null);
+      }} nurFlaecheId={flaeche.id} eingebettet entwurfsModus />
+      <p className="my-3 text-sm font-semibold text-slate-800" aria-live="polite">Vorschau: {vorher} → {nachher} Module</p>
+      {neuKalibrieren && <p className="mb-3 text-sm text-amber-900">Nach dem Übernehmen müssen die Dachecken neu bestätigt werden.</p>}
+      {fehler && <p role="alert" className="mb-3 text-sm text-red-700">{fehler}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => uebernehmen()} className="rounded-lg bg-akzent px-4 text-sm font-semibold text-white">Maße übernehmen</button>
+        <button type="button" onClick={() => verwerfen()} className="rounded-lg border border-slate-300 px-4 text-sm font-semibold">Abbrechen</button>
+      </div>
+      <p className="mt-2 text-xs text-slate-600">Übernehmen bestätigt deine Angaben; es ersetzt keine unabhängige Vermessung.</p>
+    </div>}
+  </div>;
 }

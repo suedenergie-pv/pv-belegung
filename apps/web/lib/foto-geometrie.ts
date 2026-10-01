@@ -653,7 +653,7 @@ export function eckenPlausibel(e: Ecken): boolean {
 }
 
 export interface BelegungsCheck {
-  status: 'ok' | 'warnung' | 'fehler';
+  status: 'ungeprueft' | 'ok' | 'warnung' | 'fehler';
   meldungen: string[];
   /** Maß-Vorschlag aus dem Foto (nur mit Ziegel-Maßstab), auf 0,1 m gerundet */
   vorschlag: { breiteM: number; hoeheM: number } | null;
@@ -690,7 +690,7 @@ export function belegungsCheck(
   let status: BelegungsCheck['status'] = 'ok';
   let vorschlag: BelegungsCheck['vorschlag'] = null;
 
-  if (pxProM !== undefined && pxProM > 0) {
+  if (pxProM !== undefined && Number.isFinite(pxProM) && pxProM > 0) {
     const breiteFoto = traufePx / pxProM;
     // Die Neigungskorrektur gilt nur für die verkürzte Draufsicht eines Dachs.
     // Eine Fassade wird frontal in ihrer eigenen Ebene markiert; cos(90°) würde
@@ -724,6 +724,7 @@ export function belegungsCheck(
       );
     }
   } else {
+    status = 'ungeprueft';
     meldungen.push(
       flaechenArt === 'dach'
         ? 'Kein Ziegel-Maßstab gesetzt — Maße können nicht gegen das Foto geprüft werden („Ziegel zählen“ liefert den Check).'

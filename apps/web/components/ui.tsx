@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useEffect, useRef } from 'react';
+import { useProjektHistorie } from '../lib/projekt-historie-context';
 
 /** Kleine gemeinsame Bausteine im hellen Dashboard-CI (weiße Karten, große Touch-Targets). */
 
@@ -27,6 +28,10 @@ export function HoldButton({
   intervallMs?: number;
 }) {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const historie = useProjektHistorie();
+  const historieRef = useRef(historie);
+  historieRef.current = historie;
+  const aktiv = useRef(false);
   // Frische Closure: onTrigger darf sich zwischen Renders ändern, ohne den Timer zu verlieren
   const fn = useRef(onTrigger);
   fn.current = onTrigger;
@@ -36,9 +41,23 @@ export function HoldButton({
       clearInterval(timer.current);
       timer.current = null;
     }
+    if (aktiv.current) {
+      aktiv.current = false;
+      historieRef.current?.end('halteknopf');
+    }
   };
   // Timer nie über das Unmount hinaus laufen lassen
-  useEffect(() => stop, []);
+  useEffect(() => {
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    window.addEventListener('blur', stop);
+    return () => {
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      window.removeEventListener('blur', stop);
+      stop();
+    };
+  }, []);
 
   return (
     <button
@@ -50,12 +69,17 @@ export function HoldButton({
       style={{ touchAction: 'none' }}
       onPointerDown={(e) => {
         if (disabled) return;
-        e.preventDefault(); // kein Fokus-/Scroll-Nebeneffekt beim Halten
+        e.preventDefault(); // Der gehaltene Knopf darf die Arbeitsfläche nicht verschieben.
+        stop();
+        // Eine noch fokussierte Formulareingabe zuerst abschließen; sie gehört
+        // nicht zur folgenden Halte-Geste. Fokus ohne Scrollsprung übernehmen.
+        e.currentTarget.focus({ preventScroll: true });
+        aktiv.current = true;
+        historieRef.current?.begin('halteknopf');
         // Erst auslösen, dann Capture: der Klick darf NIE daran scheitern, dass
         // setPointerCapture wirft (NotFoundError, wenn der Pointer nicht mehr
         // aktiv ist) — sonst wäre der Knopf still funktionslos.
         fn.current();
-        stop();
         timer.current = setInterval(() => fn.current(), intervallMs);
         try {
           e.currentTarget.setPointerCapture(e.pointerId); // Finger darf abrutschen
@@ -67,6 +91,7 @@ export function HoldButton({
       onPointerCancel={stop}
       onPointerLeave={stop}
       onLostPointerCapture={stop}
+      onClick={(event) => { if (event.detail === 0 && !aktiv.current) fn.current(); }}
     >
       {children}
     </button>

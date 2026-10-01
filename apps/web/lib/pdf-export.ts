@@ -22,7 +22,8 @@ import {
 
 /**
  * PDF-Export des Belegungsplans (Hauptexport fürs Vertriebsgespräch, 06.07.2026):
- * Seite 1 = Zusammenfassung + Fotoübersicht aller Flächen. Die Foto-SVGs werden
+ * Zusammenfassung, danach bei mehreren Fotos eigene Seiten mit je zwei Bildern
+ * untereinander. Ein einzelnes Foto bleibt nach Möglichkeit auf Seite 1. Die Foto-SVGs werden
  * per Canvas gerastert; kein Server, alles bleibt im Browser. Eine synthetische
  * Dach-Draufsicht wird nicht exportiert.
  * Der Stringplan ist bewusst NUR Zusatzinfo: gültig → eine Zeile, sonst weggelassen.
@@ -258,33 +259,44 @@ export async function baueBelegungsPdf(
   y += 7;
 
   // Belegungsübersicht ausschließlich aus Drohnenfotos mit ihren zugeordneten Flächen.
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(20);
-  doc.text('Belegungsübersicht', RAND, y);
-  y += 5;
+  const fotoKopf = (fortsetzung = false) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(20);
+    doc.text(fortsetzung ? 'Belegungsübersicht (Fortsetzung)' : 'Belegungsübersicht', RAND, y);
+    y += 6;
+  };
 
   if (fotoBilder.length > 0) {
-    const spalten = fotoBilder.length === 1 ? 1 : 2;
-    const zelleB = (NUTZ_B - (spalten - 1) * 6) / spalten;
-    const bildBereichH = fotoBilder.length === 1 ? Math.min(142, SEITE_H - y - 34) : 70;
+    const mehrereFotos = fotoBilder.length > 1;
     const kopfH = 12;
-    const kartenH = kopfH + bildBereichH + 4;
-    let spalte = 0;
-    for (const bild of fotoBilder) {
-      if (spalte === 0) seitenwechselWennNoetig(kartenH, () => {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(20);
-        doc.text('Belegungsübersicht (Fortsetzung)', RAND, y);
-        y += 6;
-      });
+    const abstand = 6;
+    const fotoSeitenStart = 18;
+    // Auf Fotoseiten passen zwei große Karten einschließlich Überschrift und Fußzeile.
+    const maxBildH = mehrereFotos
+      ? (INHALT_ENDE - fotoSeitenStart - 6 - abstand) / 2 - kopfH - 4
+      : 142;
+    const maxBildB = NUTZ_B - 6;
+    for (const [index, bild] of fotoBilder.entries()) {
+      const bildH = Math.min(maxBildB * bild.seitenverhaeltnis, maxBildH);
+      const bildB = bildH / bild.seitenverhaeltnis;
+      const kartenH = kopfH + bildH + 4;
 
-      const x = RAND + spalte * (zelleB + 6);
+      if (mehrereFotos && index % 2 === 0) {
+        doc.addPage();
+        y = fotoSeitenStart;
+        fotoKopf(index > 0);
+      } else if (index === 0) {
+        // Überschrift und Einzelbild immer gemeinsam umbrechen.
+        seitenwechselWennNoetig(6 + kartenH);
+        fotoKopf();
+      }
+
+      const x = RAND;
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(214, 220, 228);
       doc.setLineWidth(0.3);
-      doc.roundedRect(x, y, zelleB, kartenH, 2, 2, 'FD');
+      doc.roundedRect(x, y, NUTZ_B, kartenH, 2, 2, 'FD');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
@@ -299,25 +311,15 @@ export async function baueBelegungsPdf(
         y + 8.5,
       );
 
-      const maxBildB = zelleB - 6;
-      let bildB = maxBildB;
-      let bildH = bildB * bild.seitenverhaeltnis;
-      if (bildH > bildBereichH) {
-        bildH = bildBereichH;
-        bildB = bildH / bild.seitenverhaeltnis;
-      }
-      const bildX = x + (zelleB - bildB) / 2;
-      const bildY = y + kopfH + (bildBereichH - bildH) / 2;
+      const bildX = x + (NUTZ_B - bildB) / 2;
+      const bildY = y + kopfH;
       doc.addImage(bild.dataUrl, 'JPEG', bildX, bildY, bildB, bildH);
 
-      spalte += 1;
-      if (spalte >= spalten) {
-        spalte = 0;
-        y += kartenH + 6;
-      }
+      y += kartenH + abstand;
     }
-    if (spalte !== 0) y += kartenH + 6;
   } else {
+    seitenwechselWennNoetig(14);
+    fotoKopf();
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(120);

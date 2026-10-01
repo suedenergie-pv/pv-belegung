@@ -26,6 +26,17 @@ const quadrat: Ecken = [
 ];
 
 describe('Belegungs-Check für unterschiedliche Flächenarten', () => {
+  it.each([undefined, 0, Number.NaN, Infinity])('bleibt ohne verwendbaren Foto-Maßstab neutral: %s', (massstab) => {
+    const check = belegungsCheck(quadrat, 10, 10, 0, massstab);
+    expect(check.status).toBe('ungeprueft');
+    expect(check.vorschlag).toBeNull();
+    expect(check.meldungen.join(' ')).toContain('können nicht gegen das Foto geprüft');
+  });
+
+  it('zeigt fehlerhafte Fotoecken auch ohne Maßstab als Fehler', () => {
+    expect(belegungsCheck([[0, 0], [0, 0], [100, 100], [0, 100]], 10, 10, 0, undefined).status).toBe('fehler');
+  });
+
   it('misst eine frontal fotografierte Fassade ohne cos(90°)-Explosion', () => {
     const check = belegungsCheck(quadrat, 10, 10, 90, 10, 1, 'fassade');
     expect(check.vorschlag).toEqual({ breiteM: 10, hoeheM: 10 });

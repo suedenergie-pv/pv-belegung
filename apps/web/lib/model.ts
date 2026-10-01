@@ -157,6 +157,7 @@ export interface FotoZuordnung {
  * 'schief' = Parallelogramm / schiefes Trapez (First seitlich versetzt, Genrih 08.07.).
  */
 export type Dachform = 'rechteck' | 'trapez' | 'schief';
+export type MassStatus = 'offen' | 'bestaetigt' | 'bestand';
 
 export interface Flaeche {
   id: string;
@@ -215,8 +216,10 @@ export interface Flaeche {
    * Trapez; firstBreiteM = Traufe = Parallelogramm.
   */
   firstVersatzM?: number;
-  /** Grunddaten im kombinierten Dach-/Belegungsschritt einmal bestätigt. */
+  /** Grunddaten-Bereich geschlossen; kein Nachweis einer Maßbestätigung. */
   grunddatenFertig?: boolean;
+  /** Nutzerbestätigung der Maße, unabhängig von Foto-/Gauben-Messqualität. */
+  massStatus?: MassStatus;
   /** Drohnenfoto als Hintergrund (optional) */
   foto?: DachFoto;
   /** Mehrere kalibrierte Perspektiven derselben metrischen Dachfläche. */
@@ -394,15 +397,8 @@ export function flaechenAusrichtungsLabel(f: Flaeche): string {
     : `Azimut ${f.azimutDeg}°`;
 }
 
-/**
- * Randabstand-Default je Flächen-Art: Schrägdach/Fassade 5 cm; Flachdach nach
- * PROFINESS-Empfehlung (Windlast): O/W und Süd 10° → 0,60 m, Süd 15° → 0,80 m.
- */
-export function randDefaultVon(f: Flaeche): number {
-  if (artVon(f) === 'flachdach') {
-    const fd = f.flachdach;
-    return fd?.aufstaenderung === 'sued' && fd.winkelDeg >= 15 ? 0.8 : 0.6;
-  }
+/** Pauschaler Standard für jede Flächenart (Genrih 01.10.2026, SPEC §9). */
+export function randDefaultVon(_f: Flaeche): number {
   return DEFAULT_RAND_M;
 }
 
@@ -470,6 +466,7 @@ export function neueFlaeche(nr: number, zone?: string): Flaeche {
     dachfarbe: 'anthrazit',
     ausrichtung: 'hoch',
     grunddatenFertig: false,
+    massStatus: 'offen',
     // Neue Flächen starten UNBELEGT — der Nutzer zieht seine Felder selbst
     // (oder klickt „Automatisch füllen"). Genrih 16.07.: Automatismus mildern.
     felder: [],
@@ -518,6 +515,61 @@ export function neueGaubenFlaeche(
     dachform: 'rechteck',
     grunddatenFertig: true,
     randM: DEFAULT_RAND_M,
+  };
+}
+
+/** Fehlender Status ist nur bei alten, bereits belegten Flächen Bestand. */
+export function massStatusVon(f: Flaeche): MassStatus {
+  if (f.massStatus === 'offen' || f.massStatus === 'bestaetigt' || f.massStatus === 'bestand') {
+    return f.massStatus;
+  }
+  // Ein unbekannter Importwert darf keine Bestätigung vortäuschen.
+  if (f.massStatus !== undefined) return 'offen';
+  return (f.felder?.length ?? 0) > 0 ? 'bestand' : 'offen';
+}
+
+export interface MassFreigabe {
+  status: MassStatus;
+  gueltig: boolean;
+  belegen: boolean;
+  meldung: string | null;
+}
+
+/** Gemeinsame Maßfreigabe für Belegungsaktionen, Exporthinweise und PDF. */
+export function massFreigabe(f: Flaeche): MassFreigabe {
+  const status = massStatusVon(f);
+  let fehler: string | null = null;
+  const positiv = (n: number) => Number.isFinite(n) && n > 0;
+  if (!positiv(f.breiteM) || !positiv(f.hoeheM)) {
+    fehler = 'Breite und Länge müssen gültige Werte größer als 0 m sein.';
+  } else if (!Number.isFinite(f.neigungDeg) || f.neigungDeg < 0 || f.neigungDeg > 90) {
+    fehler = 'Die Neigung muss zwischen 0° und 90° liegen.';
+  } else if (!Number.isFinite(f.azimutDeg) || f.azimutDeg < 0 || f.azimutDeg > 360) {
+    fehler = 'Die Ausrichtung muss zwischen 0° und 360° liegen.';
+  } else if (
+    (f.dachform === 'trapez' || f.dachform === 'schief') &&
+    (!Number.isFinite(f.firstBreiteM ?? f.breiteM) ||
+      (f.firstBreiteM ?? f.breiteM) < 0 ||
+      (f.dachform === 'trapez' && (f.firstBreiteM ?? f.breiteM) > f.breiteM))
+  ) {
+    fehler = 'Die Firstbreite muss gültig sein und zur Dachform passen.';
+  } else if (f.dachform === 'schief' && !Number.isFinite(f.firstVersatzM ?? 0)) {
+    fehler = 'Der Firstversatz muss ein gültiger Wert sein.';
+  } else if (f.randM !== undefined && (!Number.isFinite(f.randM) || f.randM < 0)) {
+    fehler = 'Der Randabstand muss ein gültiger Wert ab 0 m sein.';
+  } else if (
+    f.art === 'flachdach' && f.flachdach &&
+    ((!Number.isFinite(f.flachdach.winkelDeg) || f.flachdach.winkelDeg < 0 || f.flachdach.winkelDeg >= 90) ||
+      (f.flachdach.pitchM !== undefined && !positiv(f.flachdach.pitchM)))
+  ) {
+    fehler = 'Winkel und Reihenabstand der Aufständerung müssen gültig sein.';
+  }
+  const gueltig = fehler === null;
+  return {
+    status,
+    gueltig,
+    belegen: gueltig && status !== 'offen',
+    meldung: fehler ?? (status === 'offen' ? 'Maße vor dem Belegen prüfen und ausdrücklich übernehmen.' : null),
   };
 }
 
@@ -928,6 +980,19 @@ export function projektFreigabe(p: Projekt): ProjektFreigabe {
     });
   }
 
+  for (const f of p.flaechen) {
+    if (!f.felder?.length) continue;
+    const masse = massFreigabe(f);
+    if (!masse.belegen) {
+      pdfFehler.push({
+        id: `masse-${f.id}`,
+        bereich: 'belegung',
+        meldung: `${f.name}: ${masse.meldung}`,
+        sprungziel: `belegung-${f.id}`,
+      });
+    }
+  }
+
   for (const f of belegteFlaechenOhneFoto(p)) {
     pdfFehler.push({
       id: `foto-${f.id}`,
@@ -1247,6 +1312,7 @@ export function migriereProjekt(roh: Projekt): Projekt {
     return {
       ...rest,
       grunddatenFertig: f.grunddatenFertig ?? true,
+      massStatus: massStatusVon(f),
       felder: f.felder ?? [],
       inaktiv: [],
     };

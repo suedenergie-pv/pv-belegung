@@ -13,7 +13,7 @@ import { JOLYWOOD_JW_HD96N_R2_460 } from '../src/catalog/modules';
 /**
  * Belegungsfelder (16.07.2026, Genrih): der Nutzer zieht Rechtecke, die sich mit
  * Modulen füllen — kein Optimierer, keine automatische Vollbelegung. Modul
- * 1762 × 1134 mm; quer = 1,762 × 1,134 m, Fuge 0,02 m, Rand 0,05 m.
+ * 1762 × 1134 mm; quer = 1,762 × 1,134 m, Fuge 0,02 m, Standardrand 0 m.
  */
 const M = JOLYWOOD_JW_HD96N_R2_460;
 const dach: FelderInput = { breiteM: 10, hoeheM: 6, module: M };
@@ -52,6 +52,17 @@ const ueberlappungen = (positionen: { xM: number; yM: number; wM: number; hM: nu
 };
 
 describe('berechneFelderRaster — Grundfall', () => {
+  it('belegt ein exakt modulgroßes Dach ohne impliziten Rand bis an alle vier Kanten', () => {
+    const exakt: FelderInput = { breiteM: 1.762, hoeheM: 1.134, module: M };
+    const f = vollFeld({ ...exakt, ausrichtung: 'quer' });
+    expect(f.xM).toBeCloseTo(0, 9);
+    expect(f.yM).toBeCloseTo(0, 9);
+    const r = berechneFelderRaster(exakt, [f]);
+    expect(r.positionen).toHaveLength(1);
+    expect(r.randM).toBe(0);
+    expect(berechneFelderRaster({ ...exakt, randM: 0.05 }, [f]).positionen).toHaveLength(0);
+  });
+
   it('Feld für 2×2 Module (quer) füllt sich mit genau 4 Modulen an den erwarteten Ecken', () => {
     const r = berechneFelderRaster(dach, [feld(3, 2, 2, 2)]);
     expect(r.positionen).toHaveLength(4);

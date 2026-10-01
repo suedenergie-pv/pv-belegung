@@ -4,6 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittProjekt } from '../components/SchrittProjekt';
+import { HistorienEingaben, ProjektHistorieContext, useHistorienVerwaltung } from '../lib/projekt-historie-context';
+import { EntwurfNavigationProvider, useEntwurfNavigation } from '../lib/entwurf-navigation';
+import { EditorSitzungProvider } from '../lib/editor-sitzung';
 import {
   eintragListenName,
   eintragName,
@@ -34,6 +37,11 @@ interface GeloeschtesProjekt {
 const SCHRITTE = ['Projekt', 'Dach & Belegung', 'Export'] as const;
 
 export default function Home() {
+  return <EntwurfNavigationProvider><ProjektApp /></EntwurfNavigationProvider>;
+}
+
+function ProjektApp() {
+  const navigation = useEntwurfNavigation();
   const [db, setDb] = useState<ProjektDb>({
     aktivId: null,
     projekte: [],
@@ -66,7 +74,7 @@ export default function Home() {
       return;
     }
     // Nur ein tatsächlich leerer, unbeschädigter Speicher bekommt einen Erststand.
-    setDb(
+    schreibeDb(
       ergebnis.db.projekte.length > 0
         ? ergebnis.db
         : (() => {
@@ -91,6 +99,12 @@ export default function Home() {
    */
   const dbRef = useRef(db);
   dbRef.current = db;
+  const schreibeDb = (wert: ProjektDb | ((vorher: ProjektDb) => ProjektDb)) => {
+    const neu = typeof wert === 'function' ? wert(dbRef.current) : wert;
+    dbRef.current = neu;
+    setDb(neu);
+    setSpeicherStatus('speichert');
+  };
   useEffect(() => {
     if (!geladen) return;
     setSpeicherStatus('speichert');
@@ -135,23 +149,40 @@ export default function Home() {
 
   /** Patch am aktiven Eintrag (Projekt und/oder Schritt), Zeitstempel aktualisieren. */
   const patchAktiv = (patch: Partial<Pick<ProjektEintrag, 'projekt' | 'schritt'>>) =>
-    setDb((d) => ({
+    schreibeDb((d) => ({
       ...d,
       projekte: d.projekte.map((e) =>
         e.id === d.aktivId ? { ...e, ...patch, geaendertAm: Date.now() } : e,
       ),
     }));
 
-  const setProjekt = (p: Projekt) => patchAktiv({ projekt: p });
-  const setSchritt = (s: number | ((prev: number) => number)) =>
+  const { historie, record, forget } = useHistorienVerwaltung(
+    aktiv?.id ?? 'laden', projekt, (stand) => patchAktiv({ projekt: stand }),
+  );
+  const setProjekt = (p: Projekt) => {
+    const vorher = dbRef.current.projekte.find((eintrag) => eintrag.id === dbRef.current.aktivId)?.projekt;
+    if (vorher) record(vorher, p);
+    patchAktiv({ projekt: p });
+  };
+  const setSchritt = (s: number | ((prev: number) => number)) => navigation.weiter(() => {
+    historie.end();
     patchAktiv({ schritt: typeof s === 'function' ? s(schritt) : s });
+  });
+  const geschuetzteHistorie = {
+    ...historie,
+    undo: () => navigation.weiter(historie.undo),
+    redo: () => navigation.weiter(historie.redo),
+  };
 
   const neuesAnlegen = () => {
+    historie.end();
     const e = neuerEintrag();
-    setDb((d) => ({ ...d, aktivId: e.id, projekte: [...d.projekte, e] }));
+    schreibeDb((d) => ({ ...d, aktivId: e.id, projekte: [...d.projekte, e] }));
   };
 
   const dupliziereAktiv = () => {
+    historie.end();
+    const aktiv = dbRef.current.projekte.find((eintrag) => eintrag.id === dbRef.current.aktivId);
     if (!aktiv) return;
     const jetzt = Date.now();
     const kopie: ProjektEintrag = {
@@ -164,15 +195,18 @@ export default function Home() {
       erstelltAm: jetzt,
       geaendertAm: jetzt,
     };
-    setDb((d) => ({ ...d, aktivId: kopie.id, projekte: [...d.projekte, kopie] }));
+    schreibeDb((d) => ({ ...d, aktivId: kopie.id, projekte: [...d.projekte, kopie] }));
   };
 
   const loescheAktiv = () => {
+    historie.end();
+    const db = dbRef.current;
+    const aktiv = db.projekte.find((eintrag) => eintrag.id === db.aktivId);
     if (!aktiv) return;
     const index = db.projekte.findIndex((eintrag) => eintrag.id === aktiv.id);
     const rest = db.projekte.filter((eintrag) => eintrag.id !== aktiv.id);
     const ersatz = rest.length === 0 ? neuerEintrag() : null;
-    setDb({
+    schreibeDb({
       ...db,
       aktivId: rest[0]?.id ?? ersatz!.id,
       projekte: rest.length > 0 ? rest : [ersatz!],
@@ -184,6 +218,7 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       setGeloeschteProjekte((alt) => alt.filter((wert) => wert.eintrag.id !== aktiv.id));
       loeschTimer.current.delete(aktiv.id);
+      forget(aktiv.id);
       void loescheProjektFotos(aktiv.id).catch(() => {
         setDateiStatus('Projekt gelöscht; verwaiste Fotodaten konnten noch nicht bereinigt werden.');
       });
@@ -192,10 +227,11 @@ export default function Home() {
   };
 
   const loeschungRueckgaengig = (geloescht: GeloeschtesProjekt) => {
+    historie.end();
     const timer = loeschTimer.current.get(geloescht.eintrag.id);
     if (timer) clearTimeout(timer);
     loeschTimer.current.delete(geloescht.eintrag.id);
-    setDb((aktuell) => {
+    schreibeDb((aktuell) => {
       let liste = aktuell.projekte;
       if (
         geloescht.ersatzId &&
@@ -214,6 +250,7 @@ export default function Home() {
   };
 
   const loeschungEndgueltig = (geloescht: GeloeschtesProjekt) => {
+    forget(geloescht.eintrag.id);
     const timer = loeschTimer.current.get(geloescht.eintrag.id);
     if (timer) clearTimeout(timer);
     loeschTimer.current.delete(geloescht.eintrag.id);
@@ -235,7 +272,7 @@ export default function Home() {
   };
 
   const exportiereKomplett = () => {
-    textHerunterladen(komplettExportJson(db), komplettExportDateiname());
+    textHerunterladen(komplettExportJson(dbRef.current), komplettExportDateiname());
     setDateiStatus('Komplettexport wurde erstellt.');
   };
 
@@ -248,7 +285,8 @@ export default function Home() {
         setDateiStatus(`Import fehlgeschlagen: ${ergebnis.grund}`);
         return;
       }
-      setDb(ergebnis.db);
+      historie.end();
+      schreibeDb(ergebnis.db);
       setDateiStatus(`${ergebnis.importiert} Projekt${ergebnis.importiert === 1 ? '' : 'e'} importiert.`);
     } catch (fehler) {
       setDateiStatus(fehler instanceof Error ? fehler.message : 'Import fehlgeschlagen.');
@@ -265,7 +303,7 @@ export default function Home() {
       setLadeProblem(ergebnis);
       return;
     }
-    setDb(ergebnis.db);
+    schreibeDb(ergebnis.db);
     setLadeProblem(null);
     setGeladen(true);
   };
@@ -300,8 +338,12 @@ export default function Home() {
   }
 
   return (
-    <div className={`space-y-5 pb-10 ${schritt === 1 ? '' : 'mx-auto max-w-5xl'}`}>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <ProjektHistorieContext.Provider value={geschuetzteHistorie}>
+    <EditorSitzungProvider projektId={aktiv?.id ?? 'leer'}>
+    <div className={schritt === 1 ? 'editor-seite' : 'space-y-5 pb-10 mx-auto max-w-5xl'}>
+      <header className={schritt === 1 ? 'workbench-kopf' : 'contents'}>
+      <div className="projekt-leiste flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+        {schritt === 1 && <span className="workbench-marke" title="SüdEnergie · Belegungsplaner"><span aria-hidden="true" />SüdEnergie</span>}
         <label htmlFor="projekt-auswahl" className="sr-only">
           Aktuelles Projekt
         </label>
@@ -309,8 +351,8 @@ export default function Home() {
           id="projekt-auswahl"
           aria-label="Aktuelles Projekt"
           value={db.aktivId ?? ''}
-          onChange={(e) => setDb((d) => ({ ...d, aktivId: e.target.value }))}
-          className="h-11 max-w-[22rem] flex-1 rounded-full border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
+          onChange={(e) => { const id = e.target.value; navigation.weiter(() => { historie.end(); schreibeDb((d) => ({ ...d, aktivId: id })); }); }}
+          className="h-11 min-w-0 max-w-[22rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
         >
           {db.projekte.map((e) => (
             <option key={e.id} value={e.id}>
@@ -318,17 +360,17 @@ export default function Home() {
             </option>
           ))}
         </select>
-        <span className="hidden text-xs text-slate-400 sm:inline">
+        <span role="status" className="speicher-status order-last w-full text-xs text-slate-600 sm:order-none sm:w-auto">
           {speicherStatus === 'speichert'
               ? 'Speichert …'
               : speicherStatus === 'gespeichert'
-                ? '✓ Gespeichert'
+                ? 'In diesem Browser gespeichert'
                 : speicherStatus === 'kapazitaet'
                   ? 'Speicher voll'
                   : 'Speicher prüfen'}
         </span>
         <div className="ml-auto flex gap-2">
-          <button type="button" className={knopf} onClick={neuesAnlegen} disabled={!geladen}>
+          <button type="button" className={knopf} onClick={() => navigation.weiter(neuesAnlegen)} disabled={!geladen}>
             + Neu
           </button>
           <details className="group relative">
@@ -339,7 +381,7 @@ export default function Home() {
               <button
                 type="button"
                 className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={dupliziereAktiv}
+                onClick={() => navigation.weiter(dupliziereAktiv)}
                 disabled={!aktiv}
               >
                 Projekt duplizieren
@@ -347,14 +389,14 @@ export default function Home() {
               <button
                 type="button"
                 className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={exportiereKomplett}
+                onClick={() => navigation.weiter(exportiereKomplett)}
               >
                 Alle Projekte sichern
               </button>
               <button
                 type="button"
                 className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => importRef.current?.click()}
+                onClick={() => navigation.weiter(() => importRef.current?.click())}
               >
                 Komplettexport importieren
               </button>
@@ -369,7 +411,7 @@ export default function Home() {
               <button
                 type="button"
                 className="h-10 rounded-lg px-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                onClick={loescheAktiv}
+                onClick={() => navigation.weiter(loescheAktiv)}
                 disabled={!aktiv}
               >
                 Projekt löschen
@@ -403,7 +445,7 @@ export default function Home() {
           <span className="mr-auto">
             Projekt „{eintragName(geloescht.eintrag)}“ wurde aus der Liste entfernt. Die Fotos bleiben noch 12 Sekunden erhalten.
           </span>
-          <button type="button" className="h-11 rounded-lg bg-slate-900 px-4 font-semibold text-white" onClick={() => loeschungRueckgaengig(geloescht)}>
+          <button type="button" className="h-11 rounded-lg bg-slate-900 px-4 font-semibold text-white" onClick={() => navigation.weiter(() => loeschungRueckgaengig(geloescht))}>
             Rückgängig
           </button>
           <button type="button" className="h-11 rounded-lg border border-red-300 px-3 font-medium text-red-700" onClick={() => loeschungEndgueltig(geloescht)}>
@@ -412,7 +454,8 @@ export default function Home() {
         </div>
       ))}
 
-      <nav className="flex flex-wrap items-center gap-2" aria-label="Schritte">
+      <div className="ablauf-leiste">
+      <nav className="schritt-leiste flex flex-wrap items-center gap-2" aria-label="Schritte">
         {SCHRITTE.map((name, i) => {
           return (
             <button
@@ -432,6 +475,18 @@ export default function Home() {
         })}
       </nav>
 
+      <div className="historien-leiste flex flex-wrap gap-2" aria-label="Änderungshistorie">
+        <button type="button" className={knopf} disabled={!historie.canUndo} onClick={geschuetzteHistorie.undo}>
+          ↶ Rückgängig{historie.undoCount > 0 ? ` (${historie.undoCount})` : ''}
+        </button>
+        <button type="button" className={knopf} disabled={!historie.canRedo} onClick={geschuetzteHistorie.redo}>
+          ↷ Wiederherstellen
+        </button>
+      </div>
+      </div>
+      </header>
+
+      <HistorienEingaben>
       {schritt === 0 && <SchrittProjekt key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
       {schritt === 1 && <SchrittBelegung key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
       {schritt === 2 && (
@@ -450,7 +505,9 @@ export default function Home() {
         />
       )}
 
-      <div className="flex justify-between">
+      </HistorienEingaben>
+
+      {schritt !== 1 && <div className="flex justify-between">
         <button
           type="button"
           disabled={schritt === 0}
@@ -468,7 +525,9 @@ export default function Home() {
             Weiter →
           </button>
         )}
-      </div>
+      </div>}
     </div>
+    </EditorSitzungProvider>
+    </ProjektHistorieContext.Provider>
   );
 }

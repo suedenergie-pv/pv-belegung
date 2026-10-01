@@ -9,6 +9,7 @@ import {
   downloadDateiname,
   flaechenTitel,
   flaecheM2,
+  fertigeFotoFlaechen,
   fmtDe,
   kwpGesamt,
   modulById,
@@ -138,18 +139,18 @@ export function SchrittExport({
         <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <div>
             <span className="text-4xl font-bold">{fmtDe(kwpGesamt(projekt), 2)}</span>
-            <span className="ml-1 text-lg font-semibold text-slate-500">kWp</span>
+            <span className="ml-1 text-lg font-semibold text-slate-600">kWp</span>
           </div>
-          {projekt.kunde && <span className="text-slate-500">{projekt.kunde}</span>}
-          {projekt.adresse && <span className="text-slate-400">{projekt.adresse}</span>}
+          {projekt.kunde && <span className="text-slate-600">{projekt.kunde}</span>}
+          {projekt.adresse && <span className="text-slate-600">{projekt.adresse}</span>}
         </div>
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
           <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <dt className="text-slate-500">Modul</dt>
+            <dt className="text-slate-600">Modul</dt>
             <dd className="font-medium">{modul.name}</dd>
           </div>
           <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <dt className="text-slate-500">Wechselrichter</dt>
+            <dt className="text-slate-600">Wechselrichter</dt>
             <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : '— (nur Belegung)'}</dd>
           </div>
           {projekt.flaechen.map((f, i) => {
@@ -157,7 +158,7 @@ export function SchrittExport({
             const ausrichtungen = ausrichtungenVon(f, raster);
             return (
               <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
-                <dt className="text-slate-500">
+                <dt className="text-slate-600">
                   {flaechenTitel(f, i)} · {f.neigungDeg}° · {flaechenAusrichtungsLabel(f)}
                 </dt>
                 <dd className="font-medium">
@@ -171,7 +172,7 @@ export function SchrittExport({
             <div
               className={`rounded-lg px-3 py-2 ${result.valid ? 'bg-green-50' : 'bg-red-50'}`}
             >
-              <dt className="text-slate-500">Regelprüfung R1–R12</dt>
+              <dt className="text-slate-600">Regelprüfung R1–R12</dt>
               <dd className={`font-medium ${result.valid ? 'text-green-700' : 'text-red-700'}`}>
                 {result.valid ? 'bestanden' : 'NICHT bestanden'}
               </dd>
@@ -181,6 +182,12 @@ export function SchrittExport({
       </Karte>
 
       <Karte>
+        {projekt.fotos.filter((foto) => fertigeFotoFlaechen(projekt, foto.id).length > 0).map((foto) => (
+          <figure key={foto.id} className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50" data-export-vorschau={foto.id}>
+            <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />
+            <figcaption className="px-3 py-2 text-sm text-slate-600">{foto.name} · Belegung ohne Bearbeitungsmarkierungen</figcaption>
+          </figure>
+        ))}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <KartenTitel>Belegungsplan (PDF)</KartenTitel>
           {pdfDownload ? (
@@ -228,7 +235,7 @@ export function SchrittExport({
           )}
         </div>
         {pdfDownload?.teilen && (
-          <p className="text-sm text-slate-500">Zum Speichern im folgenden Dialog „In Dateien sichern“ wählen.</p>
+          <p className="text-sm text-slate-600">Zum Speichern im folgenden Dialog „In Dateien sichern“ wählen.</p>
         )}
         {teilenFehler && pdfDownload && (
           <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -239,7 +246,7 @@ export function SchrittExport({
           </div>
         )}
         {result && !result.valid && (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600">
             Der aktuelle Stringplan ist ungültig und wird im PDF weggelassen.
           </p>
         )}
@@ -271,7 +278,7 @@ export function SchrittExport({
         <details>
           <summary className="touch-target flex cursor-pointer list-none items-center gap-3 text-sm font-semibold text-slate-700">
             Technische Daten (JSON)
-            <span className="ml-auto text-xs font-normal text-slate-400">für das Ticketsystem</span>
+            <span className="ml-auto text-xs font-normal text-slate-600">für das Ticketsystem</span>
           </summary>
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
             <div className="ml-auto flex gap-2">
@@ -333,7 +340,7 @@ export function SchrittExport({
           <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
             {json}
           </pre>
-          <p className="mt-2 text-xs text-slate-400">
+          <p className="mt-2 text-xs text-slate-600">
             Anbindung an das Ticketsystem („Vorplanung Vertrieb") folgt — bis dahin JSON kopieren
             oder als Datei ans Ticket hängen.
           </p>
@@ -341,11 +348,10 @@ export function SchrittExport({
       </Karte>
 
       <Karte id="export-stringplan">
-        <KartenTitel>Komplexes Dach eskalieren</KartenTitel>
+        <KartenTitel>Projektleitung</KartenTitel>
         <p className="mb-3 text-sm text-slate-600">
-          Wenn die Geometrie im Foto nicht zuverlässig lösbar ist, Rohdaten sichern und das
-          Projekt bewusst an die Projektleitung geben. Die direkte Ticketerstellung folgt erst
-          nach Freigabe der Ticketsystem-Kategorie.
+          Bei Klärungsbedarf das Projekt markieren und die Rohdaten sichern.
+          Die Übergabe an die Projektleitung erfolgt anschließend durch dich.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -364,10 +370,10 @@ export function SchrittExport({
                 eskaliert: true,
                 eskalationsgrund: eskalationsgrund.trim() || undefined,
               });
-              setStatusMeldung('Projekt ist als komplexes Dach für die Projektleitung markiert.');
+              setStatusMeldung('Für Projektleitung markiert. Übergabe steht noch aus.');
             }}
           >
-            Komplexes Dach → an PL
+            Für Projektleitung markieren
           </button>
           <button
             type="button"
@@ -382,7 +388,8 @@ export function SchrittExport({
         </div>
         {projekt.eskaliert && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-            Eskaliert{projekt.eskalationsgrund ? `: ${projekt.eskalationsgrund}` : ''}
+            Für Projektleitung markiert{projekt.eskalationsgrund ? `: ${projekt.eskalationsgrund}` : ''}.
+            {' '}Übergabe steht noch aus – es wurde nichts versendet.
           </p>
         )}
       </Karte>

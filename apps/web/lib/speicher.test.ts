@@ -118,6 +118,25 @@ describe('versionierter Projekt- und Fotospeicher', () => {
 });
 
 describe('Komplettexport und Import', () => {
+  it.each(['offen', 'bestaetigt', 'bestand'] as const)('erhält den Maßstatus %s beim Sichern und Reimport', async (status) => {
+    const db = dbMitFoto();
+    db.projekte[0]!.projekt.flaechen[0]!.massStatus = status;
+    db.projekte[0]!.projekt.flaechen[0]!.gaubenMessung = { quelle: 'nachbardach', qualitaet: 'geschaetzt' };
+    expect((await speichereProjekte(db)).status).toBe('erfolg');
+    const geladen = await ladeProjekte();
+    expect(geladen.status).toBe('erfolg');
+    if (geladen.status !== 'erfolg') throw new Error('Speichern fehlgeschlagen');
+    const reimport = await importiereKomplettExport(komplettExportJson(geladen.db), {
+      aktivId: null, projekte: [], workflowVersion: 2,
+    });
+    expect(reimport.status).toBe('erfolg');
+    if (reimport.status === 'erfolg') {
+      expect(reimport.db.projekte[0]!.projekt.flaechen[0]).toMatchObject({
+        massStatus: status, gaubenMessung: { quelle: 'nachbardach', qualitaet: 'geschaetzt' },
+      });
+    }
+  });
+
   it('exportiert versioniert und vergibt kollidierende Projekt-IDs neu', async () => {
     const bestehend = dbMitFoto('gleich');
     const importDb = dbMitFoto('gleich');

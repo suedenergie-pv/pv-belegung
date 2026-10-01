@@ -3,6 +3,8 @@ import { defineConfig } from '@playwright/test';
 const ansichten = [
   { name: 'desktop', viewport: { width: 1440, height: 900 } },
   { name: 'tablet-grenze', viewport: { width: 1023, height: 768 } },
+  { name: 'tablet-quer', viewport: { width: 1024, height: 768 } },
+  { name: 'tablet-hoch', viewport: { width: 768, height: 1024 } },
   { name: 'mobil-hoch', viewport: { width: 375, height: 812 } },
   { name: 'mobil-quer', viewport: { width: 812, height: 375 } },
 ];
@@ -22,6 +24,8 @@ export default defineConfig({
   },
   projects: ansichten.map((ansicht) => ({
     name: ansicht.name,
+    // Dieser Test durchläuft die fünf Zielgrößen selbst, daher nur einmal starten.
+    ...(ansicht.name !== 'desktop' ? { testIgnore: ['**/reliability.spec.ts'] } : {}),
     use: { viewport: ansicht.viewport },
   })),
   webServer: {

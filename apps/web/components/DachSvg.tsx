@@ -1,7 +1,7 @@
 'use client';
 
 import { posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
-import React, { useId, useState, type ReactNode } from 'react';
+import React, { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   homographie,
   inverseHomographie,
@@ -123,6 +123,7 @@ export function griffPunkte(r: RechteckM): { id: GriffId; p: PunktM }[] {
  */
 export interface PointerProps {
   onDownM: (p: PunktM) => void;
+  onGriffDownM?: (index: number, griff: GriffId, p: PunktM) => void;
   /** null = Zeiger hat die Fläche verlassen / Geste abgebrochen */
   onMoveM: (p: PunktM | null) => void;
   onUpM: (p: PunktM) => void;
@@ -253,7 +254,9 @@ function pointerHandler(
       // Erst die Geste starten, dann Capture versuchen: setPointerCapture wirft
       // NotFoundError, wenn der Pointer nicht (mehr) aktiv ist — das darf das
       // Ziehen nicht verhindern.
-      p.onDownM(m);
+      const griff = e.target instanceof Element ? e.target.closest('[data-feld-griff]') : null;
+      if (griff && p.onGriffDownM) p.onGriffDownM(Number(griff.getAttribute('data-feld-index')), griff.getAttribute('data-feld-griff') as GriffId, m);
+      else p.onDownM(m);
       try {
         e.currentTarget.setPointerCapture(e.pointerId); // Zeiger darf die Fläche verlassen
       } catch {
@@ -439,6 +442,7 @@ export function DachSvg({
   perspektivEditor,
   fotoOverlay,
   maxHoehe,
+  cancelRevision,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
@@ -461,6 +465,7 @@ export function DachSvg({
   geister?: GeistPosition[];
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
+  cancelRevision?: number;
   /** Während einer Zieh-Geste genügen leichte Modulkonturen. */
   modulDarstellung?: FotoModulDarstellung;
   tastatur?: TastaturProps;
@@ -474,6 +479,15 @@ export function DachSvg({
   // Dasselbe Dach kann gleichzeitig in Foto-Vorschau, Editor und PDF-Vorschau
   // vorkommen. Reacts useId trennt die dokumentweit geltenden SVG-Clip-IDs.
   const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
+  const perspektivZug = useRef<{ pointerId: number; ecken: Ecken } | null>(null);
+  const perspektivRef = useRef(perspektivEditor);
+  perspektivRef.current = perspektivEditor;
+  const perspektivZugAbbrechen = () => {
+    const zug = perspektivZug.current;
+    perspektivZug.current = null;
+    if (zug) perspektivRef.current?.onAendern(zug.ecken);
+  };
+  useEffect(() => { perspektivZugAbbrechen(); }, [cancelRevision]);
   // B = RAHMENbreite (bei 'schief' > Traufe): viewBox, Klick-Mapping, Homographie-
   // Quelle und Rand-Rechteck rechnen alle im Rahmen, damit die schiefe Fläche passt.
   const B = rahmenBreiteVon(flaeche);
@@ -602,6 +616,7 @@ export function DachSvg({
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                perspektivZug.current = { pointerId: e.pointerId, ecken: perspektivEditor.ecken };
                 perspektivEditor.onAuswaehlen(index);
                 e.currentTarget.ownerSVGElement?.focus();
                 try {
@@ -613,17 +628,19 @@ export function DachSvg({
                 if (p) setzePunkt(index, p);
               }}
               onPointerMove={(e) => {
-                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                if (perspektivZug.current?.pointerId !== e.pointerId) return;
                 const p = punktAusEvent(e);
                 if (p) setzePunkt(index, p);
               }}
               onPointerUp={(e) => {
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                perspektivZug.current = null;
+                if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
                   e.currentTarget.releasePointerCapture(e.pointerId);
                 }
               }}
               onPointerCancel={(e) => {
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                perspektivZugAbbrechen();
+                if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
                   e.currentTarget.releasePointerCapture(e.pointerId);
                 }
               }}
@@ -814,7 +831,11 @@ export function DachSvg({
                   width={0.7}
                   height={0.7}
                   fill="transparent"
+                  stroke="transparent"
+                  strokeWidth={44}
+                  vectorEffect="non-scaling-stroke"
                   data-feld-griff={id}
+                  data-feld-index={i}
                   {...overlayZeiger(GRIFF_CURSOR[id])}
                 />
                 <rect
@@ -1019,7 +1040,11 @@ export function DachSvg({
                         width={hit}
                         height={hit}
                         fill="transparent"
+                        stroke="transparent"
+                        strokeWidth={44}
+                        vectorEffect="non-scaling-stroke"
                         data-feld-griff={id}
+                        data-feld-index={i}
                         {...overlayZeiger(GRIFF_CURSOR[id])}
                       />
                       <rect

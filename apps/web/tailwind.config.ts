@@ -6,7 +6,10 @@ const config: Config = {
     extend: {
       colors: {
         // internes Dashboard-CI (SPEC §12)
-        akzent: '#e8603a',
+        // Dunklere Bedienfarbe für weißen Text und aktive Beschriftungen (>= 4,5:1).
+        // Das kanonische Logo und die Modul-Assets behalten ihre Originalfarben.
+        akzent: '#b83d1e',
+        marke: '#e8603a',
         grund: '#f4f6f8',
       },
     },

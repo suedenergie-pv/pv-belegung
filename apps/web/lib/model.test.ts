@@ -12,16 +12,37 @@ import {
   flachdachRichtungsLabel,
   migriereProjekt,
   migriereWorkflowSchritt,
+  massFreigabe,
+  massStatusVon,
   modulById,
   neueFlaeche,
+  neueGaubenFlaeche,
   neuesProjekt,
+  randVon,
   patchFlaechenGeometrie,
   perspektiveQuelle,
   projektFreigabe,
   zonenLabel,
+  type Flaeche,
 } from './model';
 
 describe('Export-Geometrie und Modulausrichtung', () => {
+  it('verwendet 0 cm für alle Flächenarten und neue Gauben, erhält aber individuelle Randwerte', () => {
+    const flaechen: Flaeche[] = [
+      neueFlaeche(1),
+      { ...neueFlaeche(2), art: 'fassade' },
+      { ...neueFlaeche(3), art: 'flachdach', flachdach: { aufstaenderung: 'ostwest', winkelDeg: 10 } },
+      { ...neueFlaeche(4), art: 'flachdach', flachdach: { aufstaenderung: 'sued', winkelDeg: 15 } },
+      neueGaubenFlaeche(5, 'E', 'flachdach'),
+      neueGaubenFlaeche(6, 'F', 'satteldach'),
+    ];
+    for (const flaeche of flaechen) {
+      expect(randVon(flaeche)).toBe(0);
+      expect(felderInput(flaeche, modulById(neuesProjekt().modulId)).randM).toBe(0);
+      expect(randVon({ ...flaeche, randM: 0.12 })).toBe(0.12);
+    }
+  });
+
   it('nummeriert gleichnamige Projekte und zeigt ihre Änderungszeit', () => {
     const projekt = neuesProjekt();
     projekt.kunde = 'Gleicher Kunde';
@@ -62,6 +83,7 @@ describe('Export-Geometrie und Modulausrichtung', () => {
     }];
     projekt.flaechen[0] = {
       ...projekt.flaechen[0]!,
+      massStatus: 'bestaetigt',
       felder: [{ xM: 0.05, yM: 0.05, breiteM: 9.9, hoeheM: 5.9, quer: false }],
       fotoZuordnungen: [{
         fotoId: 'foto-1',
@@ -217,6 +239,97 @@ describe('Export-Geometrie und Modulausrichtung', () => {
   });
 });
 
+describe('Maßbestätigung unabhängig von der Oberfläche', () => {
+  const feld = { xM: 0.05, yM: 0.05, breiteM: 9.9, hoeheM: 5.9, quer: false };
+
+  it('startet offen und akzeptiert grunddatenFertig nicht als Bestätigung', () => {
+    const flaeche = { ...neueFlaeche(1), grunddatenFertig: true };
+    expect(massFreigabe(flaeche)).toMatchObject({
+      status: 'offen', gueltig: true, belegen: false,
+    });
+    expect(massFreigabe({ ...flaeche, massStatus: 'bestaetigt' }).belegen).toBe(true);
+  });
+
+  it('migriert nur statuslose Flächen mit vorhandenen Feldern als Bestand', () => {
+    const projekt = neuesProjekt();
+    projekt.flaechen[0]!.felder = [feld];
+    delete projekt.flaechen[0]!.massStatus;
+    projekt.flaechen.push(neueFlaeche(2));
+    delete projekt.flaechen[1]!.massStatus;
+    const migriert = migriereProjekt(projekt);
+    expect(migriert.flaechen.map(massStatusVon)).toEqual(['bestand', 'offen']);
+    expect(massFreigabe(migriert.flaechen[0]!).belegen).toBe(true);
+    expect(migriereProjekt(migriert)).toEqual(migriert);
+  });
+
+  it('behält einen explizit offenen Status auch bei vorhandenen Feldern', () => {
+    const projekt = neuesProjekt();
+    projekt.flaechen[0]!.felder = [feld];
+    expect(migriereProjekt(projekt).flaechen[0]!.massStatus).toBe('offen');
+    expect(massStatusVon({ ...projekt.flaechen[0]!, massStatus: 'unbekannt' as Flaeche['massStatus'] })).toBe('offen');
+  });
+
+  it.each<Partial<Flaeche>>([
+    { breiteM: 0 }, { hoeheM: -1 }, { breiteM: Number.NaN }, { hoeheM: Infinity },
+    { neigungDeg: 91 }, { azimutDeg: -1 },
+    { dachform: 'trapez', firstBreiteM: 11 },
+    { dachform: 'schief', firstVersatzM: Infinity },
+    { art: 'flachdach', flachdach: { aufstaenderung: 'ostwest', winkelDeg: 10, pitchM: 0 } },
+  ])('gibt ungültige bestätigte Maße nicht frei: %j', (patch) => {
+    expect(massFreigabe({ ...neueFlaeche(1), massStatus: 'bestaetigt', ...patch })).toMatchObject({
+      gueltig: false, belegen: false, meldung: expect.any(String),
+    });
+  });
+
+  it('behält Walmspitze, schiefen First und kleine Gauben als gültige Geometrie', () => {
+    for (const patch of [
+      { dachform: 'trapez' as const, firstBreiteM: 0 },
+      { dachform: 'schief' as const, firstBreiteM: 14, firstVersatzM: -2 },
+      { breiteM: 0.8, hoeheM: 0.7, gaubenTyp: 'flachdach' as const },
+    ]) {
+      expect(massFreigabe({ ...neueFlaeche(1), massStatus: 'bestaetigt', ...patch }).belegen).toBe(true);
+    }
+  });
+
+  it('ändert bei Bestätigung niemals die Quelle oder Qualität einer Gaubenmessung', () => {
+    const projekt = neuesProjekt();
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!,
+      gaubenTyp: 'flachdach',
+      gaubenMessung: { quelle: 'nachbardach', qualitaet: 'geschaetzt' },
+      massStatus: 'bestaetigt',
+    };
+    expect(massFreigabe(projekt.flaechen[0]!).belegen).toBe(true);
+    expect(migriereProjekt(projekt).flaechen[0]!.gaubenMessung).toEqual({
+      quelle: 'nachbardach', qualitaet: 'geschaetzt',
+    });
+  });
+
+  it('verwendet für Belegung und PDF dieselbe Maßfreigabe und lässt Bestand durch', () => {
+    const projekt = neuesProjekt();
+    projekt.fotos = [{
+      id: 'foto-1', name: 'Dach', dataUrl: 'data:image/jpeg;base64,AA==', breitePx: 1000, hoehePx: 600,
+    }];
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!, felder: [feld],
+      fotoZuordnungen: [{
+        fotoId: 'foto-1', traufePx: null,
+        eckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]],
+        perspektiveBestaetigt: true, markierungFertig: true,
+      }],
+    };
+    for (const status of ['offen', 'bestaetigt', 'bestand'] as const) {
+      projekt.flaechen[0]!.massStatus = status;
+      expect(projektFreigabe(projekt).pdf).toBe(massFreigabe(projekt.flaechen[0]!).belegen);
+      expect(projektFreigabe(projekt).rohdaten).toBe(true);
+    }
+    projekt.flaechen[0]!.massStatus = 'offen';
+    expect(projektFreigabe(projekt).pdfFehler).toEqual([
+      expect.objectContaining({ id: 'masse-p1', sprungziel: 'belegung-p1' }),
+    ]);
+  });
+});
+
 describe('Mehrfoto-Sicherheit', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -306,10 +419,10 @@ describe('Mehrfoto-Sicherheit', () => {
     ];
 
     expect(downloadDateiname(projekt, 'belegungsplan', 'pdf')).toMatch(
-      /^belegungsplan-muller-sohne-\d+,\d{2}-kwp\.pdf$/,
+      /^belegungsplan-muller-sohne-\d+(?:,\d{1,2})?-kwp\.pdf$/,
     );
     expect(downloadDateiname(projekt, 'belegung', 'json')).toMatch(
-      /^belegung-muller-sohne-\d+,\d{2}-kwp\.json$/,
+      /^belegung-muller-sohne-\d+(?:,\d{1,2})?-kwp\.json$/,
     );
   });
 

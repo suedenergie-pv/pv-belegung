@@ -60,7 +60,7 @@ function KompaktZahl({
   const ergebnis = pruefe(eingabe);
   return (
     <label className="min-w-0">
-      <span className="mb-1 block whitespace-nowrap text-xs font-medium text-slate-500">{label}</span>
+      <span className="mb-1 block whitespace-nowrap text-xs font-medium text-slate-600">{label}</span>
       <span className="flex items-center gap-1">
         <input
           type="number"
@@ -79,7 +79,7 @@ function KompaktZahl({
             if (neu.wert !== undefined) onChange(neu.wert);
           }}
         />
-        {einheit && <span className="text-sm text-slate-500">{einheit}</span>}
+        {einheit && <span className="text-sm text-slate-600">{einheit}</span>}
       </span>
       {ergebnis.fehler && <span id={fehlerId} className="mt-1 block max-w-40 text-xs text-red-600">{ergebnis.fehler}</span>}
     </label>
@@ -92,12 +92,14 @@ export function SchrittFlaechen({
   nurFlaecheId,
   eingebettet = false,
   onFertig,
+  entwurfsModus = false,
 }: {
   projekt: Projekt;
   onChange: (p: Projekt) => void;
   nurFlaecheId?: string;
   eingebettet?: boolean;
   onFertig?: (flaecheId: string) => void;
+  entwurfsModus?: boolean;
 }) {
   const setFlaeche = (id: string, patch: Partial<Flaeche>) =>
     onChange({
@@ -124,7 +126,7 @@ export function SchrittFlaechen({
         ? `die ${perspektiven === 1 ? 'Fotoperspektive bleibt zugeordnet, muss' : 'Fotoperspektiven bleiben zugeordnet, müssen'} neu bestätigt werden`
         : '',
     ].filter(Boolean);
-    if (folgen.length && !window.confirm(`Dachform ändern? ${folgen.join('; ')}.`)) return;
+    if (!entwurfsModus && folgen.length && !window.confirm(`Dachform ändern? ${folgen.join('; ')}.`)) return;
     const wechselReset: Partial<Flaeche> = {
       felder: [],
       inaktiv: [],
@@ -177,7 +179,7 @@ export function SchrittFlaechen({
         ? `die ${perspektiven === 1 ? 'Fotoperspektive bleibt zugeordnet, muss' : 'Fotoperspektiven bleiben zugeordnet, müssen'} neu bestätigt werden`
         : '',
     ].filter(Boolean);
-    if (folgen.length && !window.confirm(`Flächenart ändern? ${folgen.join('; ')}.`)) return;
+    if (!entwurfsModus && folgen.length && !window.confirm(`Flächenart ändern? ${folgen.join('; ')}.`)) return;
     const patch: Partial<Flaeche> = {
       art,
       randM: undefined,
@@ -234,7 +236,7 @@ export function SchrittFlaechen({
               {hauptflaechen.length > 1 && (
                 <button
                   type="button"
-                  className="text-sm font-medium text-red-500 hover:text-red-600"
+                  className="text-sm font-medium text-red-700 hover:text-red-600"
                   onClick={() =>
                     onChange({
                       ...projekt,
@@ -261,7 +263,7 @@ export function SchrittFlaechen({
 
           <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
             <label>
-              <span className="mb-1 block text-xs font-medium text-slate-500">Art der Fläche</span>
+              <span className="mb-1 block text-xs font-medium text-slate-600">Art der Fläche</span>
               <select
                 aria-label="Art der Fläche"
                 value={artVon(f)}
@@ -289,7 +291,7 @@ export function SchrittFlaechen({
             />
             {artVon(f) !== 'flachdach' && (
               <label>
-                <span className="mb-1 block text-xs font-medium text-slate-500">Dachform</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">Dachform</span>
                 <select
                   aria-label="Dachform"
                   value={f.dachform ?? 'rechteck'}
@@ -304,7 +306,7 @@ export function SchrittFlaechen({
             )}
             {artVon(f) !== 'flachdach' && (
               <label>
-                <span className="mb-1 block text-xs font-medium text-slate-500">Ausrichtung</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">Ausrichtung</span>
                 <select
                   aria-label="Ausrichtung"
                   value={AZIMUT_PRESETS.some((a) => a.deg === f.azimutDeg) ? f.azimutDeg : 'frei'}
@@ -377,7 +379,7 @@ export function SchrittFlaechen({
           {artVon(f) === 'flachdach' && f.flachdach && (
             <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 px-3 py-2">
               <label>
-                <span className="mb-1 block text-xs font-medium text-slate-500">Aufständerung</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">Aufständerung</span>
                 <select
                   aria-label="Aufständerung"
                   value={`${f.flachdach.aufstaenderung}-${f.flachdach.winkelDeg}`}
@@ -404,7 +406,7 @@ export function SchrittFlaechen({
                 onChange={(pitchM) => setFlaeche(f.id, { flachdach: { ...f.flachdach!, pitchM } })}
               />
               <label>
-                <span className="mb-1 block text-xs font-medium text-slate-500">Süden im Foto</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">Süden im Foto</span>
                 <select
                   aria-label="Südrichtung im Foto"
                   value={flachdachSuedRichtung(f)}
@@ -421,14 +423,14 @@ export function SchrittFlaechen({
                 </select>
               </label>
               <span className="pb-2 text-sm font-semibold text-slate-700">{flachdachRichtungsLabel(f)}</span>
-              <span className="pb-2 text-xs text-slate-500">Rand-Default {Math.round(randDefaultVon(f) * 100)} cm</span>
+              <span className="pb-2 text-xs text-slate-600">Rand-Default {Math.round(randDefaultVon(f) * 100)} cm</span>
             </div>
           )}
 
           <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <summary className="cursor-pointer text-sm font-medium text-slate-600">Technische Details</summary>
             <label className="mt-3 block max-w-xs">
-              <span className="mb-1 block text-xs font-medium text-slate-500">
+              <span className="mb-1 block text-xs font-medium text-slate-600">
                 {artVon(f) === 'fassade' ? 'Fassaden-Oberfläche' : artVon(f) === 'flachdach' ? 'Dachbelag' : 'Dacheindeckung'}
               </span>
               <select
@@ -440,7 +442,7 @@ export function SchrittFlaechen({
                 {farbenFuer(artVon(f)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </label>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-slate-600">
               Die Oberfläche wird nur für technische Projektdaten gespeichert; die Belegung erscheint ausschließlich auf dem Drohnenfoto.
             </p>
           </details>
@@ -457,7 +459,7 @@ export function SchrittFlaechen({
       {!nurFlaecheId && (
         <button
           type="button"
-          className="h-12 w-full rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500 hover:border-akzent hover:text-akzent"
+          className="h-12 w-full rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-600 hover:border-akzent hover:text-akzent"
           onClick={() => {
             const nr = naechsteNr();
             onChange({
@@ -471,7 +473,7 @@ export function SchrittFlaechen({
       )}
 
       {!nurFlaecheId && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600">
           Maße bitte als Aufmaß-Werte eingeben. Anschließend jeder Dachfläche mindestens ein Drohnenfoto zuordnen und kalibrieren; Gauben werden direkt im Foto ihres Hauptdachs angelegt.
         </p>
       )}
