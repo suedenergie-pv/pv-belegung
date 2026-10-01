@@ -42,6 +42,7 @@ import {
   aktualisiereGaubenAussparungen,
   wendeGaubenMarkierungAn,
 } from '../lib/gauben-geometrie';
+import { gaubenFotoUmriss } from '../lib/gauben-umriss';
 import {
   pruefePerspektive,
   traufeWechseln,
@@ -487,14 +488,12 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
                     }
                   : z,
               ),
-              // Gauben-Markierungen sind an die erste (definierende) Perspektive
-              // gekoppelt. Der Austausch einer Zusatzperspektive darf sie nicht löschen.
-              gaubenAussparungen:
-                zuordnungen[0]?.fotoId === zielId
-                  ? f.gaubenAussparungen?.map(
-                    ({ fotoEckenPx: _altePixel, ...a }) => a,
-                    )
-                  : f.gaubenAussparungen,
+              // Nur die Pixelkontur der tatsächlich ersetzten Quellperspektive lösen.
+              gaubenAussparungen: f.gaubenAussparungen?.map((a) => {
+                if ((a.fotoId ?? zuordnungen[0]?.fotoId) !== zielId) return a;
+                const { fotoEckenPx: _altePixel, fotoUmrissPx: _alterUmriss, ...rest } = a;
+                return rest;
+              }),
             };
           }),
         };
@@ -647,12 +646,12 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
         // automatisch, statt als unsichtbares altes Loch liegenzubleiben.
         if (
           !aktuell.gaubenTyp &&
-          foto?.eckenPx &&
-          fotoZuordnungenVon(aktuell)[0]?.fotoId === fotoId
+          foto?.eckenPx
         ) {
           neu.gaubenAussparungen = aktualisiereGaubenAussparungen(
             { ...aktuell, ...rest, foto },
             aktuell.gaubenAussparungen,
+            fotoId,
           );
         }
       }
@@ -741,6 +740,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
                     gaubenGruppeId: gruppeId,
                     rechteck: daten.aussparung,
                     fotoEckenPx: daten.aussen,
+                    fotoId, fotoUmrissPx: gaubenFotoUmriss(daten.aussen, daten.seiten),
                   },
                 ],
                 inaktiv: [],
@@ -1334,7 +1334,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
   const fotoEff = foto && perspektiveHier ? { ...foto, eckenPx: perspektiveHier.letzteGueltige, perspektiveBestaetigt: true } : foto;
   const fEffBasis = mitDrag(geometrieVorschau?.id === f.id ? geometrieVorschau : f);
   let fEff: Flaeche = fotoEff ? { ...fEffBasis, foto: fotoEff, markierungFertig: fotoZuordnung?.markierungFertig } : fEffBasis;
-  if (perspektiveHier && !f.gaubenTyp) fEff = { ...fEff, gaubenAussparungen: aktualisiereGaubenAussparungen(fEff, f.gaubenAussparungen) };
+  if (perspektiveHier && !f.gaubenTyp) fEff = { ...fEff, gaubenAussparungen: aktualisiereGaubenAussparungen(fEff, f.gaubenAussparungen, fotoId) };
   const raster = rasterFuer(fEff, modul);
   const aktiv = aktiveModule(fEff, raster);
   const mass = massFreigabe(f);

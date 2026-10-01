@@ -5,6 +5,8 @@ import {
   type Ecken,
   type Punkt,
 } from './foto-geometrie';
+import type { HindernisM } from '@pv-belegung/engine';
+import { gaubenFotoUmriss } from './gauben-umriss';
 import {
   fotoZuordnungenVon,
   perspektiveQuelle,
@@ -13,7 +15,6 @@ import {
   type FotoZuordnung,
   type GaubenAussparung,
   type Projekt,
-  type RechteckM,
 } from './model';
 
 const distanz = (a: Punkt, b: Punkt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -23,7 +24,7 @@ const positivesMass = (wert: number) => Math.max(0.1, rundeCm(wert));
 export interface GaubenMarkierung {
   aussen: Ecken;
   seiten?: { links: Ecken; rechts: Ecken };
-  aussparung: RechteckM;
+  aussparung: HindernisM;
 }
 
 export type RekonstruierteGaubenPunkte =
@@ -69,11 +70,11 @@ export function gaubenMasseAusElternfoto(
   };
 }
 
-/** Konservative rechteckige Aussparung des sichtbaren Gaubenumrisses im Hauptdach. */
+/** Exakte Gaubenkontur im Hauptdach; der alte Rechteckrahmen bleibt nur Metadatum. */
 export function gaubenAussparungAusFoto(
   eltern: Flaeche,
-  fotoEcken: Ecken,
-): RechteckM | null {
+  fotoEcken: readonly Punkt[],
+): HindernisM | null {
   const p = gaubenPunkteAufElternflaeche(eltern, fotoEcken);
   if (!p) return null;
   const xs = p.map((x) => x[0]);
@@ -88,6 +89,7 @@ export function gaubenAussparungAusFoto(
     yM: rundeCm(oben),
     breiteM: positivesMass(rechts - links),
     hoeheM: positivesMass(unten - oben),
+    umrissM: p,
   };
 }
 
@@ -98,11 +100,14 @@ export function gaubenAussparungAusFoto(
 export function aktualisiereGaubenAussparungen(
   eltern: Flaeche,
   aussparungen: readonly GaubenAussparung[] | undefined,
+  fotoId?: string,
 ): GaubenAussparung[] | undefined {
   if (!aussparungen) return undefined;
   return aussparungen.map((a) => {
-    if (!a.fotoEckenPx) return a;
-    const rechteck = gaubenAussparungAusFoto(eltern, a.fotoEckenPx);
+    if (fotoId && (a.fotoId ?? fotoZuordnungenVon(eltern)[0]?.fotoId) !== fotoId) return a;
+    const fotoUmriss = a.fotoUmrissPx ?? a.fotoEckenPx;
+    if (!fotoUmriss) return a;
+    const rechteck = gaubenAussparungAusFoto(eltern, fotoUmriss);
     return rechteck ? { ...a, rechteck } : a;
   });
 }
@@ -216,13 +221,14 @@ export function wendeGaubenMarkierungAn(
             gaubenAussparungen: vorhanden
               ? bisher.map((a) =>
                   a.gaubenGruppeId === gruppenId
-                    ? { ...a, rechteck: markierung.aussparung, fotoEckenPx: markierung.aussen }
+                    ? { ...a, rechteck: markierung.aussparung, fotoEckenPx: markierung.aussen, fotoId, fotoUmrissPx: gaubenFotoUmriss(markierung.aussen, markierung.seiten) }
                     : a,
                 )
               : [...bisher, {
                   gaubenGruppeId: gruppenId,
                   rechteck: markierung.aussparung,
                   fotoEckenPx: markierung.aussen,
+                  fotoId, fotoUmrissPx: gaubenFotoUmriss(markierung.aussen, markierung.seiten),
                 }],
           };
         }

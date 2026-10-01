@@ -1,4 +1,4 @@
-import { rechteckImUmriss, rechteckeUeberlappen, type PunktM, type RechteckM } from './geometrie';
+import { rechteckImUmriss, rechteckeUeberlappen, rechteckUeberlapptHindernis, type HindernisM, type PunktM, type RechteckM } from './geometrie';
 import type { ModuleType } from './types';
 
 /**
@@ -31,7 +31,7 @@ export interface BelegungInput {
    */
   umrissM?: readonly PunktM[];
   /** Hindernisse (Kamin, Fenster, SAT …): schneidende Module entfallen. */
-  hindernisseM?: readonly RechteckM[];
+  hindernisseM?: readonly HindernisM[];
   /**
    * Positions-Optimierung (Default true): bei Umriss das GANZE Raster als Block
    * horizontal so verschieben, dass insgesamt die meisten Module passen — Spalten
@@ -186,7 +186,7 @@ function dimsVon(module: ModuleType, a: 'hoch' | 'quer'): { w: number; h: number
  */
 function zonenPruefer(input: {
   umrissM?: readonly PunktM[];
-  hindernisseM?: readonly RechteckM[];
+  hindernisseM?: readonly HindernisM[];
   randM: number;
 }): (xM: number, yM: number, w: number, h: number) => boolean {
   const umriss = input.umrissM && input.umrissM.length >= 3 ? input.umrissM : null;
@@ -194,7 +194,7 @@ function zonenPruefer(input: {
   return (xM, yM, w, h) => {
     const rect: RechteckM = { xM, yM, breiteM: w, hoeheM: h };
     if (umriss && !rechteckImUmriss(rect, umriss, input.randM)) return false;
-    return !hindernisse.some((hi) => rechteckeUeberlappen(rect, hi));
+    return !hindernisse.some((hi) => rechteckUeberlapptHindernis(rect, hi));
   };
 }
 
@@ -462,7 +462,7 @@ export function besterVersatz(input: BelegungInput): { versatzXM: number; versat
   const gueltigDim = (xM: number, yM: number): boolean => {
     const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
     if (umriss && !rechteckImUmriss(rect, umriss, randM)) return false;
-    return !hindernisse.some((h) => rechteckeUeberlappen(rect, h));
+    return !hindernisse.some((h) => rechteckUeberlapptHindernis(rect, h));
   };
   const yPos: number[] = [];
   for (let row = 0; row < rows; row++) yPos.push(y0 + row * pitchY);
@@ -494,7 +494,7 @@ export function besterVersatz(input: BelegungInput): { versatzXM: number; versat
       for (const xM of xs) {
         const rect: RechteckM = { xM, yM, breiteM: modulBreiteM, hoeheM: modulHoeheM };
         if (umriss && !rechteckImUmriss(rect, umriss, randM)) continue;
-        if (hindernisse.some((h) => rechteckeUeberlappen(rect, h))) continue;
+        if (hindernisse.some((h) => rechteckUeberlapptHindernis(rect, h))) continue;
         n++;
       }
     return n;

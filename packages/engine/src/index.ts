@@ -40,11 +40,13 @@ export {
   punktInPolygon,
   rechteckImUmriss,
   rechteckeUeberlappen,
+  rechteckUeberlapptHindernis,
+  hindernisUmriss,
   schraegGeometrie,
   trapezUmriss,
   type SchraegGeometrie,
 } from './geometrie';
-export type { PunktM, RechteckM } from './geometrie';
+export type { PunktM, RechteckM, HindernisM } from './geometrie';
 export { buildPlanCalc, orientationKey } from './plan';
 export type { MpptCalc, PlanCalc, StringCalc } from './plan';
 export { checkStringPlan } from './engine';

@@ -42,3 +42,11 @@ Native iPad-Praxisabnahme bleibt offen. Der fachliche App-/Engine-Stand wird dur
 - Archiv SHA-256 `173c6cd9504341dd189f56cfa93d0625ab9eae412146fff00d0f97b8689caff4`; Index SHA-256 `189a0fc64275613e2df2b9bdeca25b5fbb8d347d9c0a547180fb8877d2809646`. Nach atomarer Umschaltung alle 33 öffentlich ausgelieferten Dateien ohne Hashabweichung.
 - Direkte Prüfung auf `https://belegung.suedenergie-pv.de/`: 4/4 hybride Eingabefälle und 2/2 Desktop-/Smartphone-Smokes einschließlich Belegung, Rand 0, PDF und Reload bestanden. Lokale Evidence unter `.release/mouse-touch-qa.json`, `.release/mouse-touch-review.md` und `.release/mouse-touch-live/`.
 - Native iPad-Praxisabnahme bleibt offen. Engine, Geometrie und Gestaltung wurden durch diese Korrektur nicht geändert.
+
+## Exakte Gaubenaussparung am 01.10.2026
+
+- Aktiver Nachfolgerelease: `/var/www/belegung/releases/20261001-gaubenkontur`; Rollback: `20261001-mouse-touch`.
+- Aussparung und Gaube verwenden dieselbe Außenkontur, bei Satteldachgauben einschließlich beider Firstenden. Engine und Renderer verwenden dasselbe Polygon. Rekonstruierbare Altgauben werden aus ihren gespeicherten Seiten übernommen, auch auf einer zweiten Fotoperspektive.
+- 343 Unit-/Engine-Tests, Typecheck, isolierter Build und unabhängiger Review bestanden. Lokale Headless-QA: 6 hybride Eingabefälle auf Desktop, Tablet und Smartphone mit exakten Konturprüfungen sowie 2 VPS-Smokes. Echte Drohnenfoto-Screenshots auf allen drei Größen geöffnet; privates Foto nicht veröffentlicht.
+- Archiv SHA-256 `5d5cf436e4ae7c38d4a7a20884ec1bfe4610819fadd7931b92a89604a51d2305`; Index SHA-256 `65f8383834861adb06ab8dc7257f251aaea1492e0d026af170f49b406c2022df`. Atomare Aktivierung und HTTPS-Prüfung auf dem VPS erfolgreich, alle 33 öffentlichen Dateien stimmen mit dem geprüften Artefakt überein.
+- Direkte öffentliche Browserprüfung: 6/6 Eingabe-/Gaubentests und 2/2 Belegungs-/PDF-Smokes. Evidence: `.release/gaube-qa.json`, `.release/gaube-review.md`, `.release/gaube-live/`. Native iPad-Prüfung bleibt offen.

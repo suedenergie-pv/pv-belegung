@@ -87,12 +87,33 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
   await ziehe(page, gaube, .5, .8, .02, 0);
   await expect(griff).not.toHaveAttribute('cx', vorGaube!);
   await page.getByRole('button', { name: 'Gaube anlegen & fertig', exact: true }).click();
+  await page.getByRole('button', { name: 'Auswählen', exact: true }).click();
+  // Die Hauptdach-Aussparung muss exakt auf der Silhouette beider Seiten liegen.
+  await expect(page.getByRole('status').filter({ hasText: 'In diesem Browser gespeichert' })).toBeVisible();
+  const kontur = await page.evaluate(() => {
+    const db = JSON.parse(localStorage.getItem('pv-belegung-projekte-v2')!);
+    return db.projekte.find((p: { id: string }) => p.id === db.aktivId).projekt.flaechen[0].gaubenAussparungen[0];
+  });
+  expect(kontur.fotoUmrissPx).toHaveLength(6);
+  expect(kontur.rechteck.umrissM).toHaveLength(6);
+  const path = await page.getByTestId('hindernis-kontur').first().getAttribute('d');
+  const pixel = path!.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)!.map(Number);
+  expect(pixel).toHaveLength(12);
+  kontur.fotoUmrissPx.flat().forEach((p: number, i: number) => expect(pixel[i]).toBeCloseTo(p, 1));
+  await page.screenshot({ path: resolve(ordner, `${info.project.name}-${coarse}-gaubenkontur.png`) });
   // Die separate Perspektivkorrektur verwendet dieselbe direkte Mausbedienung.
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
   await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).click();
   const polygon = page.getByTestId('perspektiv-griffe').locator('polygon');
   const vorPerspektive = await polygon.getAttribute('points');
-  await ziehe(page, page.getByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ }), .1, .85, .02, -.02);
+  const perspektivEcke = page.getByRole('button', { name: 'Perspektive Ecke 1', exact: true });
+  await perspektivEcke.hover();
+  await expect(touchLeiste).toHaveCount(0);
+  const griffBox = (await perspektivEcke.boundingBox())!;
+  await page.mouse.move(griffBox.x + griffBox.width / 2, griffBox.y + griffBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(griffBox.x + griffBox.width / 2 + 10, griffBox.y + griffBox.height / 2 - 10, { steps: 5 });
+  await page.mouse.up();
   await expect(polygon).not.toHaveAttribute('points', vorPerspektive!);
   await expect(touchLeiste).toHaveCount(0);
   await page.getByTestId('perspektiv-editor-steuerung').getByRole('button', { name: 'Abbrechen', exact: true }).click();

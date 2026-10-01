@@ -16,6 +16,11 @@ export interface RechteckM {
   hoeheM: number;
 }
 
+/** Exakte Hinderniskontur; Rechteckwerte bleiben als kompatibler Rahmen erhalten. */
+export interface HindernisM extends RechteckM {
+  umrissM?: readonly PunktM[];
+}
+
 /** Toleranz 0,1 mm — Modulkanten dürfen exakt auf der Umrisslinie liegen */
 const EPS_M = 1e-4;
 
@@ -191,4 +196,41 @@ export function rechteckeUeberlappen(a: RechteckM, b: RechteckM): boolean {
     a.yM < b.yM + b.hoeheM - EPS_M &&
     a.yM + a.hoeheM > b.yM + EPS_M
   );
+}
+
+export function hindernisUmriss(h: HindernisM): readonly PunktM[] {
+  return h.umrissM && h.umrissM.length >= 3 ? h.umrissM : rechteckEcken(h);
+}
+
+/** Polygon am Modulrechteck schneiden; nur positive Schnittfläche sperrt Module. */
+export function rechteckUeberlapptHindernis(r: RechteckM, h: HindernisM): boolean {
+  if (!h.umrissM || h.umrissM.length < 3) return rechteckeUeberlappen(r, h);
+  let polygon = [...h.umrissM];
+  // Derselbe 0,1-mm-Spielraum wie bei rechteckigen Hindernissen.
+  const grenzen: Array<{ achse: 0 | 1; grenze: number; richtung: number }> = [
+    { achse: 0, grenze: r.xM + EPS_M, richtung: 1 },
+    { achse: 0, grenze: r.xM + r.breiteM - EPS_M, richtung: -1 },
+    { achse: 1, grenze: r.yM + EPS_M, richtung: 1 },
+    { achse: 1, grenze: r.yM + r.hoeheM - EPS_M, richtung: -1 },
+  ];
+  for (const { achse, grenze, richtung } of grenzen) {
+    const neu: PunktM[] = [];
+    for (let i = 0; i < polygon.length; i++) {
+      const a = polygon[i]!, b = polygon[(i + 1) % polygon.length]!;
+      const aInnen = (a[achse] - grenze) * richtung >= 0;
+      const bInnen = (b[achse] - grenze) * richtung >= 0;
+      if (aInnen) neu.push(a);
+      if (aInnen !== bInnen) {
+        const t = (grenze - a[achse]) / (b[achse] - a[achse]);
+        neu.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+      }
+    }
+    polygon = neu;
+    if (polygon.length < 3) return false;
+  }
+  const doppelteFlaeche = polygon.reduce((summe, a, i) => {
+    const b = polygon[(i + 1) % polygon.length]!;
+    return summe + a[0] * b[1] - a[1] * b[0];
+  }, 0);
+  return Math.abs(doppelteFlaeche) > EPS_M * EPS_M;
 }

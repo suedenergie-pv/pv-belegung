@@ -13,6 +13,8 @@ import {
   type GaubenMarkierung,
   type GaubenSeitenMass,
 } from '../lib/gauben-geometrie';
+import { gaubenFotoUmriss } from '../lib/gauben-umriss';
+import type { HindernisM } from '@pv-belegung/engine';
 import {
   pruefePerspektive,
   sortiereEcken,
@@ -31,7 +33,6 @@ import {
   type GaubenMessung,
   type GaubenTyp,
   type Projekt,
-  type RechteckM,
 } from '../lib/model';
 import { ModulAsset } from './DachSvg';
 import { fotoFlaechenInhalt } from './GesamtSvg';
@@ -46,7 +47,7 @@ export interface NeueGaubeAusFoto {
   breiteM: number;
   hoeheM: number;
   messung: GaubenMessung;
-  aussparung: RechteckM;
+  aussparung: HindernisM;
 }
 
 export type AktualisierteGaubenMarkierung = GaubenMarkierung;
@@ -342,12 +343,12 @@ export function GaubenEditor({
   const markierungAusPunkten = (kontrollpunkte: readonly Punkt[]): GaubenMarkierung | null => {
     if (kontrollpunkte.length < erwartet) return null;
     const aussen = kontrollpunkte.slice(0, 4).map(([x, y]) => [x, y] as Punkt) as Ecken;
-    const aussparung = gaubenAussparungAusFoto(eltern, aussen);
-    if (!aussparung) return null;
     const seiten = typ === 'satteldach'
       ? satteldachSeitenEcken(aussen, [kontrollpunkte[4]!, kontrollpunkte[5]!], eltern)
       : undefined;
     if (typ === 'satteldach' && !seiten) return null;
+    const aussparung = gaubenAussparungAusFoto(eltern, gaubenFotoUmriss(aussen, seiten ?? undefined));
+    if (!aussparung) return null;
     return { aussen, ...(seiten ? { seiten } : {}), aussparung };
   };
 

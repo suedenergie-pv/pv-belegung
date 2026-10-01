@@ -1,6 +1,6 @@
 'use client';
 
-import { posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
+import { hindernisUmriss, posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
 import React, { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   homographie,
@@ -750,12 +750,10 @@ export function DachSvg({
         />
       )}
       {hindernisse.map((h, i) => (
-        <rect
+        <polygon
           key={i}
-          x={h.xM}
-          y={h.yM}
-          width={h.breiteM}
-          height={h.hoeheM}
+          data-testid="hindernis-kontur"
+          points={hindernisUmriss(h).map(([x, y]) => `${x},${y}`).join(' ')}
           fill="rgba(239,68,68,0.35)"
           stroke="#ef4444"
           strokeWidth={0.03}
@@ -1188,10 +1186,11 @@ export function DachSvg({
             })()}
             {!druck &&
               hindernisse.map((hi, i) => {
-                const pfad = projPfad(h, rechteck(hi.xM, hi.yM, hi.breiteM, hi.hoeheM));
+                const pfad = projPfad(h, hindernisUmriss(hi).map(([x, y]) => [x, y]));
                 return pfad.ok ? (
                   <path
                     key={i}
+                    data-testid="hindernis-kontur"
                     d={pfad.d}
                     fill="rgba(239,68,68,0.35)"
                     stroke="#ef4444"

@@ -1,4 +1,5 @@
-import { pruefePerspektive, type Ecken } from './foto-geometrie';
+import { inverseHomographie, projiziere, pruefePerspektive, sortiereEcken, type Ecken, type Punkt } from './foto-geometrie';
+import { gaubenFotoUmriss } from './gauben-umriss';
 import {
   MODULES,
   INVERTERS,
@@ -16,6 +17,7 @@ import {
   type ModuleType,
   type PunktM,
   type RechteckM,
+  type HindernisM,
   type SchraegGeometrie,
   type StringPlanInput,
   type StringPlanResult,
@@ -65,7 +67,10 @@ export interface GaubenMessung {
 /** Automatisch mit einer Gaubengruppe verknüpfte Aussparung auf dem Hauptdach. */
 export interface GaubenAussparung {
   gaubenGruppeId: string;
-  rechteck: RechteckM;
+  rechteck: HindernisM;
+  fotoId?: string;
+  /** Tatsächliche Silhouette, bei Satteldachgauben einschließlich Firstenden. */
+  fotoUmrissPx?: Punkt[];
   /**
    * Sichtbarer Außenumriss im gemeinsamen Foto. Damit kann die gekoppelte
    * Aussparung neu berechnet werden, wenn die Perspektive des Mutterdachs
@@ -713,7 +718,7 @@ export function patchFlaechenGeometrie(f: Flaeche, patch: Partial<Flaeche>): Fla
     hindernisse: neu.hindernisse?.map(rechteck),
     gaubenAussparungen: neu.gaubenAussparungen?.map((a) => ({
       ...a,
-      rechteck: rechteck(a.rechteck),
+      rechteck: { ...rechteck(a.rechteck), ...(a.rechteck.umrissM ? { umrissM: a.rechteck.umrissM.map((p) => [p[0] * sx, p[1] * sy] as PunktM) } : {}) },
     })),
   };
 }
@@ -728,7 +733,7 @@ export function aktiveModule(f: Flaeche, raster: BelegungRaster): number {
 }
 
 /** Manuelle Hindernisse plus automatisch gekoppelte Gaubenfüße für die Engine. */
-export function hindernisseVon(f: Flaeche): RechteckM[] | undefined {
+export function hindernisseVon(f: Flaeche): HindernisM[] | undefined {
   const alle = [
     ...(f.hindernisse ?? []),
     ...(f.gaubenAussparungen ?? []).map((a) => a.rechteck),
@@ -1268,6 +1273,37 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
 export function migriereProjekt(roh: Projekt): Projekt {
   const projekt: Projekt = { ...neuesProjekt(), ...roh };
   migriereFotoModell(roh, projekt);
+  // Bestand: Fotoecken statt der früheren vergrößerten Rechteck-Aussparung nutzen.
+  projekt.flaechen = projekt.flaechen.map((f) => ({
+    ...f,
+    ...(f.gaubenAussparungen ? { gaubenAussparungen: f.gaubenAussparungen.map((a) => {
+      if (a.rechteck.umrissM) return a;
+      const gruppe = projekt.flaechen.filter((g) => g.elternFlaecheId === f.id && g.gaubenGruppeId === a.gaubenGruppeId);
+      const quellFotoId = a.fotoId ?? gruppe.flatMap(fotoZuordnungenVon).find((z) => fotoZuordnungenVon(f).some((p) => p.fotoId === z.fotoId))?.fotoId;
+      const zuordnung = fotoZuordnungenVon(f).find((z) => !quellFotoId || z.fotoId === quellFotoId);
+      if (!zuordnung?.eckenPx) return a;
+      const seite = (name: GaubenSeite) => fotoZuordnungenVon(gruppe.find((g) => g.gaubenSeite === name) ?? f).find((z) => z.fotoId === zuordnung.fotoId)?.eckenPx;
+      const links = gruppe.some((g) => g.gaubenSeite === 'links') ? seite('links') : undefined;
+      const rechts = gruppe.some((g) => g.gaubenSeite === 'rechts') ? seite('rechts') : undefined;
+      const flach = gruppe.find((g) => g.gaubenTyp === 'flachdach');
+      const flacheEcken = flach && fotoZuordnungenVon(flach).find((z) => z.fotoId === zuordnung.fotoId)?.eckenPx;
+      // Frühe Stände speicherten nur den Rechteckrahmen am Hauptdach.
+      // Die zugehörigen Kindflächen besitzen weiterhin die echte Fotogeometrie.
+      const gleich = (p: Punkt, q: Punkt) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-4;
+      const aussenPunkte = links && rechts ? [
+        ...links.filter((p) => !rechts.some((q) => gleich(p, q))),
+        ...rechts.filter((p) => !links.some((q) => gleich(p, q))),
+      ] : [];
+      const fotoEckenPx = a.fotoEckenPx ?? flacheEcken ?? (aussenPunkte.length === 4 ? sortiereEcken(aussenPunkte as Ecken) : undefined);
+      if (!fotoEckenPx) return a;
+      const fotoUmrissPx = a.fotoUmrissPx ?? gaubenFotoUmriss(fotoEckenPx, links && rechts ? { links, rechts } : undefined);
+      const inv = inverseHomographie(rahmenBreiteVon(f), f.hoeheM, zuordnung.eckenPx, perspektiveQuelle(f));
+      if (!inv) return a;
+      const umrissM = fotoUmrissPx.map((p) => projiziere(inv, p));
+      if (!umrissM.every((p) => p.every(Number.isFinite))) return a;
+      return { ...a, fotoId: zuordnung.fotoId, fotoEckenPx, fotoUmrissPx, rechteck: { ...a.rechteck, umrissM } };
+    }) } : {}),
+  }));
   const flaechenIds = new Set(projekt.flaechen.map((f) => f.id));
   projekt.flaechen = projekt.flaechen.map((f) => {
     const neu = { ...f };

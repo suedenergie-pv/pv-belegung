@@ -10,7 +10,8 @@ import {
   satteldachSeitenEcken,
   wendeGaubenMarkierungAn,
 } from './gauben-geometrie';
-import { neueFlaeche, neueGaubenFlaeche, neuesProjekt, type DachFoto } from './model';
+import { migriereProjekt, neueFlaeche, neueGaubenFlaeche, neuesProjekt, patchFlaechenGeometrie, type DachFoto } from './model';
+import { gaubenFotoUmriss } from './gauben-umriss';
 
 const foto: DachFoto = {
   dataUrl: 'data:image/jpeg;base64,test',
@@ -38,8 +39,8 @@ describe('Gaubengeometrie im Elternfoto', () => {
     expect(gaubenMasseAusElternfoto(eltern, gaube)).toEqual({ breiteM: 4, hoeheM: 3 });
   });
 
-  it('erzeugt eine konservative gekoppelte Aussparung auf dem Hauptdach', () => {
-    expect(gaubenAussparungAusFoto(eltern, gaube)).toEqual({
+  it('erhält den kompatiblen Rahmen neben der exakten Kontur', () => {
+    expect(gaubenAussparungAusFoto(eltern, gaube)).toMatchObject({
       xM: 2,
       yM: 2,
       breiteM: 4,
@@ -73,12 +74,62 @@ describe('Gaubengeometrie im Elternfoto', () => {
         fotoEckenPx: gaube,
       }],
     );
-    expect(aktualisiert?.[0]?.rechteck).toEqual({
+    expect(aktualisiert?.[0]?.rechteck).toMatchObject({
       xM: 2.5,
       yM: 2,
       breiteM: 5,
       hoeheM: 3,
     });
+  });
+
+  it('projiziert eine schiefe Gaubenkontur ohne andere Ecken exakt zurück', () => {
+    const schief: Ecken = [[220, 520], [640, 470], [550, 170], [260, 220]];
+    const aussparung = gaubenAussparungAusFoto(eltern, schief)!;
+    expect(aussparung.umrissM).toHaveLength(4);
+    const h = homographie(10, 6, foto.eckenPx!)!;
+    aussparung.umrissM!.forEach((p, i) => {
+      const px = projiziere(h, p as Punkt);
+      expect(px[0]).toBeCloseTo(schief[i]![0], 8);
+      expect(px[1]).toBeCloseTo(schief[i]![1], 8);
+    });
+  });
+
+  it('behält bei Satteldachgauben beide Firstenden als Außenkontur und migriert Bestände', () => {
+    const first: [Punkt, Punkt] = [[400, 170], [400, 540]];
+    const seiten = satteldachSeitenEcken(gaube, first, eltern)!;
+    const umriss = gaubenFotoUmriss(gaube, seiten);
+    expect(umriss).toHaveLength(6);
+    expect(umriss).toEqual(expect.arrayContaining([...gaube, ...first]));
+    const mutter = { ...eltern, foto: undefined, fotoZuordnungen: [
+      { fotoId: 'andere', traufePx: null, eckenPx: [[0, 600], [800, 600], [800, 0], [0, 0]] as Ecken },
+      { fotoId: 'eins', traufePx: null, eckenPx: foto.eckenPx }],
+      gaubenAussparungen: [{ gaubenGruppeId: 'g', rechteck: { xM: 2, yM: 2, breiteM: 4, hoeheM: 3 } }] };
+    const kinder = (['links', 'rechts'] as const).map((seite, i) => ({
+      ...neueGaubenFlaeche(i + 2, 'B', 'satteldach', mutter.id, seite, 'g'),
+      fotoZuordnungen: [{ fotoId: 'eins', traufePx: null, eckenPx: seiten[seite] }],
+    }));
+    const migriert = migriereProjekt({ ...neuesProjekt(), fotoModellVersion: 3,
+      fotos: ['andere', 'eins'].map((id) => ({ id, name: 'Foto', dataUrl: foto.dataUrl, breitePx: 1000, hoehePx: 600 })), flaechen: [mutter, ...kinder] });
+    const neu = migriert.flaechen[0]!;
+    expect(neu.gaubenAussparungen![0]!.rechteck.umrissM).toHaveLength(6);
+    expect(neu.gaubenAussparungen![0]!.fotoId).toBe('eins');
+    expect(migriereProjekt(JSON.parse(JSON.stringify(migriert)))).toEqual(migriert);
+    const skaliert = patchFlaechenGeometrie(neu, { breiteM: 20 });
+    expect(skaliert.gaubenAussparungen![0]!.rechteck.umrissM![0]![0]).toBeCloseTo(neu.gaubenAussparungen![0]!.rechteck.umrissM![0]![0] * 2);
+    const zweitePerspektive = aktualisiereGaubenAussparungen({ ...neu, foto }, neu.gaubenAussparungen, 'zwei');
+    expect(zweitePerspektive).toEqual(neu.gaubenAussparungen);
+  });
+
+  it('rekonstruiert frühe Flachdachgauben ohne gespeicherte Eltern-Fotopunkte aus dem Kind', () => {
+    const mutter = { ...eltern, foto: undefined,
+      fotoZuordnungen: [{ fotoId: 'eins', traufePx: null, eckenPx: foto.eckenPx }],
+      gaubenAussparungen: [{ gaubenGruppeId: 'g', rechteck: { xM: 2, yM: 2, breiteM: 4, hoeheM: 3 } }] };
+    const kind = { ...neueGaubenFlaeche(2, 'B', 'flachdach', mutter.id, undefined, 'g'),
+      fotoZuordnungen: [{ fotoId: 'eins', traufePx: null, eckenPx: gaube }] };
+    const neu = migriereProjekt({ ...neuesProjekt(), fotoModellVersion: 3,
+      fotos: [{ id: 'eins', name: 'Foto', dataUrl: foto.dataUrl, breitePx: 1000, hoehePx: 600 }], flaechen: [mutter, kind] });
+    expect(neu.flaechen[0]!.gaubenAussparungen![0]!.rechteck.umrissM).toHaveLength(4);
+    expect(neu.flaechen[0]!.gaubenAussparungen![0]!.fotoEckenPx).toEqual(gaube);
   });
 
   it('teilt eine Satteldachgaube über die Firstlinie in zwei Vierecke', () => {
