@@ -7,6 +7,12 @@ kalibrierung-engine-output.md
 
 # Next.js
 .next/
+apps/web/out/
+
+# Isolierter Pages-Build und lokale Browser-Evidenz
+.release/
+test-results/
+playwright-report/
 
 # Screenshots der debug-shot-Dev-Route
 .debug-shots/

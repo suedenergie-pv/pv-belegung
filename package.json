@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "npm run dev -w web",
     "build": "npm run build -w web",
+    "build:pages": "node scripts/build-pages.mjs",
+    "preview:pages": "node scripts/serve-pages.mjs",
+    "test:pages": "node scripts/test-pages.mjs",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "playwright test",
     "typecheck": "npm run typecheck --workspaces --if-present",

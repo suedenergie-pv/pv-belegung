@@ -1,7 +1,6 @@
 # Deploy der Web-App (apps/web) als statischer Export auf GitHub Pages.
-# Die App ist eine reine Client-App (localStorage + IndexedDB, kein Server-State) —
-# die dev-only debug-shot-API-Route wird nur im CI-Checkout entfernt, weil
-# output:'export' keine POST-Route-Handler erlaubt (lokal bleibt sie, CLAUDE.md).
+# Derselbe isolierte Build und Smoke laufen lokal und in CI. App-Quellen sowie
+# der normale lokale Next-Produktionsbuild bleiben dabei unverändert.
 name: pages
 
 on:
@@ -28,16 +27,30 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Dev-only API-Route für den statischen Export entfernen
-        run: rm -rf apps/web/app/api
-      - name: Build (statischer Export)
-        run: npm run build -w web
-        env:
-          STATIC_EXPORT: '1'
-          PAGES_BASE_PATH: /pv-belegung
+      - name: Unit-Tests (Engine und Anwendung)
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Isolierter statischer Export für /pv-belegung
+        run: npm run build:pages
+      - name: Headless-Browser für Release-Prüfung
+        run: npx playwright install --with-deps chromium
+      - name: Export-Artefakt prüfen (Desktop und Smartphone)
+        run: npm run test:pages
+      - name: Release-Evidenz
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-pruefung
+          path: |
+            .release/pages/manifest.json
+            .release/pages-smoke-results.json
+            .release/test-results
+            .release/screenshots
+          if-no-files-found: ignore
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/out
+          path: .release/pages/apps/web/out
 
   deploy:
     needs: build

@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Die Entwicklerplakette verdeckt sonst die feste mobile Werkzeugleiste.
+  devIndicators: false,
   // Engine wird als TS-Quelle aus dem Workspace importiert
   transpilePackages: ['@pv-belegung/engine'],
   // GitHub-Pages-Build (CI setzt STATIC_EXPORT=1): statischer Export unter /pv-belegung.
