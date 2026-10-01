@@ -1,5 +1,9 @@
 # AGENTS.md — Belegungsplaner SüdEnergie
 
+## Produktives Deploy-Ziel (korrigiert 01.10.2026)
+
+**Live ist https://belegung.suedenergie-pv.de/ auf dem vorhandenen VPS.** GitHub Pages ist eine separate Ausgabe. Ein Push oder erfolgreicher Pages-Workflow aktualisiert den VPS nicht und darf nicht als produktiver Deploy gemeldet werden. Aktueller verifizierter Deployweg und Rollback: `docs/vps-release.md`. Ältere Aussagen unten, die GitHub Pages als Live-Ziel bezeichnen, sind überholt.
+
 ## Lies zuerst
 
 1. `SPEC.md` — kanonisches Dokument, Single Source of Truth. Bei Widerspruch zwischen irgendetwas und der SPEC gilt die SPEC. Bei Lücken: fragen, nicht raten.

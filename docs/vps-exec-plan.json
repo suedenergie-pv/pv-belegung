@@ -1,0 +1,170 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "loop_type": "build-repair",
+  "objective": "Den freigegebenen Workbench-Stand mit 0-cm-Rand auf dem tatsächlichen VPS-Ziel veröffentlichen.",
+  "source_package": "orchestrate-agent-work",
+  "authorization": "01.10.2026: Nutzer bestätigt bisherigen Deployauftrag und korrigiert ausdrücklich auf belegung.suedenergie-pv.de/VPS; anschließend weiter.",
+  "budget": {
+    "max_parallel_agents": 2,
+    "max_total_agent_tasks": 7,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": true,
+    "reason_codes": [
+      "professional_practice"
+    ],
+    "freshness": "current",
+    "route": "research-phase",
+    "artifact": "docs/vps-release.md"
+  },
+  "tasks": [
+    {
+      "task_id": "inspect",
+      "kind": "professional_practice_research",
+      "agent": "primary",
+      "depends_on": [],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "VPS-Domain, nginx, vorhandene SSH-Verbindung"
+      ],
+      "outputs": [
+        ".release/vps-inspection.json"
+      ],
+      "checks": [
+        "Ziel /var/www/belegung/current zeigt auf releases/e22b84f; statische Root-Ausgabe"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS; bei zwei gleichen Fehlern oder drei Reparaturen Evidence sichern und ungelöste Grenze melden."
+    },
+    {
+      "task_id": "contract",
+      "kind": "evidence_compaction",
+      "agent": "primary",
+      "depends_on": [
+        "inspect"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        ".release/vps-inspection.json"
+      ],
+      "outputs": [
+        "docs/vps-release.md"
+      ],
+      "checks": [
+        "Live-Ziel, statischer Root-Pfad und Rollback gegen tatsächliche nginx-Konfiguration belegt"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder konkrete fehlende Evidence melden."
+    },
+    {
+      "task_id": "build",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Geprüfter Commit 38606d6, vorhandene isolierte Release-Skripte"
+      ],
+      "outputs": [
+        "VPS-Build und Smoke-Konfiguration"
+      ],
+      "checks": [
+        "Keine App-/Engine-Änderung; Basepath leer; private QA-Dateien ausgeschlossen"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS; bei zwei gleichen Fehlern oder drei Reparaturen Evidence sichern und ungelöste Grenze melden."
+    },
+    {
+      "task_id": "qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "build"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Exaktes VPS-Artefakt"
+      ],
+      "outputs": [
+        ".release/vps/manifest.json",
+        "Browser-Evidenz"
+      ],
+      "checks": [
+        "Build, Hashes, Desktop-/Mobil-Smoke, Foto/PDF/Reload"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS; bei zwei gleichen Fehlern oder drei Reparaturen Evidence sichern und ungelöste Grenze melden."
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "vps_review",
+      "depends_on": [
+        "qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Release-Skripte, Rollbackplan, QA-Evidenz"
+      ],
+      "outputs": [
+        ".release/vps-review.md"
+      ],
+      "checks": [
+        "Keine offenen wesentlichen Befunde"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS; bei zwei gleichen Fehlern oder drei Reparaturen Evidence sichern und ungelöste Grenze melden."
+    },
+    {
+      "task_id": "deploy",
+      "kind": "deployment",
+      "agent": "primary",
+      "depends_on": [
+        "review"
+      ],
+      "risk": "external_write",
+      "gate": "human",
+      "inputs": [
+        "Expliziter Nutzerauftrag zum Deploy auf belegung.suedenergie-pv.de",
+        "Geprüftes Archiv mit SHA-256"
+      ],
+      "outputs": [
+        "VPS-Release und atomarer current-Symlink"
+      ],
+      "checks": [
+        "Vorheriges Release erhalten; Hostschlüssel geprüft; nur /var/www/belegung betroffen"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS; bei zwei gleichen Fehlern oder drei Reparaturen Evidence sichern und ungelöste Grenze melden."
+    },
+    {
+      "task_id": "verify",
+      "kind": "release_verification",
+      "agent": "primary",
+      "depends_on": [
+        "deploy"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "https://belegung.suedenergie-pv.de/"
+      ],
+      "outputs": [
+        ".release/vps-deployment-check.json"
+      ],
+      "checks": [
+        "HTML/Asset-Hashes, Workbench und Rand 0, Desktop/Mobil, PDF, Reload; bei Fehler Rollback"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS; bei zwei gleichen Fehlern oder drei Reparaturen Evidence sichern und ungelöste Grenze melden."
+    }
+  ]
+}

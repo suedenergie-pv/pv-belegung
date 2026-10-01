@@ -4,15 +4,15 @@ import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, re
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { target, basePath, label } from './static-target.mjs';
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
-const stage = resolve(root, '.release/pages');
-const marker = join(stage, '.pv-pages-staging');
+const stage = resolve(root, `.release/${target}`);
+const marker = join(stage, `.pv-${target}-staging`);
 const web = join(stage, 'apps/web');
-const basePath = '/pv-belegung';
 
 // Löschung ist auf unseren markierten Build-Ordner begrenzt, nie auf App-Quellen.
-if (relative(root, stage) !== `.release${sep}pages`) throw new Error('Unerwartetes Staging-Ziel.');
+if (relative(root, stage) !== `.release${sep}${target}`) throw new Error('Unerwartetes Staging-Ziel.');
 if (existsSync(stage)) {
   if (lstatSync(stage).isSymbolicLink() || realpathSync(stage) !== stage || !existsSync(marker)) {
     throw new Error('Staging ist kein eigener markierter Build-Ordner; nichts gelöscht.');
@@ -75,7 +75,7 @@ for (const dependency of ['typescript', '@types/react', '@types/node']) {
   requireFromStage.resolve(`${dependency}/package.json`);
 }
 
-console.log(`Pages-Build: ${web} → ${basePath}/`);
+console.log(`${label}-Build: ${web} → ${basePath}/`);
 const built = spawnSync(process.execPath, [join(root, 'node_modules/next/dist/bin/next'), 'build'], {
   cwd: web, stdio: 'inherit', windowsHide: true,
   env: { ...process.env, STATIC_EXPORT: '1', PAGES_BASE_PATH: basePath, NEXT_TELEMETRY_DISABLED: '1' },
@@ -99,8 +99,8 @@ function inventory(dir) {
 const files = inventory(out);
 if (files.some(({ path }) => /(?:^|\/)(?:api|\.debug-shots|e2e|test-results)(?:\/|$)/.test(path))) throw new Error('Lokale Artefakte im Export.');
 writeFileSync(join(stage, 'manifest.json'), JSON.stringify({
-  createdAt: new Date().toISOString(), basePath, output: 'apps/web/out',
+  createdAt: new Date().toISOString(), target, basePath, output: 'apps/web/out',
   sourceFiles: sourceFiles.sort((a, b) => a.path.localeCompare(b.path)), files,
   localBuildUnchanged: true,
 }, null, 2));
-console.log(`Pages-Artefakt fertig: ${out} (${files.length} Dateien). Lokale Route und Produktionsbuild unverändert.`);
+console.log(`${label}-Artefakt fertig: ${out} (${files.length} Dateien). Lokale Route und Produktionsbuild unverändert.`);

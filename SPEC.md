@@ -467,6 +467,8 @@ Swatch-Auswahl pro `RoofPlane` (Sales-Feature, null Einfluss auf Engine): Ziegel
 
 ## 12. Tech-Stack (Vorschlag, konsistent mit Bestand)
 
+Verbindlicher Hosting-Stand 01.10.2026: Produktiv läuft die Anwendung unter **https://belegung.suedenergie-pv.de/** auf dem vorhandenen IONOS-VPS als statischer Export ohne Basepath. nginx verwendet `/var/www/belegung/current` als Release-Symlink. GitHub Pages ist eine separate Ausgabe und kein produktiver Deploy-Nachweis. Veröffentlichung und Nachprüfung müssen ausdrücklich die VPS-Domain betreffen; siehe `docs/vps-release.md`.
+
 - Frontend: Next.js 14 + Tailwind (wie Website-Projekt), Canvas/SVG für Plan-Editor
 - Backend: Node.js/Express (wie Ticketsystem), SQLite reicht für Katalog + Projekte
 - Hosting: bestehender IONOS VPS, Subdomain unter `intern.suedenergie-pv.de` oder eigene

@@ -9,7 +9,8 @@ async function gespeichertesProjekt(page: Page) {
   });
 }
 
-test('Pages-Artefakt: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten und Reload', async ({ page, request }, info) => {
+test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten und Reload', async ({ page, request }, info) => {
+  const prefix = process.env.STATIC_DEPLOY_TARGET === 'vps' ? '' : '/pv-belegung';
   const pageErrors: string[] = [], failedRequests: string[] = [], badResponses: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('requestfailed', (req) => failedRequests.push(`${req.url()}: ${req.failure()?.errorText}`));
@@ -18,21 +19,28 @@ test('Pages-Artefakt: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten und 
   // Relativer Einstieg ist absichtlich vom Basepath der Release-Config abhängig.
   const response = await page.goto('./', { waitUntil: 'domcontentloaded' });
   expect(response?.status()).toBe(200);
-  expect(new URL(page.url()).pathname).toBe('/pv-belegung/');
+  expect(new URL(page.url()).pathname).toBe(`${prefix}/`);
   const origin = new URL(page.url()).origin;
-  expect((await request.get(`${origin}/`)).status()).toBe(404);
-  expect((await request.get(`${origin}/pv-belegung/api/debug-shot/`)).status()).toBe(404);
-  expect((await request.get(`${origin}/pv-belegung/does-not-exist/`)).status()).toBe(404);
+  if (prefix) {
+    expect((await request.get(`${origin}/`)).status()).toBe(404);
+    expect((await request.get(`${origin}${prefix}/api/debug-shot/`)).status()).toBe(404);
+    expect((await request.get(`${origin}${prefix}/does-not-exist/`)).status()).toBe(404);
+  } else {
+    // Der bestehende VPS nutzt für normale Routen einen HTML-Fallback. Statische
+    // Assets müssen dennoch 404 liefern; die lokale POST-Debugroute darf nicht laufen.
+    expect((await request.get(`${origin}/_next/static/nonexistent-release-check.js`)).status()).toBe(404);
+    expect((await request.post(`${origin}/api/debug-shot/`, { data: '{}' })).status()).toBe(405);
+  }
 
   const assets = await page.locator('script[src], link[rel=stylesheet][href]').evaluateAll((elements) => elements.map((element) => element.getAttribute('src') ?? element.getAttribute('href')!));
   expect(assets.length).toBeGreaterThan(1);
   for (const asset of assets) {
-    expect(asset).toMatch(/^\/pv-belegung\/_next\//);
+    expect(asset.startsWith(`${prefix}/_next/`), asset).toBe(true);
     const result = await request.get(new URL(asset, origin).href);
     expect(result.status(), asset).toBe(200);
     expect(result.headers()['content-type'], asset).toMatch(/javascript|css/);
   }
-  expect((await request.get(`${origin}${assets[0]!.replace('/pv-belegung', '')}`)).status()).toBe(404);
+  if (prefix) expect((await request.get(`${origin}${assets[0]!.replace(prefix, '')}`)).status()).toBe(404);
 
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
@@ -67,6 +75,7 @@ test('Pages-Artefakt: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten und 
   const moduleStatus = await page.getByTestId('flaechen-status').textContent();
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
   await expect(page.getByRole('spinbutton', { name: 'Rand cm', exact: true })).toHaveValue('0');
+  await page.screenshot({ path: `.release/screenshots/${info.project.name}-editor.png` });
 
   await page.getByRole('button', { name: '3. Export', exact: true }).click();
   const preview = page.locator('[data-export-vorschau]');
@@ -100,7 +109,7 @@ test('Pages-Artefakt: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten und 
   expect(reloaded.fotos).toEqual(before.fotos);
   await expect(page.getByTestId('flaechen-status')).toHaveText(moduleStatus!);
   await expect(page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe('/pv-belegung/');
+  expect(new URL(page.url()).pathname).toBe(`${prefix}/`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   expect(pageErrors).toEqual([]);
   expect(failedRequests).toEqual([]);

@@ -2,15 +2,16 @@ import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { target, basePath, label, previewPort } from './static-target.mjs';
 
-const stage = resolve(dirname(fileURLToPath(import.meta.url)), '../.release/pages');
+const stage = resolve(dirname(fileURLToPath(import.meta.url)), `../.release/${target}`);
 const manifestFile = join(stage, 'manifest.json');
-if (!existsSync(manifestFile)) throw new Error('Zuerst npm run build:pages ausführen.');
+if (!existsSync(manifestFile)) throw new Error(`Zuerst npm run build:${target} ausführen.`);
 const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
 const root = resolve(stage, manifest.output);
-const prefix = '/pv-belegung';
+const prefix = basePath;
 if (manifest.basePath !== prefix || relative(stage, root) !== `apps${sep}web${sep}out`) throw new Error('Ungültiger Exportpfad.');
-const port = Number(process.env.PAGES_PREVIEW_PORT ?? '3188');
+const port = Number(process.env.PAGES_PREVIEW_PORT ?? previewPort);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Ungültiger Vorschau-Port.');
 const mime = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -42,7 +43,7 @@ export async function startPagesServer() {
     server.once('error', reject);
     server.listen(port, '127.0.0.1', resolve);
   });
-  console.log(`Statisches Pages-Artefakt: http://127.0.0.1:${port}${prefix}/`);
+  console.log(`Statisches ${label}-Artefakt: http://127.0.0.1:${port}${prefix}/`);
   return server;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
