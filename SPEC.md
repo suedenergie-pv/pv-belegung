@@ -519,10 +519,14 @@ die Gesamtanlagengröße in kWp, damit Dateien außerhalb des Tools eindeutig bl
 Der PDF-Download darf auch ohne Kunde, Adresse und Erfasser erfolgen (nackter
 Belegungsplan); diese Angaben bleiben für den Ticketsystem-JSON-Export Pflicht.
 
-PDF-Bildlayout (30.09.2026): Mehrere Belegungsfotos stehen auf eigenen A4-Seiten
-groß untereinander, höchstens zwei Fotos je Seite. Bilder behalten ihr Seitenverhältnis
-und werden nicht beschnitten. Ein einzelnes Foto bleibt bei ausreichendem Platz
-auf der Zusammenfassungsseite.
+PDF-Bildlayout (korrigiert 01.10.2026): Große Belegungsfotos stehen zu zweit
+untereinander, ausdrücklich bereits auf der ersten A4-Seite: 2/4/6 Fotos benötigen
+1/2/3 Bildseiten. Keine vorgeschaltete Zusammenfassungsseite. Kopf und erforderliche
+Flächendaten werden kompakt integriert; umfangreiche Detailtabellen folgen erst nach
+den Bildern. Einzelbilder und das letzte Bild bei ungerader Anzahl nutzen den freien
+Platz ihrer Seite. Bilder behalten ihr Seitenverhältnis und werden nicht beschnitten.
+In der Workbench bietet die Dachflächenliste direkt eine Entfernen-Aktion. Bestehende
+Gauben-/Stringbereinigung, erhaltene Fotos, Entwurfsschutz und Rückgängig bleiben erhalten.
 
 ---
 

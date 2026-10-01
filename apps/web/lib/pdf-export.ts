@@ -8,7 +8,6 @@ import {
   flachdachOstRichtung,
   flachdachSuedRichtung,
   fertigeFotoFlaechen,
-  flaecheM2,
   flaechenTitel,
   fmtDe,
   kwpGesamt,
@@ -22,8 +21,8 @@ import {
 
 /**
  * PDF-Export des Belegungsplans (Hauptexport fürs Vertriebsgespräch, 06.07.2026):
- * Zusammenfassung, danach bei mehreren Fotos eigene Seiten mit je zwei Bildern
- * untereinander. Ein einzelnes Foto bleibt nach Möglichkeit auf Seite 1. Die Foto-SVGs werden
+ * Kompakte Zusammenfassung und bis zu zwei große Bilder bereits auf Seite 1.
+ * Umfangreiche Flächendetails folgen erst nach den Bildseiten. Die Foto-SVGs werden
  * per Canvas gerastert; kein Server, alles bleibt im Browser. Eine synthetische
  * Dach-Draufsicht wird nicht exportiert.
  * Der Stringplan ist bewusst NUR Zusatzinfo: gültig → eine Zeile, sonst weggelassen.
@@ -123,7 +122,7 @@ export async function baueBelegungsPdf(
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const SEITE_B = 210;
   const SEITE_H = 297;
-  const RAND = 16;
+  const RAND = 12;
   const NUTZ_B = SEITE_B - 2 * RAND;
   const INHALT_ENDE = SEITE_H - 16;
 
@@ -147,6 +146,12 @@ export async function baueBelegungsPdf(
     }
   };
 
+  const kurz = (text: string, breite: number) => {
+    if (doc.getTextWidth(text) <= breite) return text;
+    while (text.length && doc.getTextWidth(`${text}...`) > breite) text = text.slice(0, -1);
+    return `${text}...`;
+  };
+
   // ---- Seite 1: Kopf + Zusammenfassung ----
   let y = RAND + 4;
   doc.setFont('helvetica', 'bold');
@@ -163,50 +168,42 @@ export async function baueBelegungsPdf(
     doc.setTextColor(100);
     doc.text('SüdEnergie PV', SEITE_B - RAND, y, { align: 'right' });
   }
-  y += 7;
+  y += 6;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(8);
   doc.setTextColor(80);
   const datum = (optionen.jetzt ?? new Date()).toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric',
   });
-  const kopfzeilen = [
+  const projektzeilen = doc.splitTextToSize([
     projekt.kunde && `Kunde: ${projekt.kunde}`,
     projekt.adresse && `Adresse: ${projekt.adresse}`,
     projekt.erfasser && `Erfasser: ${projekt.erfasser}`,
     `Datum: ${datum}`,
-  ].filter(Boolean) as string[];
-  for (const zeile of kopfzeilen) {
-    doc.text(zeile, RAND, y);
-    y += 5;
+  ].filter(Boolean).join(' | '), NUTZ_B) as string[];
+  // Auch ungewöhnlich lange Stammdaten dürfen die Bilder nicht verdrängen.
+  const projektImAnhang = projektzeilen.length > 3;
+  const kopfzeilen = projektImAnhang ? [`Datum: ${datum} | Projektangaben im Anhang`] : projektzeilen;
+  for (const zeile of kopfzeilen) { doc.text(zeile, RAND, y); y += 4; }
+  const gesamtModule = projekt.flaechen.reduce(
+    (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)), 0,
+  );
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20);
+  doc.text(`${fmtDe(kwpGesamt(projekt), 2)} kWp | ${gesamtModule} Module`, RAND, y + 1);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  for (const zeile of doc.splitTextToSize(`${modul.name} (${modul.pmaxW} Wp)${projekt.wrId ? ` | WR: ${wrById(projekt.wrId).name}` : ''}`, NUTZ_B)) {
+    doc.text(zeile, RAND, y); y += 4;
+  }
+  if (result?.valid) {
+    doc.setTextColor(30, 120, 60);
+    doc.text('Stringplan geprüft (Regeln R1-R12): bestanden', RAND, y);
+    y += 4;
   }
   y += 2;
-
-  // kWp-Block
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(26);
-  doc.setTextColor(20);
-  doc.text(`${fmtDe(kwpGesamt(projekt), 2)} kWp`, RAND, y + 6);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(80);
-  const gesamtModule = projekt.flaechen.reduce(
-    (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)),
-    0,
-  );
-  doc.text(`${gesamtModule} × ${modul.name} (${modul.pmaxW} Wp)`, RAND + 62, y + 3);
-  if (projekt.wrId) {
-    doc.text(`WR: ${wrById(projekt.wrId).name}`, RAND + 62, y + 8);
-  }
-  y += 14;
-  if (result?.valid) {
-    doc.setFontSize(9);
-    doc.setTextColor(30, 120, 60);
-    doc.text('Stringplan geprüft (Regeln R1–R12): bestanden', RAND, y);
-    y += 6;
-  }
 
   // Flächen-Tabelle
   const SPALTEN = [RAND, RAND + 52, RAND + 92, RAND + 124, RAND + 152] as const;
@@ -227,36 +224,50 @@ export async function baueBelegungsPdf(
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(40);
   };
-  tabellenKopf();
-  for (const [i, f] of projekt.flaechen.entries()) {
-    seitenwechselWennNoetig(7, () => {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(20);
-      doc.text('Flächenübersicht (Fortsetzung)', RAND, y);
-      y += 6;
-      tabellenKopf();
-    });
-    const raster = rasterFuer(f, modul);
-    const n = aktiveModule(f, raster);
-    const ausrichtungen = ausrichtungenVon(f, raster);
-    // Der UI-Mittelpunkt wird von manchen PDF-Viewern als Kästchen angezeigt.
-    // Im Export einen verlässlich darstellbaren ASCII-Trenner verwenden.
-    doc.text(flaechenTitel(f, i).replaceAll(' · ', ' - '), SPALTEN[0], y);
-    const richtungKurz = f.flachdach
-      ? f.flachdach.aufstaenderung === 'ostwest'
-        ? `O/W: O ${flachdachOstRichtung(f)}`
-        : `Süd ${flachdachSuedRichtung(f)}`
-      : azimutLabel(f.azimutDeg);
-    doc.text(richtungKurz, SPALTEN[1], y);
-    doc.text(`${f.neigungDeg}°`, SPALTEN[2], y);
-    doc.text(`${n} (${ausrichtungen.bezeichnung})`, SPALTEN[3], y);
-    doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SPALTEN[4], y);
-    y += 5;
-  }
-  y += 3;
-  doc.line(RAND, y, SEITE_B - RAND, y);
-  y += 7;
+  const zeichneTabelle = () => {
+    tabellenKopf();
+    for (const [i, f] of projekt.flaechen.entries()) {
+      doc.setFontSize(8);
+      const titelZeilen = doc.splitTextToSize(flaechenTitel(f, i).replaceAll(' · ', ' - '), 49) as string[];
+      const zeilenH = Math.max(5, titelZeilen.length * 3.5);
+      seitenwechselWennNoetig(zeilenH + 2, () => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(20);
+        doc.text('Flächenübersicht (Fortsetzung)', RAND, y);
+        y += 6;
+        tabellenKopf();
+      });
+      const raster = rasterFuer(f, modul);
+      const n = aktiveModule(f, raster);
+      const ausrichtungen = ausrichtungenVon(f, raster);
+      // Der UI-Mittelpunkt wird von manchen PDF-Viewern als Kästchen angezeigt.
+      // Im Export einen verlässlich darstellbaren ASCII-Trenner verwenden.
+      doc.setFontSize(8);
+      doc.text(titelZeilen, SPALTEN[0], y, { lineHeightFactor: 1.24 });
+      const richtungKurz = f.flachdach
+        ? f.flachdach.aufstaenderung === 'ostwest'
+          ? `O/W: O ${flachdachOstRichtung(f)}`
+          : `Süd ${flachdachSuedRichtung(f)}`
+        : azimutLabel(f.azimutDeg);
+      doc.text(richtungKurz, SPALTEN[1], y);
+      doc.text(`${f.neigungDeg}°`, SPALTEN[2], y);
+      doc.text(`${n} (${ausrichtungen.bezeichnung})`, SPALTEN[3], y);
+      doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SPALTEN[4], y);
+      y += zeilenH;
+    }
+    y += 3;
+    doc.line(RAND, y, SEITE_B - RAND, y);
+    y += 4;
+
+  };
+  // Normale Projekte kompakt integrieren. Umfangreiche Tabellen kommen hinter
+  // die Fotos, damit niemals eine reine Zusammenfassungsseite vorausgeht.
+  const tabelleImAnhang = projekt.flaechen.length > 8 || projekt.flaechen.some((f, i) => {
+    doc.setFontSize(8);
+    return doc.splitTextToSize(flaechenTitel(f, i).replaceAll(' · ', ' - '), 49).length > 1;
+  });
+  if (!tabelleImAnhang) zeichneTabelle();
 
   // Belegungsübersicht ausschließlich aus Drohnenfotos mit ihren zugeordneten Flächen.
   const fotoKopf = (fortsetzung = false) => {
@@ -268,54 +279,44 @@ export async function baueBelegungsPdf(
   };
 
   if (fotoBilder.length > 0) {
-    const mehrereFotos = fotoBilder.length > 1;
-    const kopfH = 12;
-    const abstand = 6;
-    const fotoSeitenStart = 18;
-    // Auf Fotoseiten passen zwei große Karten einschließlich Überschrift und Fußzeile.
-    const maxBildH = mehrereFotos
-      ? (INHALT_ENDE - fotoSeitenStart - 6 - abstand) / 2 - kopfH - 4
-      : 142;
+    const kopfH = 10;
+    const abstand = 5;
     const maxBildB = NUTZ_B - 6;
-    for (const [index, bild] of fotoBilder.entries()) {
-      const bildH = Math.min(maxBildB * bild.seitenverhaeltnis, maxBildH);
-      const bildB = bildH / bild.seitenverhaeltnis;
-      const kartenH = kopfH + bildH + 4;
+    for (let start = 0; start < fotoBilder.length; start += 2) {
+      if (start > 0) { doc.addPage(); y = 18; }
+      fotoKopf(start > 0);
+      const paar = fotoBilder.slice(start, start + 2);
+      const maxBildH = (INHALT_ENDE - y - abstand * (paar.length - 1)) / paar.length - kopfH - 4;
+      for (const bild of paar) {
+        const bildH = Math.min(maxBildB * bild.seitenverhaeltnis, maxBildH);
+        const bildB = bildH / bild.seitenverhaeltnis;
+        const kartenH = kopfH + bildH + 4;
 
-      if (mehrereFotos && index % 2 === 0) {
-        doc.addPage();
-        y = fotoSeitenStart;
-        fotoKopf(index > 0);
-      } else if (index === 0) {
-        // Überschrift und Einzelbild immer gemeinsam umbrechen.
-        seitenwechselWennNoetig(6 + kartenH);
-        fotoKopf();
+        const x = RAND;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(214, 220, 228);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(x, y, NUTZ_B, kartenH, 2, 2, 'FD');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(35, 45, 60);
+        doc.text(kurz(bild.name || 'Belegungsfoto', NUTZ_B - 6), x + 3, y + 4.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(105, 115, 130);
+        doc.text(
+          kurz(bild.flaechen ? `Dachflächen ${bild.flaechen}` : 'Noch keine Fläche markiert', NUTZ_B - 6),
+          x + 3,
+          y + 8.5,
+        );
+
+        const bildX = x + (NUTZ_B - bildB) / 2;
+        const bildY = y + kopfH;
+        doc.addImage(bild.dataUrl, 'JPEG', bildX, bildY, bildB, bildH);
+
+        y += kartenH + abstand;
       }
-
-      const x = RAND;
-      doc.setFillColor(248, 250, 252);
-      doc.setDrawColor(214, 220, 228);
-      doc.setLineWidth(0.3);
-      doc.roundedRect(x, y, NUTZ_B, kartenH, 2, 2, 'FD');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(35, 45, 60);
-      doc.text(bild.name || 'Belegungsfoto', x + 3, y + 4.5);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(105, 115, 130);
-      doc.text(
-        bild.flaechen ? `Dachflächen ${bild.flaechen}` : 'Noch keine Fläche markiert',
-        x + 3,
-        y + 8.5,
-      );
-
-      const bildX = x + (NUTZ_B - bildB) / 2;
-      const bildY = y + kopfH;
-      doc.addImage(bild.dataUrl, 'JPEG', bildX, bildY, bildB, bildH);
-
-      y += kartenH + abstand;
     }
   } else {
     seitenwechselWennNoetig(14);
@@ -326,6 +327,17 @@ export async function baueBelegungsPdf(
     doc.text('Kein fertig kalibriertes Belegungsfoto vorhanden.', RAND, y + 4);
   }
 
+  if (projektImAnhang || tabelleImAnhang) {
+    doc.addPage(); y = 18;
+    if (projektImAnhang) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40);
+      for (const zeile of projektzeilen) {
+        seitenwechselWennNoetig(5); doc.text(zeile, RAND, y); y += 4;
+      }
+      y += 6;
+    }
+    if (tabelleImAnhang) zeichneTabelle();
+  }
   fuss();
   return { doc, dateiname: downloadDateiname(projekt, 'belegungsplan', 'pdf') };
 }

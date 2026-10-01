@@ -94,7 +94,7 @@ describe('PDF-Generator', () => {
 
   it('erzeugt viele Flächen über mehrere Seiten und wiederholt den Tabellenkopf', async () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const { doc } = await baueBelegungsPdf(projektMitFlaechen(42), null, () => svg, optionen);
+    const { doc } = await baueBelegungsPdf(projektMitFlaechen(60), null, () => svg, optionen);
     expect(doc.getNumberOfPages()).toBeGreaterThan(1);
     const inhalt = ((doc as unknown as { internal: { pages: string[][] } }).internal.pages)
       .flat(2)
@@ -104,9 +104,12 @@ describe('PDF-Generator', () => {
   });
 
   it.each([
+    [1, 9 / 16],
     [2, 9 / 16],
     [3, 3 / 4],
+    [4, 9 / 16],
     [5, 3 / 2],
+    [6, 9 / 16],
   ])('ordnet %i Fotos ohne Beschnitt mit höchstens zwei Bildern pro Seite an', async (anzahl, verhaeltnis) => {
     const projekt = projektMitFlaechen();
     projekt.fotos = Array.from({ length: anzahl }, (_, i) => ({
@@ -122,11 +125,11 @@ describe('PDF-Generator', () => {
     });
     const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages
       .slice(1).map((seite) => seite.join('\n'));
-    expect(seiten).toHaveLength(1 + Math.ceil(anzahl / 2));
-    expect(seiten[0]).not.toContain('Belegungsübersicht');
-    expect(seiten[0]).not.toMatch(/\/I\d+ Do/);
+    expect(seiten).toHaveLength(Math.ceil(anzahl / 2));
+    expect(seiten[0]).toContain('Belegungsübersicht');
+    expect(seiten[0]).toMatch(/\/I\d+ Do/);
 
-    for (const [index, seite] of seiten.slice(1).entries()) {
+    for (const [index, seite] of seiten.entries()) {
       // Die tatsächlichen PDF-Bildmatrizen prüfen (Punkte, Ursprung unten links).
       const bilder = [...seite.matchAll(/([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm\s+\/I\d+ Do/g)]
         .map((treffer) => {
@@ -139,9 +142,10 @@ describe('PDF-Generator', () => {
         expect(seite).toContain(`Drohnenfoto ${index * 2 + bildIndex + 1}`);
         expect(bild.h / bild.b).toBeCloseTo(verhaeltnis, 5);
         expect(bild.x + bild.b / 2).toBeCloseTo(105, 5);
-        expect(bild.y).toBeGreaterThanOrEqual(35.9);
+        expect(bild.y).toBeGreaterThanOrEqual(33.9);
         expect(bild.y + bild.h).toBeLessThanOrEqual(277.1);
-        if (verhaeltnis <= 0.75) expect(bild.b).toBeGreaterThanOrEqual(145);
+        if (verhaeltnis <= 9 / 16) expect(bild.b).toBeGreaterThanOrEqual(160);
+        if (verhaeltnis === 3 / 4) expect(bild.b).toBeGreaterThanOrEqual(120);
         if (bildIndex > 0) expect(bild.y).toBeGreaterThan(bilder[bildIndex - 1]!.y + bilder[bildIndex - 1]!.h);
       }
     }
@@ -153,6 +157,7 @@ describe('PDF-Generator', () => {
     const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages
       .slice(1).map((seite) => seite.join('\n'));
     if (anzahl === 1) expect(seiten).toHaveLength(1);
+    expect(seiten[0]).toMatch(/\/I\d+ Do/);
     expect(seiten.filter((seite) => /\/I\d+ Do/.test(seite))).toHaveLength(1);
     for (const seite of seiten) {
       expect(seite.includes('Belegungsübersicht')).toBe(/\/I\d+ Do/.test(seite));

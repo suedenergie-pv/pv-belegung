@@ -425,7 +425,8 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
   const loescheHauptflaeche = (flaeche: Flaeche) => {
     const hauptflaechen = projektRef.current.flaechen.filter((f) => !f.gaubenTyp);
     if (hauptflaechen.length <= 1) return;
-    if (!window.confirm(`Dachfläche „${flaeche.name}" mit ihrer Belegung entfernen?`)) return;
+    const gaubenSeiten = projektRef.current.flaechen.filter((f) => f.elternFlaecheId === flaeche.id).length;
+    if (!window.confirm(`Dachfläche „${flaeche.name}“ mit ihrer Belegung${gaubenSeiten ? ` und ${gaubenSeiten} zugehörigen Gaubenflächen` : ''} entfernen? Zugehörige Stringzuordnungen werden entfernt. Fotos bleiben erhalten. Rückgängig ist danach möglich.`)) return;
     aendereProjekt((p) => {
       const ids = new Set(
         p.flaechen
@@ -1540,7 +1541,13 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
         <details className={styles.ebenen} open={!bedienPanel && !steuerung}>
           <summary><WorkbenchIcon symbol="flaeche" />Dachflächen <span>{projekt.flaechen.length}</span></summary>
           <div className={styles.ebenenListe} aria-label="Dachflächen im Projekt">
-            {belegungsReihenfolge.map((x) => <button key={x.id} type="button" aria-label={`${x.name} auswählen`} aria-pressed={x.id === f.id} className={`${styles.ebene} ${x.gaubenTyp ? styles.kindEbene : ''}`} onClick={() => wechsleFlaeche(x.id)}><WorkbenchIcon symbol={x.gaubenTyp ? 'gaube' : 'umriss'} /><span>{x.name}</span><span className={styles.ebenenPunkt} aria-hidden="true" /></button>)}
+            {belegungsReihenfolge.map((x) => <div key={x.id} className={styles.ebenenZeile}>
+              <button type="button" aria-label={`${x.name} auswählen`} aria-pressed={x.id === f.id} className={`${styles.ebene} ${x.gaubenTyp ? styles.kindEbene : ''}`} onClick={() => wechsleFlaeche(x.id)}><WorkbenchIcon symbol={x.gaubenTyp ? 'gaube' : 'umriss'} /><span>{x.name}</span><span className={styles.ebenenPunkt} aria-hidden="true" /></button>
+              <button type="button" className={styles.ebeneEntfernen} aria-label={`${x.gaubenTyp ? 'Gaube' : 'Dachfläche'} „${x.name}“ entfernen`}
+                disabled={!x.gaubenTyp && projekt.flaechen.filter((dach) => !dach.gaubenTyp).length <= 1}
+                title={x.gaubenTyp ? 'Gesamte Gaube entfernen' : projekt.flaechen.filter((dach) => !dach.gaubenTyp).length <= 1 ? 'Eine Hauptdachfläche bleibt im Projekt erhalten' : 'Dachfläche samt zugehörigen Gauben entfernen'}
+                onClick={() => navigation.weiter(() => { if (x.gaubenTyp && x.elternFlaecheId) loescheGaube(x.elternFlaecheId, x.gaubenGruppeId ?? x.id); else loescheHauptflaeche(x); })}>Entfernen</button>
+            </div>)}
             <button type="button" className={styles.neueEbene} onClick={() => navigation.weiter(fuegeHauptflaecheHinzu)}>+ Dachfläche hinzufügen</button>
           </div>
         </details>

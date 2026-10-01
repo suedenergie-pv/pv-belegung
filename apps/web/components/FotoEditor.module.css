@@ -24,6 +24,7 @@
 .ebenenListe{max-height:180px;overflow:auto;padding:0 8px 8px;scrollbar-width:thin}
 .ebene{display:flex;align-items:center;gap:9px;width:100%;border-left:2px solid transparent;padding:0 10px;text-align:left;font-size:12px;color:#49565e;min-height:44px}.ebene svg{width:16px;height:16px;flex:none}.ebene>span:first-of-type{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ebene[aria-pressed=true]{background:#e5e9eb;color:#18272f;border-left-color:#c44f2a;font-weight:600}.kindEbene{padding-left:28px}.ebenenPunkt{width:5px;height:5px;background:#83949f;border-radius:50%;margin-left:auto;flex:none}.ebene[aria-pressed=true] .ebenenPunkt{background:#c44f2a}
+.ebenenZeile{display:flex;align-items:center}.ebenenZeile .ebene{min-width:0;flex:1}.ebeneEntfernen{flex:none;padding:0 8px;min-width:44px;min-height:44px;font-size:11px;color:#9a3412}.ebeneEntfernen:disabled{color:var(--muted);opacity:.65;cursor:not-allowed}
 .neueEbene{padding:0 12px;color:#586771;font-size:12px;width:100%;text-align:left}
 .kontext{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .kontextKopf{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:3;background:#f7f8f7}
