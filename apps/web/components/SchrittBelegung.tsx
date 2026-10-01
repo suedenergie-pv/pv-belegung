@@ -274,7 +274,7 @@ export function SchrittBelegung(props: { projekt: Projekt; onChange: (p: Projekt
 function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChange: (p: Projekt) => void }) {
   const historie = useProjektHistorie()!;
   const navigation = useEntwurfNavigation();
-  const [touchBedienung, aktiviereTouch] = useTouchBedienung();
+  const [touchBedienung, aktiviereTouch, deaktiviereTouch] = useTouchBedienung();
   const [perspektivCursor, setPerspektivCursor] = useState<[number, number]>([0, 0]);
   const [perspektivGriff, setPerspektivGriff] = useState<number | null>(null);
   const [sitzung, patchSitzung] = useEditorSitzung();
@@ -1318,6 +1318,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
   const perspektivGriffAmKreuz = perspektiveHier && foto ? perspektiveHier.roh.findIndex((p) => Math.hypot(p[0] - perspektivCursor[0], p[1] - perspektivCursor[1]) < foto.breitePx * .022) : -1;
   const perspektivPunktSteuerung: FotoPunktSteuerung | undefined = perspektiveHier && foto ? {
     aktiv: touchBedienung, aktivieren: aktiviereTouch, punkt: perspektivCursor,
+    deaktivieren: () => { deaktiviereTouch(); setPerspektivGriff(null); },
     breitePx: foto.breitePx, hoehePx: foto.hoehePx, onBewegen: setPerspektivCursor,
     aktion: perspektivGriff !== null ? 'Ecke hier ablegen' : 'Ecke greifen',
     deaktiviert: perspektivGriff === null && perspektivGriffAmKreuz < 0,

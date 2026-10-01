@@ -33,3 +33,12 @@ Native iPad-Praxisabnahme bleibt offen. Der fachliche App-/Engine-Stand wird dur
 - Anschließend sämtliche 33 Dateien über **https://belegung.suedenergie-pv.de/** heruntergeladen und gegen das geprüfte Manifest abgeglichen: keine Abweichung.
 - Direkte öffentliche Headless-Prüfung derselben VPS-Domain: **2/2 PASS in 11,1 Sekunden**, Desktop und Smartphone, inklusive Fotoeinrichtung, Belegung, angezeigtem Rand 0, echtem PDF-Download ohne Kundendaten und Reload. Keine Browser-/Request-/HTTP-Fehler im Ablauf. Live-Editorbilder auf beiden Größen tatsächlich geöffnet.
 - Lokale Detailnachweise: `.release/vps-review.md`, `.release/vps-deployment-check.json`, `.release/vps-live-hashes.json`, `.release/vps-live-smoke-results.json` und `.release/screenshots/vps-*-editor.png`. Diese Angaben ersetzen keine native iPad-Abnahme.
+
+## Eingabekorrektur am 01.10.2026
+
+- Aktiver Nachfolgerelease: `/var/www/belegung/releases/20261001-mouse-touch`; der Workbench-Vorgänger bleibt als Rollback erhalten.
+- Touch-Hardware allein erzwingt keinen Fadenkreuzmodus mehr. Mausbewegung und erster Mausdruck wechseln direkt zum Klicken/Ziehen; die nächste Fingergeste aktiviert wieder das Fadenkreuz. Fotoeinrichtung, Gauben und Perspektivkorrektur geben gegriffene Touch-Ecken dabei ohne Geometrieänderung frei.
+- 335 Unit-/Engine-Tests, Typecheck, isolierter VPS-Build und unabhängiger Review bestanden. Headless gegen das exakte lokale Artefakt: 4 hybride Maus-/Touch-/Tastaturfälle (Chromium/WebKit), 8 bestehende Touchfälle und 2 VPS-Smokes bestanden. Desktop-, Tablet- und Smartphone-Aufnahmen mit dem privaten Drohnenfoto geöffnet; das Foto bleibt außerhalb des Releases.
+- Archiv SHA-256 `173c6cd9504341dd189f56cfa93d0625ab9eae412146fff00d0f97b8689caff4`; Index SHA-256 `189a0fc64275613e2df2b9bdeca25b5fbb8d347d9c0a547180fb8877d2809646`. Nach atomarer Umschaltung alle 33 öffentlich ausgelieferten Dateien ohne Hashabweichung.
+- Direkte Prüfung auf `https://belegung.suedenergie-pv.de/`: 4/4 hybride Eingabefälle und 2/2 Desktop-/Smartphone-Smokes einschließlich Belegung, Rand 0, PDF und Reload bestanden. Lokale Evidence unter `.release/mouse-touch-qa.json`, `.release/mouse-touch-review.md` und `.release/mouse-touch-live/`.
+- Native iPad-Praxisabnahme bleibt offen. Engine, Geometrie und Gestaltung wurden durch diese Korrektur nicht geändert.

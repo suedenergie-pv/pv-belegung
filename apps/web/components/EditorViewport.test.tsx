@@ -10,20 +10,48 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-function pointer(ziel: Element, art: string, id: number, x: number, y: number) {
+function pointer(ziel: Element, art: string, id: number, x: number, y: number, pointerType = 'touch') {
   const e = new MouseEvent(art, { bubbles: true, clientX: x, clientY: y, cancelable: true });
-  Object.defineProperties(e, { pointerId: { value: id }, pointerType: { value: 'touch' } });
+  Object.defineProperties(e, { pointerId: { value: id }, pointerType: { value: pointerType } });
   fireEvent(ziel, e);
 }
 
 describe('EditorViewport Eingabetrennung', () => {
+  it('lässt den ersten Mausdruck nach Touch direkt durch und aktiviert beim nächsten Finger wieder das Kreuz', () => {
+    const down = vi.fn(), up = vi.fn(), klick = vi.fn();
+    function Test() {
+      const [aktiv, setAktiv] = useState(true);
+      const [punkt, setPunkt] = useState<[number, number]>([500, 250]);
+      return <EditorViewport bildSeitenverhaeltnis={2} onAnsichtChange={() => {}}
+        punktSteuerung={{ aktiv, aktivieren: () => setAktiv(true), deaktivieren: () => setAktiv(false), punkt, onBewegen: setPunkt, breitePx: 1000, hoehePx: 500, aktion: 'Punkt setzen', onBestaetigen: () => {} }}>
+        <svg data-testid="bild" onPointerDown={down} onPointerUp={up} onClick={klick} />
+      </EditorViewport>;
+    }
+    const ui = render(<Test />), bild = ui.getByTestId('bild');
+    pointer(bild, 'pointerdown', 1, 100, 100);
+    pointer(bild, 'pointerup', 1, 100, 100);
+    fireEvent.click(bild);
+    expect(klick).not.toHaveBeenCalled();
+    // Ohne vorgeschaltete Mausbewegung und ohne 500-ms-Wartezeit.
+    pointer(bild, 'pointerdown', 2, 200, 200, 'mouse');
+    pointer(bild, 'pointerup', 2, 200, 200, 'mouse');
+    fireEvent.click(bild);
+    expect(down).toHaveBeenCalledOnce(); expect(up).toHaveBeenCalledOnce(); expect(klick).toHaveBeenCalledOnce();
+    expect(ui.queryByRole('button', { name: 'Punkt setzen' })).toBeNull();
+    pointer(bild, 'pointerdown', 3, 200, 200);
+    pointer(bild, 'pointermove', 3, 300, 250);
+    pointer(bild, 'pointerup', 3, 300, 250);
+    fireEvent.click(bild);
+    expect(ui.getByTestId('foto-fadenkreuz').getAttribute('data-x')).toBe('600');
+    expect(down).toHaveBeenCalledOnce(); expect(klick).toHaveBeenCalledOnce();
+  });
   it('bewegt das Fadenkreuz relativ bei Zoom und bestätigt ausschließlich über die getrennte Leiste', () => {
     const modell = vi.fn(), bestaetigung = vi.fn();
     function Test() {
       const [ansicht, setAnsicht] = useState({ zoom: 2, x: 0, y: 0 });
       const [punkt, setPunkt] = useState<[number, number]>([500, 250]);
       return <EditorViewport ansicht={ansicht} onAnsichtChange={setAnsicht} bildSeitenverhaeltnis={2}
-        punktSteuerung={{ aktiv: true, aktivieren: () => {}, punkt, onBewegen: setPunkt, breitePx: 1000, hoehePx: 500, aktion: 'Punkt setzen', onBestaetigen: () => bestaetigung(punkt) }}>
+        punktSteuerung={{ aktiv: true, aktivieren: () => {}, deaktivieren: () => {}, punkt, onBewegen: setPunkt, breitePx: 1000, hoehePx: 500, aktion: 'Punkt setzen', onBestaetigen: () => bestaetigung(punkt) }}>
         <svg data-testid="bild" data-punkt={punkt.join(',')} onPointerDown={modell} onClick={modell} />
       </EditorViewport>;
     }

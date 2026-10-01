@@ -173,7 +173,7 @@ export function FotoHintergrund({
   const [greift, setGreift] = useState(false); // nur für den Cursor
   // Startete der Maus-Druck auf einem Griff? Dann den folgenden Klick NICHT als „neuen Punkt" werten.
   const aufHandle = useRef(false);
-  const [touchGeraet, aktiviereTouch] = useTouchBedienung();
+  const [touchGeraet, aktiviereTouch, deaktiviereTouch] = useTouchBedienung();
   const [fadenkreuzAktiv, setFadenkreuzAktiv] = useState(false);
   const [touchCursorPx, setTouchCursorPx] = useState<Punkt | null>(null);
   const [touchGriff, setTouchGriff] = useState<Griff | null>(null);
@@ -234,7 +234,7 @@ export function FotoHintergrund({
   useEffect(() => {
     if (!touchGeraet || !renderArbeitsbereich || !foto) return;
     setFadenkreuzAktiv(true);
-    setTouchCursorPx([foto.breitePx / 2, foto.hoehePx / 2]);
+    setTouchCursorPx((punkt) => punkt ?? [foto.breitePx / 2, foto.hoehePx / 2]);
   }, [touchGeraet, foto?.dataUrl, zustandsKey]);
 
   const B = flaeche.breiteM; // Traufe (Referenzstrecke für den Maß-Check)
@@ -1485,6 +1485,10 @@ export function FotoHintergrund({
     punktSteuerung: foto ? {
       aktiv: fadenkreuzAktiv,
       aktivieren: () => { aktiviereTouch(); if (!fadenkreuzAktiv) starteFadenkreuz(); },
+      deaktivieren: () => {
+        deaktiviereTouch(); setFadenkreuzAktiv(false); setTouchGriff(null);
+        touchSwipeRef.current = null;
+      },
       punkt: touchCursorPx ?? [foto.breitePx / 2, foto.hoehePx / 2],
       breitePx: foto.breitePx, hoehePx: foto.hoehePx,
       onBewegen: setTouchCursorPx, onBestaetigen: fadenkreuzAktion,

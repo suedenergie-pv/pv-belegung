@@ -8,6 +8,7 @@ import styles from './EditorViewport.module.css';
 export interface FotoPunktSteuerung {
   aktiv: boolean;
   aktivieren: () => void;
+  deaktivieren: () => void;
   punkt: [number, number];
   breitePx: number;
   hoehePx: number;
@@ -132,6 +133,11 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
 
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'mouse' && !pointer.current.size) {
+      refs.current.punktSteuerung?.deaktivieren();
+      // Ein echter Mausdruck darf nach einer Fingergeste sofort wieder klicken.
+      klickSperreBis.current = 0;
+    }
     pointer.current.set(e.pointerId, punkt(e));
     setFingerUnten(true);
     if (refs.current.verschieben || pointer.current.size >= 2 || ansichtGeste.current) {
@@ -139,7 +145,7 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
       e.preventDefault(); e.stopPropagation();
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* Browser kann einen bereits beendeten Pointer melden. */ }
       neuAnkern();
-    } else if (refs.current.punktSteuerung && (refs.current.punktSteuerung.aktiv || e.pointerType === 'touch')) {
+    } else if (e.pointerType !== 'mouse' && refs.current.punktSteuerung && (refs.current.punktSteuerung.aktiv || e.pointerType === 'touch')) {
       // Vor den SVG-Handlern abfangen: Fingerbewegung ist niemals ein Modellklick.
       refs.current.punktSteuerung.aktivieren();
       cursorGeste.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
@@ -149,6 +155,7 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     }
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && !pointer.current.size) refs.current.punktSteuerung?.deaktivieren();
     if (!pointer.current.has(e.pointerId)) return;
     pointer.current.set(e.pointerId, punkt(e));
     const cursor = cursorGeste.current, steuerung = refs.current.punktSteuerung;

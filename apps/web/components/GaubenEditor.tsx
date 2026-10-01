@@ -264,7 +264,7 @@ export function GaubenEditor({
   const [ausgewaehlt, setAusgewaehlt] = useState(0);
   const [fallbackGrund, setFallbackGrund] = useState<string | null>(null);
   const [zieht, setZieht] = useState(false);
-  const [touchBedienung, aktiviereTouch] = useTouchBedienung();
+  const [touchBedienung, aktiviereTouch, deaktiviereTouch] = useTouchBedienung();
   const [touchGriffIndex, setTouchGriffIndex] = useState<number | null>(null);
   const ziehIndex = useRef<number | null>(null);
   const ziehStart = useRef<{ punkte: Punkt[]; gueltige: Punkt[] } | null>(null);
@@ -1060,6 +1060,7 @@ export function GaubenEditor({
     abbrechen: ziehgesteAbbrechen,
     punktSteuerung: markieren ? {
       aktiv: touchBedienung, aktivieren: aktiviereTouch,
+      deaktivieren: () => { deaktiviereTouch(); setTouchGriffIndex(null); },
       punkt: tastaturPunkt, breitePx: foto.breitePx, hoehePx: foto.hoehePx,
       onBewegen: setTastaturPunkt, onBestaetigen: punktBestaetigen,
       aktion: touchGriffIndex !== null ? 'Ecke hier ablegen' : griffAmKreuz >= 0 ? 'Ecke greifen' : 'Punkt setzen',
