@@ -301,7 +301,7 @@ describe('Belegungsbedienung', () => {
       const [projekt, setProjekt] = useState(start);
       return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
     }
-    const { getByRole } = render(<TestApp />);
+    const { getByRole, getAllByRole } = render(<TestApp />);
     expect(getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeTruthy();
     const automatisch = getAllByRole('button', { name: 'Automatisch belegen' });
     fireEvent.click(automatisch.at(-1)!);
