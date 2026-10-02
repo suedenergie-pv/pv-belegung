@@ -169,7 +169,6 @@ describe('Belegungsbedienung', () => {
       return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
     }
     const { getByRole } = render(<TestApp />);
-    fireEvent.click(getByRole('button', { name: 'Mehr' }));
     fireEvent.click(getByRole('button', { name: 'Alle auswählen' }));
     const rechts = getByRole('button', { name: 'nach rechts' });
     vi.useFakeTimers();
@@ -259,8 +258,7 @@ describe('Belegungsbedienung', () => {
       return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
     }
     const ui = render(<TestApp />);
-    fireEvent.click(ui.getByRole('button', { name: 'Mehr' }));
-    fireEvent.click(ui.getByRole('button', { name: 'Gauben verwalten' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Gauben' }));
     fireEvent.click(ui.getAllByText('Maß verbessern')[0]!);
     const breite = ui.getAllByLabelText(/^Breite/)[0]!;
     fireEvent.change(breite, { target: { value: '' } });
@@ -303,7 +301,7 @@ describe('Belegungsbedienung', () => {
       const [projekt, setProjekt] = useState(start);
       return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
     }
-    const { getByRole, getAllByRole } = render(<TestApp />);
+    const { getByRole } = render(<TestApp />);
     expect(getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeTruthy();
     const automatisch = getAllByRole('button', { name: 'Automatisch belegen' });
     fireEvent.click(automatisch.at(-1)!);
@@ -532,7 +530,7 @@ describe('Belegungsbedienung', () => {
     const start = projektMitSatteldachgaube();
     const ui = render(<EntwurfNavigationProvider><SchrittBelegung projekt={start} onChange={vi.fn()} /></EntwurfNavigationProvider>);
     fireEvent.click(ui.getByRole('button', { name: 'Mehr' }));
-    fireEvent.click(ui.getByRole('button', { name: 'Perspektive bearbeiten' }));
+    fireEvent.click(ui.getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
     fireEvent.keyDown(ui.getByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ }), { key: 'ArrowRight' });
     fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
     expect((ui.getByRole('combobox', { name: 'Aktive Dachfläche' }) as HTMLSelectElement).value).toBe(start.flaechen[0]!.id);
@@ -550,7 +548,7 @@ describe('Belegungsbedienung', () => {
     const onChange = vi.fn();
     const ui = render(<SchrittBelegung projekt={start} onChange={onChange} />);
     fireEvent.click(ui.getByRole('button', { name: 'Mehr' }));
-    fireEvent.click(ui.getByRole('button', { name: 'Perspektive bearbeiten' }));
+    fireEvent.click(ui.getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
     const svg = ui.getByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ });
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
     // Eine vorherige abgeschlossene Korrektur darf der Gestenabbruch erhalten.
@@ -583,7 +581,6 @@ describe('Belegungsbedienung', () => {
       return <EditorSitzungProvider projektId="eins"><button onClick={() => setZeigen(!zeigen)}>Schritt wechseln</button>{zeigen && <SchrittBelegung projekt={start} onChange={vi.fn()} />}</EditorSitzungProvider>;
     }
     const ui = render(<App />);
-    fireEvent.click(ui.getByRole('button', { name: 'Mehr' }));
     fireEvent.click(ui.getByRole('button', { name: 'Alle auswählen' }));
     fireEvent.click(ui.getByRole('button', { name: 'Vergrößern' }));
     fireEvent.click(ui.getByRole('button', { name: 'Schritt wechseln' }));
@@ -599,7 +596,6 @@ describe('Belegungsbedienung', () => {
     start.flaechen[0]!.massStatus = 'bestand';
     const ui = render(<SchrittBelegung projekt={start} onChange={vi.fn()} />);
     expect(ui.getByRole('img', { name: /^Belegungsfläche/ })).toBeTruthy();
-    fireEvent.click(ui.getByRole('button', { name: 'Mehr' }));
     fireEvent.click(ui.getByRole('button', { name: 'Alle auswählen' }));
     expect(ui.getByRole('button', { name: 'nach rechts' })).toBeTruthy();
   });
@@ -608,7 +604,6 @@ describe('Belegungsbedienung', () => {
     const start = projektMitFreiraum([{ xM: 1, yM: 1, breiteM: 3, hoeheM: 3, quer: false }]);
     const onChange = vi.fn();
     const ui = render(<EntwurfNavigationProvider><SchrittBelegung projekt={start} onChange={onChange} /></EntwurfNavigationProvider>);
-    fireEvent.click(ui.getByRole('button', { name: 'Mehr' }));
     fireEvent.click(ui.getByRole('button', { name: 'Alle auswählen' }));
     fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '20' } });
@@ -706,7 +701,7 @@ describe('Belegungsbedienung', () => {
     }
     const { getByRole, getAllByRole, getByTestId } = render(<TestApp />);
     fireEvent.click(getByRole('button', { name: 'Mehr' }));
-    fireEvent.click(getByRole('button', { name: 'Perspektive bearbeiten' }));
+    fireEvent.click(getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
 
     const svg = getAllByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ })[0]!;
     fireEvent.keyDown(svg, { key: 'ArrowRight' });
@@ -717,7 +712,7 @@ describe('Belegungsbedienung', () => {
     expect(letzterStand.flaechen[0]!.fotoZuordnungen![0]!.eckenPx![0]).toEqual([0, 600]);
 
     fireEvent.click(getByRole('button', { name: 'Mehr' }));
-    fireEvent.click(getByRole('button', { name: 'Perspektive bearbeiten' }));
+    fireEvent.click(getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
     fireEvent.keyDown(getAllByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ })[0]!, { key: 'ArrowRight' });
     fireEvent.click(getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(letzterStand.flaechen[0]!.fotoZuordnungen![0]!.eckenPx![0]).toEqual([1, 600]));
@@ -736,7 +731,7 @@ describe('Belegungsbedienung', () => {
     const { getByRole, getAllByRole, findByRole } = render(<TestApp />);
     fireEvent.change(getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
     fireEvent.click(getByRole('button', { name: 'Dachdetails' }));
-    fireEvent.click(getByRole('button', { name: 'Perspektive bearbeiten' }));
+    fireEvent.click(getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
     const editor = await findByRole('img', { name: 'Gaube im Dachfoto markieren' });
     expect(getAllByRole('button', { name: /Gaubenpunkt/ })).toHaveLength(6);
     vi.spyOn(editor, 'getBoundingClientRect').mockReturnValue({

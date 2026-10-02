@@ -639,7 +639,7 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await projektPflichtfelder(page);
   await fotoKalibrieren(page);
 
-  const perspektiveStarten = page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true });
+  const perspektiveStarten = page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true });
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
   await perspektiveStarten.click();
   const hauptSvg = page.getByRole('img', { name: /Perspektive von Dachfläche 1 bearbeiten/ });
@@ -660,7 +660,7 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await satteldachGaubeAnlegen(page);
   await page.getByRole('combobox', { name: 'Aktive Dachfläche' }).selectOption({ label: '↳ Satteldachgaube rechts · rechts' });
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
-  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).click();
+  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true }).click();
   const gaubenSvg = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
   const griffe = page.getByRole('button', { name: /Gaubenpunkt/ });
   await expect(griffe).toHaveCount(6);

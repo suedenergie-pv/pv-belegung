@@ -89,7 +89,6 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   await expect(page.getByTestId('editor-bild-transform')).not.toHaveAttribute('style', zoomVorher!);
   expect((await stand(page)).flaechen[0].felder).toEqual([originalFeld]);
   await page.getByRole('button', { name: 'Alles anzeigen', exact: true }).click();
-  await page.getByRole('button', { name: 'Mehr', exact: true }).click();
   await page.getByRole('button', { name: 'Alle auswählen', exact: true }).click();
   await bildBeleg(page, `${testInfo.project.name}-korrektur`);
   const rechts = page.getByRole('button', { name: 'nach rechts', exact: true });

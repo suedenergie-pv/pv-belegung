@@ -110,7 +110,6 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.click(getByRole('button', { name: '2. Dach & Belegung' }));
     expect(getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeTruthy();
     fireEvent.click(getByRole('button', { name: '↷ Wiederherstellen' }));
-    fireEvent.click(getByRole('button', { name: 'Mehr' }));
     expect(getAllByRole('button', { name: 'Automatisch belegen' })).toHaveLength(1);
     expect(getByRole('button', { name: 'Alle auswählen' })).toBeTruthy();
   });

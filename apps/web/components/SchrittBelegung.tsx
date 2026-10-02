@@ -1392,6 +1392,16 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     patchSitzung({ panel: '' });
   });
 
+  const starteAutoBelegung = () => navigation.weiter(() => {
+    verwerfeGeste();
+    automatischFuellen(frisch(f));
+    patchSitzung({ panel: '', modus: null, verschieben: false });
+  });
+  const oeffnePerspektive = () => navigation.weiter(() => {
+    verwerfeGeste();
+    patchSitzung({ panel: '', verschieben: false });
+    startePerspektivBearbeitung(frisch(f), fotoId!);
+  });
   const fotosPanel = <>
     <div className={styles.kontextAktionen}>
       <button type="button" className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>
@@ -1404,6 +1414,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
       </select>}
       {fotoId && <button type="button" className={aktionKlasse} onClick={() => navigation.weiter(() => loeseFotoZuordnung(f.id, fotoId))}>Perspektive entfernen</button>}
     </div>
+    {foto && <div className={styles.optionGruppe}><button className={aktionKlasse} onClick={() => oeffnePanel('markierung')}>Markierung & Ziegelmaß</button><p>Traufe, Dachecken und Messstrecken im Foto prüfen.</p></div>}
     {projekt.fotos.map((asset) => <div className={styles.fotoZeile} key={asset.id}>
       <input aria-label="Name des Drohnenfotos" value={asset.name} onChange={(e) => {
         const name = e.target.value;
@@ -1484,17 +1495,33 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     <p className="mt-3 text-sm text-slate-600">Aktionen gelten für {gewaehlt.length === 1 ? 'das ausgewählte Feld' : `alle ${gewaehlt.length} ausgewählten Felder`}. Griffe ändern die Größe; Shift + Pfeil ebenfalls.</p>
     {auswahlOptionen}
   </>;
-  const mehrPanel = <div className={styles.kontextAktionen}>
-    <button className={aktionKlasse} disabled={!felder.length} onClick={waehleAlleFelder}>Alle auswählen</button>
-    {belegungZeigen && <button className={aktionKlasse} onClick={() => { automatischFuellen(f); patchSitzung({ panel: '' }); }}>Automatisch belegen</button>}
-    <button className={aktionKlasse} aria-pressed={sitzung.verschieben} onClick={() => navigation.weiter(() => { verwerfeGeste(); patchSitzung({ verschieben: !sitzung.verschieben, panel: '' }); })}>Ansicht verschieben</button>
-    <button className={aktionKlasse} aria-pressed={masseZeigen} onClick={() => setMasseZeigen(!masseZeigen)}>Maße {masseZeigen ? 'ausblenden' : 'einblenden'}</button>
-    {fotoZuordnung?.eckenPx && !f.gaubenTyp && <button className={aktionKlasse} onClick={() => { patchSitzung({ panel: '' }); startePerspektivBearbeitung(f, fotoId!); }}>Perspektive bearbeiten</button>}
-    {foto && <button className={aktionKlasse} onClick={() => oeffnePanel('markierung')}>Aussparungen & Dachrand</button>}
-    {elternMitFoto?.foto?.eckenPx && <button className={aktionKlasse} onClick={() => oeffnePanel('gauben')}>Gauben verwalten</button>}
-    <label>Rand<input type="number" min={0} max={100} value={Math.round(randVon(f) * 100)} onChange={(e) => { const cm = Number(e.target.value); if (Number.isFinite(cm) && cm >= 0) patchFlaeche(f.id, { randM: cm / 100 }); }} />cm</label>
-    {!!felder.length && <button className={aktionKlasse} aria-label="Belegung entfernen" onClick={() => alleFelderLoeschen(f)}>Alle {felder.length} Felder entfernen</button>}
-    <button className={aktionKlasse} onClick={() => navigation.weiter(fuegeHauptflaecheHinzu)}>+ Dachfläche</button>
+  const mehrPanel = <div className={styles.optionenPanel}>
+    {belegungZeigen && <section className={`${styles.optionGruppe} ${styles.kompakteOptionen}`} aria-label="Automatische Belegung">
+      <h4>Gesamte Dachfläche belegen</h4>
+      <p>Ein zusammenhängendes Feld über die nutzbare Dachfläche legen. Vorhandene Felder werden nach Bestätigung ersetzt.</p>
+      <button className={aktionKlasse} onClick={starteAutoBelegung}>Automatisch belegen</button>
+    </section>}
+    <section className={styles.optionGruppe} aria-label="Randabstand">
+      <h4>Abstand zum Dachrand</h4>
+      <label className={styles.randEingabe}>Randabstand<input type="number" min={0} max={100} value={Math.round(randVon(f) * 100)} onChange={(e) => { const cm = Number(e.target.value); if (Number.isFinite(cm) && cm >= 0) patchFlaeche(f.id, { randM: cm / 100 }); }} />cm</label>
+      <p>Module innerhalb dieses Randstreifens entfallen.</p>
+    </section>
+    <section className={styles.optionGruppe} aria-label="Anzeige">
+      <h4>Anzeige im Foto</h4>
+      <button className={aktionKlasse} aria-pressed={masseZeigen} onClick={() => setMasseZeigen(!masseZeigen)}>Maße {masseZeigen ? 'ausblenden' : 'einblenden'}</button>
+      <p>Maßlinien zur Orientierung anzeigen. Ändert die Belegung nicht.</p>
+      <button className={`${aktionKlasse} ${styles.nurKompakt}`} aria-pressed={sitzung.verschieben} onClick={() => navigation.weiter(() => { verwerfeGeste(); patchSitzung({ verschieben: !sitzung.verschieben, panel: '' }); })}>Ansicht verschieben</button>
+    </section>
+    {fotoZuordnung?.eckenPx && !f.gaubenTyp && <section className={`${styles.optionGruppe} ${styles.kompakteOptionen}`} aria-label="Foto-Perspektive">
+      <h4>Dachecken im Foto korrigieren</h4>
+      <p>Die vier Eckpunkte verschieben, wenn die Belegung nicht zum Foto passt.</p>
+      <button className={aktionKlasse} onClick={oeffnePerspektive}>Perspektive bearbeiten</button>
+    </section>}
+    {!!felder.length && <section className={`${styles.optionGruppe} ${styles.loeschOption}`} aria-label="Belegung zurücksetzen">
+      <h4>Belegung zurücksetzen</h4>
+      <p>Alle {felder.length} {felder.length === 1 ? 'Feld' : 'Felder'} dieser Dachfläche entfernen. Foto und Dachmaße bleiben erhalten.</p>
+      <button className={aktionKlasse} aria-label="Belegung entfernen" onClick={() => alleFelderLoeschen(f)}>Belegung entfernen …</button>
+    </section>}
   </div>;
 
   const feldPanel = <div className={styles.werkzeugOptionen}>
@@ -1507,12 +1534,12 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
     {leerZahl > 0 && <button className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>Alle Module zurückholen ({leerZahl})</button>}
     <button className={aktionKlasse} onClick={() => setzeModus(f, null)}>Fertig</button></div>;
   const bedienPanel = perspektiveHier ? perspektivPanel : sitzung.panel === 'fotos' ? fotosPanel : sitzung.panel === 'details' ? detailsPanel : sitzung.panel === 'mehr' ? mehrPanel : feldNeuWerkzeug ? feldPanel : modusArt(f) === 'zellen' ? zellenPanel : gewaehlt.length && felderWerkzeug ? auswahlPanel : null;
-  const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachdetails & Maße' : sitzung.panel === 'mehr' ? 'Weitere Werkzeuge' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
+  const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachdetails & Maße' : sitzung.panel === 'mehr' ? 'Belegung & Ansicht' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
   const standardPanel = <div className={styles.eigenschaften}>
     <div className={styles.flaechenErgebnis}><strong>{aktiv}<small>Module</small></strong><strong>{fmtDe(aktiv * modul.pmaxW / 1000, 2)}<small>kWp · {f.name}</small></strong></div>
     <dl><div><dt>Abmessungen</dt><dd>{fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m</dd></div><div><dt>Modul</dt><dd>{modul.pmaxW} Wp</dd></div><div><dt>Belegungsfelder</dt><dd>{felder.length}</dd></div></dl>
     {!mass.belegen && <p className={styles.hinweis}>{mass.meldung} <button className={aktionKlasse} onClick={() => oeffnePanel(f.gaubenTyp ? 'gauben' : 'details')}>Maße bestätigen</button></p>}
-    {belegungZeigen && !felder.length && <><p>Die Fläche ist bereit für die erste Belegung.</p><button className={styles.primaer} onClick={() => setzeModus(f, 'feld_neu')}>+ Belegungsbereich zeichnen</button><button className={aktionKlasse} onClick={() => automatischFuellen(f)}>Automatisch belegen</button></>}
+    {belegungZeigen && !felder.length && <><p>Die Fläche ist bereit für die erste Belegung.</p><button className={styles.primaer} onClick={() => setzeModus(f, 'feld_neu')}>+ Belegungsbereich zeichnen</button><button className={`${aktionKlasse} ${styles.nurKompakt}`} onClick={starteAutoBelegung}>Automatisch belegen</button></>}
     {belegungZeigen && !!felder.length && !raster.positionen.length && <p className={styles.hinweis}>Kein Modul passt in die nutzbare Fläche. Feldgröße, Rand und Aussparungen prüfen.</p>}
     {belegungZeigen && !!felder.length && !sitzung.verschieben && auswahlOptionen}
     {sitzung.verschieben && <p>Im Foto ziehen. Zwei Finger verschieben und zoomen immer nur die Ansicht.</p>}
@@ -1596,6 +1623,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
       <button type="button" aria-label="Auswählen" aria-pressed={belegungZeigen && !sitzung.verschieben && modusArt(f) === null && !markierungOffen && sitzung.panel !== 'gauben' && !perspektiveHier} disabled={!belegungZeigen} onClick={() => { waehleBelegungsWerkzeug(null); }}><WorkbenchIcon symbol="auswahl" /><span>Auswählen</span></button>
       <button type="button" className={styles.zusatzWerkzeug} aria-label="Mehrfachauswahl" aria-pressed={sitzung.mehrfachauswahl} disabled={!belegungZeigen || !felder.length} onClick={wechsleMehrfachauswahl}><WorkbenchIcon symbol="mehrfach" /><span>Mehrfach<br />auswählen</span></button>
       <button type="button" aria-label="+ Feld zeichnen" aria-pressed={feldNeuWerkzeug} disabled={!belegungZeigen} onClick={() => waehleBelegungsWerkzeug('feld_neu')}><WorkbenchIcon symbol="feld" /><span>Feld zeichnen</span></button>
+      {belegungZeigen && <button type="button" className={styles.zusatzWerkzeug} aria-label="Automatisch belegen" title="Gesamte nutzbare Dachfläche belegen; vorhandene Felder nach Bestätigung ersetzen" onClick={starteAutoBelegung}><WorkbenchIcon symbol="automatisch" /><span>Automatisch<br />belegen</span></button>}
       <button type="button" aria-label="Module entfernen" aria-pressed={modusArt(f) === 'zellen'} disabled={!belegungZeigen || !felder.length} onClick={() => waehleBelegungsWerkzeug('zellen')}><WorkbenchIcon symbol="module" /><span>Module<br />entfernen</span></button>
       {!historie.zentral && <>
         <button className={aktionKlasse} disabled={!historie.canUndo} onClick={() => navigation.weiter(historie.undo)}>↶ Rückgängig{historie.undoCount ? ` (${historie.undoCount})` : ''}</button>
@@ -1606,6 +1634,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
       <button type="button" aria-label="Umriss" aria-expanded={sitzung.panel === 'umriss'} disabled={!foto?.eckenPx || !mass.belegen} title="Dachumriss zeichnen oder ändern · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('umriss', true)}><WorkbenchIcon symbol="umriss" /><span>Umriss</span></button>
       <button type="button" aria-label="Aussparungen" aria-expanded={sitzung.panel === 'aussparungen'} disabled={!foto?.eckenPx || !mass.belegen} title="Fenster, Kamin oder andere Aussparungen markieren · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('aussparungen', true)}><WorkbenchIcon symbol="aussparung" /><span>Aussparung</span></button>
       <button type="button" aria-label="Gauben" aria-expanded={sitzung.panel === 'gauben'} disabled={!elternMitFoto?.foto?.eckenPx || !massFreigabe(elternMitFoto).belegen} title="Gauben im Foto anlegen oder bearbeiten · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('gauben')}><WorkbenchIcon symbol="gaube" /><span>Gauben</span></button>
+      {fotoZuordnung?.eckenPx && !f.gaubenTyp && <button type="button" className={styles.zusatzWerkzeug} aria-label="Perspektive bearbeiten" aria-pressed={!!perspektiveHier} title="Die vier Dachecken im Foto korrigieren" onClick={oeffnePerspektive}><WorkbenchIcon symbol="perspektive" /><span>Perspektive</span></button>}
     </div>
     <div className={styles.weitereWerkzeuge}>
       <button type="button" className={styles.panWerkzeug} aria-label="Foto verschieben" aria-pressed={sitzung.verschieben} onClick={() => navigation.weiter(() => { verwerfeGeste(); patchSitzung({ verschieben: !sitzung.verschieben, panel: '' }); })}><WorkbenchIcon symbol="hand" /><span>Verschieben</span></button>

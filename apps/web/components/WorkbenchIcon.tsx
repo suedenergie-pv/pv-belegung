@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 
-export type WorkbenchSymbol = 'auswahl' | 'mehrfach' | 'module' | 'feld' | 'umriss' | 'aussparung' | 'gaube' | 'hand' | 'mehr' | 'flaeche' | 'foto' | 'details';
+export type WorkbenchSymbol = 'auswahl' | 'mehrfach' | 'module' | 'feld' | 'automatisch' | 'perspektive' | 'umriss' | 'aussparung' | 'gaube' | 'hand' | 'mehr' | 'flaeche' | 'foto' | 'details';
 const formen: Record<WorkbenchSymbol, ReactNode> = {
   auswahl: <path d="m5 3 14 10-7 1-3 7-4-18Z" />,
   mehrfach: <><rect x="3" y="3" width="12" height="12" rx="1" strokeDasharray="3 3" /><rect x="9" y="9" width="12" height="12" rx="1" /><path d="M12 15h6m-3-3v6" /></>,
   module: <><rect x="3" y="3" width="12" height="18" rx="1" /><path d="M9 3v18M3 9h12M3 15h8m4 2h7" /></>,
   feld: <><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16M15 4v16M3 12h18" /></>,
+  automatisch: <><path d="M3 9v12h18V9M9 9v12M15 9v12M3 15h18M3 4h18m-4-3 4 3-4 3" /></>,
+  perspektive: <><path d="m5 5 14-2 3 17-19 1Z" /><path d="M3 3h4v4H3zM17 1h4v4h-4zM20 18h4v4h-4zM1 19h4v4H1z" fill="currentColor" stroke="none" /></>,
   umriss: <><path d="m5 6 13-2 3 13-13 4-5-9Z" /><path d="M3 4h4v4H3zM16 2h4v4h-4zM19 15h4v4h-4zM6 19h4v4H6z" fill="currentColor" stroke="none" /></>,
   aussparung: <><rect x="4" y="4" width="16" height="16" rx="1" /><path d="m7 17 10-10M7 11l4-4m2 10 4-4" /></>,
   gaube: <><path d="m2 16 4-9 7-4 9 13M6 7l7 5 9 4M6 7v13h12V14M13 3v9" /><path d="M10 20v-6h4v6" /></>,

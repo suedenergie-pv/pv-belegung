@@ -103,7 +103,7 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
   await page.screenshot({ path: resolve(ordner, `${info.project.name}-${coarse}-gaubenkontur.png`) });
   // Die separate Perspektivkorrektur verwendet dieselbe direkte Mausbedienung.
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
-  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).click();
+  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true }).click();
   const polygon = page.getByTestId('perspektiv-griffe').locator('polygon');
   const vorPerspektive = await polygon.getAttribute('points');
   const perspektivEcke = page.getByRole('button', { name: 'Perspektive Ecke 1', exact: true });

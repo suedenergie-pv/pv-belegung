@@ -39,6 +39,7 @@
 .kontextInhalt :global([data-foto-einrichtung]) [role=toolbar]{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .kontextAktionen{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.kontextAktionen>label{display:flex;align-items:center;gap:8px;font-size:12px}.kontextAktionen input{width:76px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px}
 .werkzeugOptionen{display:flex;flex-direction:column;align-items:stretch;gap:12px}.werkzeugOptionen label{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.optionenPanel{display:flex;flex-direction:column;gap:20px}.optionGruppe{display:flex;flex-direction:column;align-items:stretch;gap:8px}.optionGruppe+.optionGruppe{border-top:1px solid var(--line);padding-top:16px}.optionGruppe h4{font-weight:600;font-size:13px;color:var(--ink)}.optionGruppe p{color:var(--muted);font-size:12px;line-height:1.5}.optionGruppe button{text-align:left;padding:8px 10px}.randEingabe{display:flex;align-items:center;gap:8px;font-size:12px}.randEingabe input{width:72px;padding:4px 8px;border:1px solid #c7ced3;margin-left:auto}.loeschOption button{color:#9a3412;border-color:#c9a89c}.kompakteOptionen{display:none}.optionenPanel>.kompakteOptionen:first-child+.optionGruppe{border-top:0;padding-top:0}
 .eigenschaften{display:flex;flex-direction:column;gap:16px}.flaechenErgebnis{display:grid;grid-template-columns:1fr 1.4fr;gap:12px;border-bottom:1px solid var(--line);padding-bottom:16px}.flaechenErgebnis strong{font-size:28px;letter-spacing:-1px;font-weight:500;line-height:1.2}.flaechenErgebnis small{display:block;font-size:11px;letter-spacing:0;font-weight:400;color:var(--muted);margin-top:6px}
 .eigenschaften dl>div{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #e2e5e7;font-size:12px}.eigenschaften dt{color:var(--muted)}.eigenschaften dd{text-align:right;font-weight:500}.primaer{min-height:44px;border-radius:4px;padding:8px 12px;background:#b83d1e;color:#fff;font-weight:600;font-size:12px}
 .anleitung{background:#282f33;color:#dce3e7;border-bottom:1px solid #42494d;font-size:12px;line-height:1.5;padding:8px 16px;flex:none}.anleitung p{margin:0;color:inherit;font-size:inherit}
@@ -72,4 +73,11 @@
  .canvasLeer strong{font-size:15px;line-height:1.3}
  .canvasLeer p{display:none}
  .canvasLeer button{flex-shrink:0;min-height:44px}
+}
+@media(min-width:601px) and (min-height:501px) and (max-height:850px){
+ .werkzeugZeile button{min-height:50px;gap:3px;padding:3px 2px;font-size:10px}
+ .werkzeugZeile button svg{width:20px;height:20px}
+}
+@media(max-width:600px),(max-height:500px) and (orientation:landscape){
+ .kompakteOptionen{display:flex}.optionenPanel>.kompakteOptionen:first-child+.optionGruppe{border-top:1px solid var(--line);padding-top:16px}
 }

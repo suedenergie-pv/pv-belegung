@@ -74,7 +74,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   await expect(page.getByTestId('flaechen-status')).toContainText(/[1-9]\d* Module/);
   const moduleStatus = await page.getByTestId('flaechen-status').textContent();
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Rand cm', exact: true })).toHaveValue('0');
+  await expect(page.getByRole('spinbutton', { name: 'Randabstand cm', exact: true })).toHaveValue('0');
   await page.screenshot({ path: `.release/screenshots/${info.project.name}-editor.png` });
 
   await page.getByRole('button', { name: '3. Export', exact: true }).click();

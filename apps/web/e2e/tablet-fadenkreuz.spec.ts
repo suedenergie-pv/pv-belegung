@@ -139,7 +139,7 @@ test('Fadenkreuz: Finger bewegt nur den Cursor, fester Button setzt Punkte, Pinc
   await expect(page.getByText(/1 Gaube angelegt/)).toBeVisible();
   // Auch die nachträgliche Hauptdach-Korrektur bestätigt jede Ecke getrennt.
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
-  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).click();
+  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true }).click();
   const rahmen = page.getByTestId('perspektiv-griffe').locator('polygon');
   const urspruenglich = await rahmen.getAttribute('points');
   await schiebeKreuz(page, .1, .85, browserName === 'chromium');
@@ -150,7 +150,7 @@ test('Fadenkreuz: Finger bewegt nur den Cursor, fester Button setzt Punkte, Pinc
   await expect(rahmen).not.toHaveAttribute('points', urspruenglich!);
   await page.getByTestId('perspektiv-editor-steuerung').getByRole('button', { name: 'Abbrechen', exact: true }).click();
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
-  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).click();
+  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true }).click();
   await expect(rahmen).toHaveAttribute('points', urspruenglich!);
   await page.getByTestId('perspektiv-editor-steuerung').getByRole('button', { name: 'Abbrechen', exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
