@@ -80,10 +80,11 @@ Native iPad-Praxisabnahme bleibt offen. Der fachliche App-/Engine-Stand wird dur
 - Evidence: `.release/werkzeuge-export-qa.json`, `.release/werkzeuge-export-review.md`, `.debug-shots/werkzeuge-export/` und `.release/werkzeuge-*.log`, `.release/werkzeuge-export-live-hashes.json` und `.release/werkzeuge-export-live/`. Native iPad-Prüfung nicht erfolgt; privates Foto ausschließlich lokal.
 
 
-## Desktop-Leertaste am 12.10.2026 — vorbereitet
+## Desktop-Leertaste am 12.10.2026
 
-- Release `20261012-space-pan` vorbereitet, noch nicht aktiviert. Erwarteter Vorgänger/Rollback: `/var/www/belegung/releases/20261002-werkzeuge-export`.
+- Aktiv: `/var/www/belegung/releases/20261012-space-pan`. Rollback bleibt `/var/www/belegung/releases/20261002-werkzeuge-export`.
 - Leertaste halten über dem Foto und mit linker Maustaste ziehen verschiebt vorübergehend nur die Ansicht. Nach Loslassen bleibt das bisherige Werkzeug aktiv; ein Rest-Mouse-up/-click löst keine Modellaktion aus. Eingaben/Dialoge, Fensterverlust, native Touch- und Zweifingergesten sind berücksichtigt. Die bestehende Gestaltung bleibt erhalten; der Cursor zeigt die temporäre Hand.
 - 353 Unit-/Engine-Tests, Typecheck und isolierter VPS-Build bestanden. 3 neue headless Shortcutfälle in Chromium/WebKit einschließlich frühem Loslassen, Werkzeugrückkehr, unveränderten Projektdaten, Fensterverlust und Texteingabe bestanden. Dazu 6 Hybrid- und 8 Touchregressionen sowie 2 PDF-/Reload-Smokes. Nach finaler Mausgrenzen-Korrektur fokussierte 9 Unit-Tests, Typecheck, Build, 3 Shortcutfälle und 2 Smokes erneut bestanden.
 - Archiv SHA-256 `ff27e33f31c2188d958a95efc83b23141179c887b3fbc946d678f4d24f891d00`; Index SHA-256 `588937313c530d5372f156904a2186c91d14d55e192e863466b3ea48d221a1c9`. 63 Quellen/33 Export-/33 Archivdateien abgeglichen. Remotehashes und Shell-Syntax geprüft; vorhandenes Aktivierungs-/Rollbackskript unverändert.
-- Evidence: `.release/space-pan-qa.json`, `.release/space-pan-*.log`, `.debug-shots/space-pan/`. Gerenderte Desktop-/Mobileansichten geöffnet; echte iPad-Praxisprüfung nicht erfolgt.
+- Unabhängiger Review PASS: finale Quellen/Export/Archiv ohne Abweichung. Atomare Aktivierung und serverseitige HTTPS-Prüfung erfolgreich; alle 33 öffentlichen Dateien stimmen mit dem geprüften Artefakt überein. Direkt auf der Live-Domain 3/3 Shortcut-/Eingabefälle und 2/2 PDF-/Reload-Smokes bestanden.
+- Evidence: `.release/space-pan-qa.json`, `.release/space-pan-review.md`, `.release/space-pan-*.log`, `.release/space-pan-live-hashes.json`, `.release/space-pan-live/` und `.debug-shots/space-pan/`. Gerenderte Desktop-/Mobileansichten geöffnet; echte iPad-Praxisprüfung nicht erfolgt.
