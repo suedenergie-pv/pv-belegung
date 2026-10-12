@@ -30,6 +30,8 @@ interface Props {
   className?: string;
   punktSteuerung?: FotoPunktSteuerung;
 }
+const ZOOM_SCHRITT = 1.25;
+
 interface Geste { start: EditorAnsicht; mitte: AnsichtPunkt; abstand: number; rahmen: BildRahmen }
 const mitte = (punkte: AnsichtPunkt[]) => ({ x: punkte.reduce((n, p) => n + p.x, 0) / punkte.length, y: punkte.reduce((n, p) => n + p.y, 0) / punkte.length });
 const distanz = (p: AnsichtPunkt[]) => p.length > 1 ? Math.max(1, Math.hypot(p[0]!.x - p[1]!.x, p[0]!.y - p[1]!.y)) : 0;
@@ -148,9 +150,11 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     const rad = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
+      if (e.deltaY === 0) return;
       const p = punkt(e);
       const aktuell = refs.current;
-      schreibe(transformiereAnsicht(aktuell.ansicht, aktuell.rahmen, p, p, aktuell.ansicht.zoom * Math.exp(-e.deltaY * .008)));
+      const faktor = e.deltaY < 0 ? ZOOM_SCHRITT : 1 / ZOOM_SCHRITT;
+      schreibe(transformiereAnsicht(aktuell.ansicht, aktuell.rahmen, p, p, aktuell.ansicht.zoom * faktor));
     };
     const endeAusserhalb = (e: PointerEvent) => {
       if (!pointer.current.has(e.pointerId)) return;
@@ -287,9 +291,9 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
         <button type="button" aria-label="Ansicht nach unten" onClick={() => schieben(0, 1)}>↓</button>
         <button type="button" aria-label="Ansicht nach rechts" onClick={() => schieben(1, 0)}>→</button>
       </div> : <span className={styles.hinweis}>{touchHinweis ? 'Zwei Finger: Bild verschieben und zoomen' : 'Leertaste halten + ziehen: Bild verschieben'}</span>}
-      <button type="button" aria-label="Verkleinern" disabled={sichtbar.zoom <= 1} onClick={() => zoom(1 / 1.25)}>−</button>
+      <button type="button" aria-label="Verkleinern" disabled={sichtbar.zoom <= 1} onClick={() => zoom(1 / ZOOM_SCHRITT)}>−</button>
       <span className={styles.prozent} aria-label={`Zoom ${Math.round(sichtbar.zoom * 100)} Prozent`}>{Math.round(sichtbar.zoom * 100)}%</span>
-      <button type="button" aria-label="Vergrößern" disabled={sichtbar.zoom >= 8} onClick={() => zoom(1.25)}>+</button>
+      <button type="button" aria-label="Vergrößern" disabled={sichtbar.zoom >= 8} onClick={() => zoom(ZOOM_SCHRITT)}>+</button>
       <button type="button" aria-label="Alles anzeigen" onClick={() => { abbrechen(); schreibe(STANDARD_ANSICHT); }}>⛶ <span className={styles.allesText}>Alles anzeigen</span></button>
     </div>
   </section>;

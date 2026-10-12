@@ -49,6 +49,8 @@ Vom Nutzer nach dem vollständigen UX-Durchlauf freigegeben, einschließlich Ver
 
 ### Klick- und Gestenkorrektur 12.10.2026
 
+- Strg/Meta + Mausrad verwendet denselben Zoomfaktor 1,25 (hinein) bzw. 1/1,25 (heraus) wie die Plus-/Minus-Knöpfe. Die Stärke des Raddeltas vervielfacht den Schritt nicht; der Punkt unter dem Zeiger bleibt als Zoomanker erhalten.
+
 - Ein abgeschlossener Klick oder Tipp auf eine freie Fotostelle oder den grauen Bildrand hebt die Feldauswahl auf. Beginnende Zweifinger- und Verschiebegesten erhalten die Auswahl; sie verändern nur die Ansicht.
 - Feldgesten unterscheiden Klick und Ziehen anhand einer Toleranz von 5 CSS-Pixeln, unabhängig von Dachmaßen und Zoom. Rechts- und Mitteltaste lösen keine Feld-, Griff- oder Haltepfeiländerungen aus.
 - Escape beendet Feldzeichnen, Modulentfernen, Mehrfachauswahl und Verschieben auch bei Fokus auf dem Werkzeugknopf. Eingaben, Dialoge und offene Geometrie-/Perspektiventwürfe behalten ihren jeweiligen Abbruch- und Speicherschutz.

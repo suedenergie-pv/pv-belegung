@@ -178,3 +178,19 @@ test('Zweifingergeste auf freiem Foto erhält die Feldauswahl', async ({ page })
   await expect(auswahl(page)).toBeVisible();
   expect(await felder(page)).toEqual(original);
 });
+
+test('Strg-Rad zoomt wie Plus und Minus, auch bei großen Scroll-Deltas', async ({ page }) => {
+  const original=await felder(page);
+  const bild=page.getByTestId('editor-viewport'); await bild.hover();
+  await page.keyboard.down('Control'); await page.mouse.wheel(0,-120); await page.keyboard.up('Control');
+  await expect(page.getByLabel('Zoom 125 Prozent',{exact:true})).toBeVisible();
+  await page.keyboard.down('Control'); await page.mouse.wheel(0,-1200); await page.keyboard.up('Control');
+  await expect(page.getByLabel('Zoom 156 Prozent',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Vergrößern',exact:true}).click();
+  await expect(page.getByLabel('Zoom 195 Prozent',{exact:true})).toBeVisible();
+  await bild.hover(); await page.keyboard.down('Control'); await page.mouse.wheel(0,1200); await page.keyboard.up('Control');
+  await expect(page.getByLabel('Zoom 156 Prozent',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Verkleinern',exact:true}).click();
+  await expect(page.getByLabel('Zoom 125 Prozent',{exact:true})).toBeVisible();
+  expect(await felder(page)).toEqual(original);
+});

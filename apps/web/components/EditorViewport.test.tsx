@@ -175,3 +175,20 @@ it('behält die Ansicht je Projekt auch nach Aus- und Einbau des Editors', () =>
   ui.rerender(<EditorSitzungProvider projektId="a"><span>Export</span></EditorSitzungProvider>);
   ui.rerender(<EditorSitzungProvider projektId="a"><Editor /></EditorSitzungProvider>); expect(ui.getByText('nord:2')).toBeTruthy();
 });
+
+it('zoomt mit Strg/Meta und Mausrad in denselben Schritten wie die Knöpfe, unabhängig vom Raddelta', () => {
+  function Test() { const [ansicht,set] = useState(STANDARD_ANSICHT); return <EditorViewport bildSeitenverhaeltnis={2} ansicht={ansicht} onAnsichtChange={set}><svg /></EditorViewport>; }
+  const ui=render(<Test />), bild=ui.getByTestId('editor-viewport'), transform=ui.getByTestId('editor-bild-transform');
+  for (const [deltaY,deltaMode] of [[1,0],[120,0],[1200,0],[3,1],[1,2]]) {
+    fireEvent.wheel(bild,{deltaY:-deltaY!,deltaMode,ctrlKey:true,clientX:500,clientY:300});
+    expect(transform.style.transform).toContain('scale(1.25)');
+    fireEvent.wheel(bild,{deltaY,deltaMode,ctrlKey:true,clientX:500,clientY:300});
+    expect(transform.style.transform).toContain('scale(1)');
+  }
+  fireEvent.wheel(bild,{deltaY:-120,metaKey:true,clientX:500,clientY:300});
+  fireEvent.click(ui.getByRole('button',{name:'Vergrößern'}));
+  expect(transform.style.transform).toContain('scale(1.5625)');
+  fireEvent.wheel(bild,{deltaY:-120});
+  fireEvent.wheel(bild,{deltaY:0,ctrlKey:true});
+  expect(transform.style.transform).toContain('scale(1.5625)');
+});
