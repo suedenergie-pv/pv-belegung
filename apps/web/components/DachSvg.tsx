@@ -126,7 +126,7 @@ export interface PointerProps {
   onGriffDownM?: (index: number, griff: GriffId, p: PunktM) => void;
   /** null = Zeiger hat die Fläche verlassen / Geste abgebrochen */
   onMoveM: (p: PunktM | null) => void;
-  onUpM: (p: PunktM) => void;
+  onUpM: (p: PunktM, gezogen: boolean) => void;
 }
 
 export interface TastaturProps {
@@ -243,33 +243,53 @@ function DachPattern({ id, farbe }: { id: string; farbe: Dachfarbe }) {
  * auch dann sauber endet, wenn der Zeiger die Fläche verlässt. `zuM` bildet den
  * Event auf Flächen-Meter ab (Draufsicht: viewBox, Foto: inverse Homographie).
  */
+interface FeldZeigerGeste {
+  id: number;
+  x: number;
+  y: number;
+  gezogen: boolean;
+}
 function pointerHandler(
   p: PointerProps,
   zuM: (e: { clientX: number; clientY: number; currentTarget: SVGSVGElement }) => PunktM | null,
+  geste: { current: FeldZeigerGeste | null },
 ) {
+  const bewegt = (e: { clientX: number; clientY: number }, start: FeldZeigerGeste) =>
+    start.gezogen ||= Math.hypot(e.clientX - start.x, e.clientY - start.y) >= 5;
+  const abbrechen = () => {
+    if (!geste.current) return;
+    geste.current = null;
+    p.onMoveM(null);
+  };
   return {
     onPointerDown: (e: React.PointerEvent<SVGSVGElement>) => {
+      // Kontextmenü/Mausrad dürfen keine Auswahl oder Modelländerung beginnen.
+      if (e.button !== 0) return;
       const m = zuM(e);
       if (!m) return;
-      // Erst die Geste starten, dann Capture versuchen: setPointerCapture wirft
-      // NotFoundError, wenn der Pointer nicht (mehr) aktiv ist — das darf das
-      // Ziehen nicht verhindern.
+      geste.current = { id: e.pointerId, x: e.clientX, y: e.clientY, gezogen: false };
       const griff = e.target instanceof Element ? e.target.closest('[data-feld-griff]') : null;
       if (griff && p.onGriffDownM) p.onGriffDownM(Number(griff.getAttribute('data-feld-index')), griff.getAttribute('data-feld-griff') as GriffId, m);
       else p.onDownM(m, e.shiftKey || e.ctrlKey || e.metaKey);
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId); // Zeiger darf die Fläche verlassen
-      } catch {
-        // ohne Capture endet die Geste über pointerup/-cancel — gut genug
-      }
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* Fenster-Fallback beendet die Geste. */ }
     },
-    onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => p.onMoveM(zuM(e)),
-    onPointerUp: (e: React.PointerEvent<SVGSVGElement>) => {
+    onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => {
+      const start = geste.current;
+      if (!start || start.id !== e.pointerId || !bewegt(e, start)) return;
       const m = zuM(e);
-      if (m) p.onUpM(m);
+      if (m) p.onMoveM(m); // Ein kurzzeitig ungültiger Bildrahmen ist kein Abbruch.
+    },
+    onPointerUp: (e: React.PointerEvent<SVGSVGElement>) => {
+      const start = geste.current;
+      if (!start || start.id !== e.pointerId) return;
+      const gezogen = bewegt(e, start);
+      geste.current = null;
+      const m = zuM(e);
+      if (m) p.onUpM(m, gezogen);
       else p.onMoveM(null);
     },
-    onPointerCancel: () => p.onMoveM(null),
+    onPointerCancel: abbrechen,
+    onLostPointerCapture: abbrechen,
   };
 }
 
@@ -480,6 +500,8 @@ export function DachSvg({
   // Dasselbe Dach kann gleichzeitig in Foto-Vorschau, Editor und PDF-Vorschau
   // vorkommen. Reacts useId trennt die dokumentweit geltenden SVG-Clip-IDs.
   const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
+  const feldZeigerGeste = useRef<FeldZeigerGeste | null>(null);
+  useEffect(() => { feldZeigerGeste.current = null; }, [cancelRevision]);
   const perspektivZug = useRef<{ pointerId: number; ecken: Ecken } | null>(null);
   const perspektivRef = useRef(perspektivEditor);
   perspektivRef.current = perspektivEditor;
@@ -615,6 +637,7 @@ export function DachSvg({
               aria-pressed={index === perspektivEditor.ausgewaehlt}
               onFocus={() => perspektivEditor.onAuswaehlen(index)}
               onPointerDown={(e) => {
+                if (e.button !== 0) return;
                 e.preventDefault();
                 e.stopPropagation();
                 perspektivZug.current = { pointerId: e.pointerId, ecken: perspektivEditor.ecken };
@@ -1006,7 +1029,7 @@ export function DachSvg({
       const moveM = zeichnen?.aktiv && zeichnen.onMoveM
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
-      const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh) : undefined;
+      const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh, feldZeigerGeste) : undefined;
       const felderFoto = !druck ? (
         <g data-testid="belegungsfeld-overlays">
           {(felderAnzeige ?? []).map((fa, i) => {
@@ -1333,7 +1356,7 @@ export function DachSvg({
     const p = draufsichtZuMRoh(e);
     return p ? [Math.max(0, Math.min(B, p[0])), Math.max(0, Math.min(H, p[1]))] : null;
   };
-  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuMRoh) : undefined;
+  const zeigerDraufsicht = pointer ? pointerHandler(pointer, draufsichtZuMRoh, feldZeigerGeste) : undefined;
 
   return (
     <div

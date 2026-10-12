@@ -68,7 +68,7 @@ export function HoldButton({
       className={className}
       style={{ touchAction: 'none' }}
       onPointerDown={(e) => {
-        if (disabled) return;
+        if (disabled || e.button !== 0) return;
         e.preventDefault(); // Der gehaltene Knopf darf die Arbeitsfläche nicht verschieben.
         stop();
         // Eine noch fokussierte Formulareingabe zuerst abschließen; sie gehört

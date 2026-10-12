@@ -12,7 +12,7 @@ describe('Tablet-Halteknopf', () => {
     const fn = vi.fn();
     const { getByRole } = render(<HoldButton onTrigger={fn} title="rechts" intervallMs={100}>→</HoldButton>);
     const button = getByRole('button', { name: 'rechts' });
-    fireEvent.pointerDown(button, { pointerId: 1 });
+    fireEvent(button, new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     expect(fn).toHaveBeenCalledTimes(1);
     act(() => vi.advanceTimersByTime(350));
     expect(fn).toHaveBeenCalledTimes(4);
@@ -29,4 +29,15 @@ describe('Tablet-Halteknopf', () => {
     act(() => vi.advanceTimersByTime(500));
     expect(fn).not.toHaveBeenCalled();
   });
+});
+
+it('löst bei rechter oder mittlerer Maustaste keine Halteaktion aus', () => {
+  vi.useFakeTimers();
+  const fn = vi.fn();
+  const { getByRole } = render(<HoldButton onTrigger={fn} title="Testpfeil">→</HoldButton>);
+  for (const button of [1,2]) {
+    fireEvent(getByRole('button', { name:'Testpfeil' }), new MouseEvent('pointerdown', { bubbles:true, button }));
+    act(() => vi.advanceTimersByTime(500));
+  }
+  expect(fn).not.toHaveBeenCalled();
 });

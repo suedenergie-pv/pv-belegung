@@ -746,6 +746,7 @@ export function GaubenEditor({
                       onFocus={() => setAusgewaehlt(i)}
                       onClick={(e) => e.stopPropagation()}
                       onPointerDown={(e) => {
+                        if (e.button !== 0) return;
                         e.preventDefault();
                         e.stopPropagation();
                         setAusgewaehlt(i);

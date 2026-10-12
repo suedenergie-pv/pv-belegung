@@ -46,6 +46,14 @@ Vom Nutzer nach dem vollständigen UX-Durchlauf freigegeben, einschließlich Ver
 - Auf der Exportseite steht genau ein PDF-Download oberhalb von Zusammenfassung und Bildvorschau. Die Downloadleiste bleibt beim Scrollen sichtbar; Vorbereitung, Fehlerbehandlung und iOS-Teilen bleiben erhalten.
 - Abnahme umfasst echte neue Projekte bis PDF, Bestandskorrektur, Entwurfsschutz, mehrere Dachflächen, Maus/Touch und alle fünf Zielgrößen. Technische Tests ersetzen weder die Sichtprüfung noch einen echten Nutzertest. Native iPad-Praxisabnahme bleibt gesondert offen.
 
+
+### Klick- und Gestenkorrektur 12.10.2026
+
+- Ein abgeschlossener Klick oder Tipp auf eine freie Fotostelle oder den grauen Bildrand hebt die Feldauswahl auf. Beginnende Zweifinger- und Verschiebegesten erhalten die Auswahl; sie verändern nur die Ansicht.
+- Feldgesten unterscheiden Klick und Ziehen anhand einer Toleranz von 5 CSS-Pixeln, unabhängig von Dachmaßen und Zoom. Rechts- und Mitteltaste lösen keine Feld-, Griff- oder Haltepfeiländerungen aus.
+- Escape beendet Feldzeichnen, Modulentfernen, Mehrfachauswahl und Verschieben auch bei Fokus auf dem Werkzeugknopf. Eingaben, Dialoge und offene Geometrie-/Perspektiventwürfe behalten ihren jeweiligen Abbruch- und Speicherschutz.
+- Verlorener Pointer-Capture verwirft die laufende Feldgeste; ein einzelner ungültiger Koordinatenmesspunkt unterbricht sie dagegen nicht. Engine, Modulmaße und gespeicherte Geometrieformate bleiben unverändert.
+
 ## 1. Zweck
 
 Internes Web-Tool, mit dem Vertriebler und Niederlassungsleiter selbstständig **grobe Dachbelegungen und Stringpläne** erstellen und als strukturierten Datensatz ins Ticketsystem exportieren. Ziel: Entlastung des einzigen Projektleiters, der aktuell alle Planungen für Hauptsitz + 2 Niederlassungen stemmt.

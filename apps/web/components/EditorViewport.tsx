@@ -24,6 +24,7 @@ interface Props {
   onAnsichtChange: (ansicht: EditorAnsicht) => void;
   verschieben?: boolean;
   onGesteAbbrechen?: () => void;
+  onHintergrundKlick?: () => void;
   bildSeitenverhaeltnis: number;
   children: ReactNode;
   className?: string;
@@ -34,7 +35,7 @@ const mitte = (punkte: AnsichtPunkt[]) => ({ x: punkte.reduce((n, p) => n + p.x,
 const distanz = (p: AnsichtPunkt[]) => p.length > 1 ? Math.max(1, Math.hypot(p[0]!.x - p[1]!.x, p[0]!.y - p[1]!.y)) : 0;
 
 /** CSS-Ansichtstransformation: die SVG-Projektion bleibt unverändert und liest ihre transformierte Client-Box. */
-export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, verschieben = false, onGesteAbbrechen, bildSeitenverhaeltnis, children, className = '', punktSteuerung }: Props) {
+export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, verschieben = false, onGesteAbbrechen, onHintergrundKlick, bildSeitenverhaeltnis, children, className = '', punktSteuerung }: Props) {
   const [touchHinweis, hinweisTouch, hinweisMaus] = useTouchBedienung();
   const fenster = useRef<HTMLDivElement>(null);
   const [groesse, setGroesse] = useState({ breite: 1, hoehe: 1 });
@@ -239,7 +240,12 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
       onPointerEnter={(e) => { mausImBild.current = e.pointerType === 'mouse'; if (e.pointerType === 'mouse') hinweisMaus(); }} onPointerLeave={() => { mausImBild.current = false; }}
       onPointerDownCapture={down} onPointerMoveCapture={move} onPointerUpCapture={up}
       onPointerCancelCapture={(e) => { e.stopPropagation(); klickSperreBis.current = Date.now() + 500; abbrechen(); }}
-      onClickCapture={(e) => { if (punktSteuerung?.aktiv || verschieben || Date.now() < klickSperreBis.current) { e.stopPropagation(); e.preventDefault(); } }}
+      onClickCapture={(e) => {
+        if (punktSteuerung?.aktiv || verschieben || Date.now() < klickSperreBis.current) { e.stopPropagation(); e.preventDefault(); return; }
+      }}
+      // Ein eigener Klickhandler macht auch den freien Rand zum Touch-Klickziel.
+      // Sonst lenkt Chromium einen Tipp nahe der Kante auf benachbarte Buttons um.
+      onClick={(e) => { if (e.button === 0 && e.target === e.currentTarget) onHintergrundKlick?.(); }}
       onKeyDownCapture={(e) => {
         const v: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
         if (verschieben && v[e.key]) { e.preventDefault(); e.stopPropagation(); schieben(...v[e.key]!); }

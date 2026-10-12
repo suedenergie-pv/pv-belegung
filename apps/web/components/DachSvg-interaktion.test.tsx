@@ -52,3 +52,24 @@ it('verwirft nur die laufende Perspektivgeste bei einem zweiten Finger und erhä
   pointer(griff, 'pointermove', 100, 510); pointer(griff, 'pointerup', 100, 510);
   expect(JSON.parse(ui.getByTestId('punkte').textContent!)).toEqual(start);
 });
+
+it('trennt Klickzittern von Ziehen und ignoriert andere Maustasten sowie verlorenen Capture', () => {
+  const f = flaeche(), down = vi.fn(), move = vi.fn(), up = vi.fn();
+  const ui = render(<DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul}
+    pointer={{ onDownM: down, onMoveM: move, onUpM: up }} />);
+  const svg = ui.container.querySelector('svg')!; box(svg);
+  pointer(svg, 'pointerdown', 200, 200);
+  pointer(svg, 'pointermove', 202, 201); pointer(svg, 'pointerup', 202, 201);
+  expect(move).not.toHaveBeenCalled(); expect(up.mock.calls[0]![1]).toBe(false);
+  pointer(svg, 'pointerdown', 200, 200); pointer(svg, 'pointermove', 210, 200);
+  pointer(svg, 'pointermove', 200, 200); pointer(svg, 'pointerup', 200, 200);
+  expect(up.mock.calls[1]![1]).toBe(true);
+  pointer(svg, 'pointerdown', 200, 200); pointer(svg, 'lostpointercapture', 210, 200);
+  expect(move).toHaveBeenLastCalledWith(null);
+  pointer(svg, 'pointerup', 210, 200); expect(up).toHaveBeenCalledTimes(2);
+  for (const button of [1,2]) {
+    const e = new MouseEvent('pointerdown', { bubbles:true, button, clientX:200, clientY:200 });
+    Object.defineProperty(e,'pointerId',{value:1}); fireEvent(svg,e);
+  }
+  expect(down).toHaveBeenCalledTimes(3);
+});

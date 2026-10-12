@@ -172,7 +172,7 @@ describe('Belegungsbedienung', () => {
     fireEvent.click(getByRole('button', { name: 'Alle auswählen' }));
     const rechts = getByRole('button', { name: 'nach rechts' });
     vi.useFakeTimers();
-    fireEvent.pointerDown(rechts, { pointerId: 1 });
+    fireEvent(rechts, new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     act(() => vi.advanceTimersByTime(520));
     fireEvent.pointerUp(rechts, { pointerId: 1 });
     expect(letzterStand.flaechen[0]!.felder![0]!.xM).toBe(1.5);

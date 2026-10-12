@@ -113,8 +113,6 @@ type Drag =
       griff: GriffId;
     };
 
-/** Klick vs. Ziehen: darunter gilt die Geste als Klick (Meter). */
-const KLICK_SCHWELLE_M = 0.05;
 /** Fangradius der Größen-Griffe (Meter) — etwa Fingerbreite auf dem Tablet. */
 const GRIFF_FANG_M = 0.35;
 /** Kleinste Feldgröße beim Ziehen an den Griffen (Meter). */
@@ -309,6 +307,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
    * zweiter Commit würde das Delta ein zweites Mal aufaddieren.
    */
   const dragAktiv = useRef(false);
+  const dragGezogen = useRef(false);
+  const leererKlick = useRef<string | null>(null);
   /** Letzter gültiger Zeigerpunkt; bleibt auch zwischen zwei gedrosselten Renders frisch. */
   const dragPunkt = useRef<PunktM | null>(null);
   /** Höchstens ein React-Render je Browserframe, auch bei hochfrequenten Pointer-Events. */
@@ -333,6 +333,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   };
 
   const verwerfeGeste = () => {
+    leererKlick.current = null;
     stoppeDragFrame();
     dragAktiv.current = false;
     dragPunkt.current = null;
@@ -341,9 +342,11 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   };
 
   const starteDrag = (neu: Drag) => {
+    leererKlick.current = null;
     stoppeDragFrame();
     dragPunkt.current = neu.aktuell;
     dragAktiv.current = true;
+    dragGezogen.current = false;
     setDrag(neu);
   };
 
@@ -1041,6 +1044,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   // ---- Zeiger-Gesten im Felder-Werkzeug ----
 
   const onDownM = (f: Flaeche, p: PunktM, nurNeuesFeld = false, mehrfach = false) => {
+    leererKlick.current = null;
     if (!massFreigabe(f).belegen) return;
     // Der ausdrückliche Zeichenmodus muss auch dann ein neues Feld beginnen,
     // wenn der Startpunkt in einem vorhandenen Feld liegt. Sonst wäre bei einem
@@ -1071,7 +1075,9 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       }
     }
     if (treffer < 0) {
-      setAuswahl(null);
+      // Erst ein abgeschlossener Klick wählt ab. Der erste Finger kann noch
+      // Teil einer Zweifinger-Ansichtsgeste werden, die die Auswahl erhält.
+      leererKlick.current = f.id;
       return;
     }
     // Feld aus der Auswahl angefasst → ganze Auswahl bewegen, sonst nur dieses
@@ -1080,14 +1086,18 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     starteDrag({ art: 'move', flaecheId: f.id, start: p, aktuell: p, indices, treffer, mehrfach });
   };
 
-  const onUpM = (f: Flaeche, p: PunktM) => {
+  const onUpM = (f: Flaeche, p: PunktM, gezogen = dragGezogen.current) => {
+    if (leererKlick.current === f.id) {
+      leererKlick.current = null;
+      if (!gezogen) setAuswahl(null);
+      return;
+    }
     if (!drag || drag.flaecheId !== f.id || !dragAktiv.current) return;
     dragAktiv.current = false;
     stoppeDragFrame();
     dragPunkt.current = p;
     const dragAmEnde = { ...drag, aktuell: p } as Drag;
-    const weit = Math.hypot(p[0] - dragAmEnde.start[0], p[1] - dragAmEnde.start[1]) >= KLICK_SCHWELLE_M;
-    if (!weit) {
+    if (!gezogen) {
       // Klick wählt genau das getroffene Feld. Nur ausdrückliche Mehrfachauswahl toggelt.
       // auf einen Griff = nichts (Auswahl behalten, sonst verlöre man sie sofort)
       if (dragAmEnde.art === 'neu') setAuswahl(null);
@@ -1168,12 +1178,13 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   /** Live-Vorschau beim Aufziehen: Rechteck + wie viele Module hineinpassen. */
   useEffect(() => {
     const abwaehlen = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || !auswahl?.indices.length) return;
-      if (perspektivEntwurf || geometrieVorschau || document.querySelector('dialog[open]')) return;
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      if (!auswahl?.indices.length && !modus && !sitzung.verschieben && !sitzung.mehrfachauswahl) return;
+      if (perspektivEntwurf || geometrieVorschau || document.querySelector('dialog[open], [role=dialog]')) return;
       if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable=true]')) return;
       event.preventDefault();
       verwerfeGeste();
-      patchSitzung({ auswahl: null, mehrfachauswahl: false });
+      patchSitzung({ auswahl: null, modus: null, verschieben: false, mehrfachauswahl: false });
     };
     window.addEventListener('keydown', abwaehlen);
     return () => window.removeEventListener('keydown', abwaehlen);
@@ -1552,6 +1563,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       <div className={styles.canvas} id={`foto-masse-${f.id}`}>
         <EditorViewport ansicht={sitzung.ansichten[ansichtKey] ?? STANDARD_ANSICHT} bildSeitenverhaeltnis={bildSeitenverhaeltnis}
           punktSteuerung={mass.belegen && sitzung.panel !== 'details' ? punktSteuerung : undefined}
+          onHintergrundKlick={felderWerkzeug ? () => setAuswahl(null) : undefined}
           verschieben={sitzung.verschieben} onGesteAbbrechen={() => { verwerfeGeste(); setGesteAbbruchRevision((wert) => wert + 1); abbrechen?.(); }}
           onAnsichtChange={(ansicht) => patchSitzung((alt) => ({ ansichten: { ...alt.ansichten, [ansichtKey]: ansicht } }))}>
           {bild}
@@ -1601,13 +1613,13 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     pointer={!sitzung.verschieben && (felderWerkzeug || feldNeuWerkzeug) ? {
       onGriffDownM: felderWerkzeug ? (index, griff, p) => starteDrag({ art: 'resize', flaecheId: f.id, start: p, aktuell: p, index, griff }) : undefined,
       onDownM: (p, mehrfach) => { if (!(feldNeuWerkzeug && zweiPunkte)) onDownM(f, p, feldNeuWerkzeug, mehrfach || sitzung.mehrfachauswahl); },
-      onMoveM: (p) => { if (p && dragAktiv.current) aktualisiereDrag(f.id, p); },
-      onUpM: (p) => feldNeuWerkzeug && zweiPunkte ? beendeZweiPunkte(p) : onUpM(f, p),
+      onMoveM: (p) => { if (!p) verwerfeGeste(); else if (dragAktiv.current) { dragGezogen.current = true; aktualisiereDrag(f.id, p); } },
+      onUpM: (p, gezogen) => feldNeuWerkzeug && zweiPunkte ? beendeZweiPunkte(p) : onUpM(f, p, gezogen),
     } : undefined}
     perspektivEditor={perspektiveHier ? { ecken: perspektiveHier.roh, pruefung: perspektiveHier.pruefung, ausgewaehlt: perspektiveHier.ausgewaehlt,
       onAuswaehlen: (ausgewaehlt) => setPerspektivEntwurf((alt) => alt ? { ...alt, ausgewaehlt } : alt), onAendern: aenderePerspektivEntwurf, onAbbrechen: () => setPerspektivEntwurf(null) } : undefined}
     tastatur={{ onPfeil: felderWerkzeug && gewaehlt.length ? (sx, sy, skalieren) => skalieren ? skaliereAuswahl(f, sx, sy) : bewegeAuswahl(f, sx, sy) : undefined,
-      onEscape: () => { verwerfeGeste(); patchSitzung({ auswahl: null, modus: null, mehrfachauswahl: false }); } }}
+      onEscape: () => { verwerfeGeste(); patchSitzung({ auswahl: null, modus: null, verschieben: false, mehrfachauswahl: false }); } }}
     onToggle={!geometrieEntwurfAktiv && !sitzung.verschieben && modusArt(f) === 'zellen' ? (key) => zelleToggle(f, key) : undefined}
     fotoOverlay={fotoAsset ? (clipIdPrefix) => fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `modul-${f.id}`, clipIdPrefix, modulDarstellung: ziehtHier ? 'kontur' : 'detail' }) : undefined} />;
 

@@ -712,6 +712,7 @@ export function FotoHintergrund({
               }}
               onClick={klick}
               onMouseDown={(e) => {
+                if (e.button !== 0) return;
                 if (fadenkreuzAktiv) return;
                 gesteBeginnen();
                 const k = svgKoord(e);
@@ -742,6 +743,7 @@ export function FotoHintergrund({
                 setGreift(false);
               }}
               onPointerDown={(e) => {
+                if (e.button !== 0) return;
                 gesteBeginnen();
                 if (e.pointerType === 'mouse') return;
                 if (!fadenkreuzAktiv) {
