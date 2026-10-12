@@ -263,7 +263,7 @@ function WerkzeugKnopf({
   );
 }
 
-export function SchrittBelegung(props: { projekt: Projekt; onChange: (p: Projekt) => void }) {
+export function SchrittBelegung(props: { projekt: Projekt; onChange: (p: Projekt) => void; onExport?: () => void }) {
   const historie = useProjektHistorie();
   return historie ? <SchrittBelegungInhalt {...props} /> : (
     <LokaleProjektHistorie {...props}>
@@ -272,7 +272,7 @@ export function SchrittBelegung(props: { projekt: Projekt; onChange: (p: Projekt
   );
 }
 
-function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChange: (p: Projekt) => void }) {
+function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Projekt; onChange: (p: Projekt) => void; onExport?: () => void }) {
   const historie = useProjektHistorie()!;
   const navigation = useEntwurfNavigation();
   const [touchBedienung, aktiviereTouch, deaktiviereTouch] = useTouchBedienung();
@@ -1565,6 +1565,7 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
       </div>
       </div>
       <aside className={styles.inspektor} aria-label="Dachflächen und Eigenschaften">
+        <div className={styles.inspektorInhalt}>
         <details className={styles.ebenen} open={!bedienPanel && !steuerung}>
           <summary><WorkbenchIcon symbol="flaeche" />Dachflächen <span>{projekt.flaechen.length}</span></summary>
           <div className={styles.ebenenListe} aria-label="Dachflächen im Projekt">
@@ -1582,6 +1583,11 @@ function SchrittBelegungInhalt({ projekt, onChange }: { projekt: Projekt; onChan
           <div className={styles.kontextKopf}><div><span>{f.name}</span><h3>{bedienPanel ? panelTitel : steuerung ? sitzung.panel === 'gauben' ? 'Gauben' : markierungOffen ? 'Dach bearbeiten' : 'Fläche einrichten' : 'Eigenschaften'}</h3></div>{(bedienPanel || steuerung) && <button type="button" className={aktionKlasse} aria-label="Bereich schließen" onClick={() => { if (bedienPanel === auswahlPanel) setAuswahl(null); else if (feldNeuWerkzeug || modusArt(f) === 'zellen') setzeModus(f, null); else panelSchliessen(); }}>×</button>}</div>
           <div className={styles.kontextInhalt}>{bedienPanel ?? steuerung ?? standardPanel}</div>
         </div>
+        </div>
+        {onExport && <div className={styles.exportAbschluss}>
+          <button type="button" onClick={onExport} aria-label="Weiter zum Export">Weiter zum Export <span aria-hidden="true">→</span></button>
+          <span>PDF-Vorschau und Download</span>
+        </div>}
       </aside>
     </div>
   </>;

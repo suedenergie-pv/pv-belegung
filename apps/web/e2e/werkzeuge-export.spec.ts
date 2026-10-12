@@ -33,7 +33,8 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
   await page.goto('./');
   const kompakt = info.project.name.startsWith('mobil');
   await expect(page.getByTestId('flaechen-status')).toContainText('2 Felder');
-  const exportButton = page.getByRole('button', { name: '3. Export', exact: true });
+  const exportButton = page.getByRole('button', { name: 'Weiter zum Export', exact: true });
+  await expect(exportButton).toBeInViewport({ ratio: 1 });
   const exportLayout = await exportButton.evaluate(b => {
     const r = b.getBoundingClientRect();
     return { height: r.height, right: r.right, bottom: r.bottom, width: innerWidth, heightScreen: innerHeight, color: getComputedStyle(b).backgroundColor };
@@ -58,6 +59,7 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
     await expect(page.getByRole('button', { name: 'Mehr', exact: true })).toBeInViewport();
   }
   await page.getByRole('button', { name: 'Mehr', exact: true }).click();
+  await expect(exportButton).toBeInViewport({ ratio: 1 });
   await expect(page.getByRole('heading', { name: 'Belegung & Ansicht', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Abstand zum Dachrand', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Gauben verwalten', exact: true })).toHaveCount(0);
@@ -75,6 +77,7 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
   page.once('dialog', d => d.accept());
   await auto.click();
   await expect.poll(async () => (await stand(page)).flaechen[0]!.felder!.length).toBe(1);
+  await expect(exportButton).toBeInViewport({ ratio: 1 });
   await page.getByRole('button', { name: /Rückgängig/ }).click();
   await expect.poll(async () => (await stand(page)).flaechen[0]!.felder).toEqual(vorher);
 

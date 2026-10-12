@@ -33,6 +33,8 @@ Diese Ergänzung beschreibt den freigegebenen fachlichen Zielzustand. Sie hat f�
 
 - Desktop-Ergänzung 12.10.2026: Über dem Foto schaltet gehaltene Leertaste vorübergehend auf Verschieben mit der linken Maustaste. Loslassen stellt das bisherige Werkzeug wieder her; das Ende einer begonnenen Ansichtsgeste darf keine Modellaktion auslösen. Texteingaben, Dialoge und Touchgesten bleiben unverändert. Fenster-/Fokusverlust darf keinen gehaltenen Shortcut hinterlassen.
 
+- Export-Ergänzung 12.10.2026: Zusätzlich zur oberen Schrittnavigation bleibt im Belegungs-Arbeitsbereich ein großer orangefarbener „Weiter zum Export“-Knopf sichtbar, auch nach dem Zeichnen/Auswählen und beim Scrollen von Einstellungen. Der Hinweis „PDF-Vorschau und Download“ erklärt das Ziel. Derselbe Entwurfsschutz gilt; Desktop und kompakte Ansichten behalten erreichbare Werkzeuge.
+
 ## 1. Zweck
 
 Internes Web-Tool, mit dem Vertriebler und Niederlassungsleiter selbstständig **grobe Dachbelegungen und Stringpläne** erstellen und als strukturierten Datensatz ins Ticketsystem exportieren. Ziel: Entlastung des einzigen Projektleiters, der aktuell alle Planungen für Hauptsitz + 2 Niederlassungen stemmt.

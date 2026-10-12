@@ -88,3 +88,12 @@ Native iPad-Praxisabnahme bleibt offen. Der fachliche App-/Engine-Stand wird dur
 - Archiv SHA-256 `ff27e33f31c2188d958a95efc83b23141179c887b3fbc946d678f4d24f891d00`; Index SHA-256 `588937313c530d5372f156904a2186c91d14d55e192e863466b3ea48d221a1c9`. 63 Quellen/33 Export-/33 Archivdateien abgeglichen. Remotehashes und Shell-Syntax geprüft; vorhandenes Aktivierungs-/Rollbackskript unverändert.
 - Unabhängiger Review PASS: finale Quellen/Export/Archiv ohne Abweichung. Atomare Aktivierung und serverseitige HTTPS-Prüfung erfolgreich; alle 33 öffentlichen Dateien stimmen mit dem geprüften Artefakt überein. Direkt auf der Live-Domain 3/3 Shortcut-/Eingabefälle und 2/2 PDF-/Reload-Smokes bestanden.
 - Evidence: `.release/space-pan-qa.json`, `.release/space-pan-review.md`, `.release/space-pan-*.log`, `.release/space-pan-live-hashes.json`, `.release/space-pan-live/` und `.debug-shots/space-pan/`. Gerenderte Desktop-/Mobileansichten geöffnet; echte iPad-Praxisprüfung nicht erfolgt.
+
+
+## Zusätzlicher Exportknopf am 12.10.2026 — vorbereitet
+
+- Release `20261012-export-button` vorbereitet; bisher aktiv/Rollback: `/var/www/belegung/releases/20261012-space-pan`.
+- Zusätzlich zur Schrittnavigation dauerhaft sichtbarer orangefarbener „Weiter zum Export“-Knopf am unteren Rand des Inspektors. PDF-Vorschau/Download als Ziel erklärt. Einstellungen scrollen im inneren Container; Export bleibt auf Desktop, Tablet und Smartphone erreichbar, auch nach Belegung/Auswahl und bei geöffneten Werkzeugen. Callback verwendet unverändert den bestehenden setSchritt/Entwurfsschutz.
+- 36 fokussierte Unit-Tests, Typecheck und isolierter VPS-Build bestanden. Headless: 5 Export-/Werkzeugfälle auf fünf Größen, 5 Feld-/Modulregressionen, 1 WebKit-Mobile-Touchablauf und 2 PDF-/Reload-Smokes bestanden. Desktop-/Tablet-/Mobile-Screenshots tatsächlich geöffnet. Privatfoto ausschließlich lokal.
+- Archiv SHA-256 `837b0e3d9ee2c909333a6cd10ab5264d9eae240ef89ffd54d43ee38fed087e6c`; Index SHA-256 `4210631e329a72a56ad6fef5d4b44fac349405f546f9c6e209bbbf8c91530e07`. 63 Quellen, 33 Export- und 33 Archivdateien abgeglichen. Upload in neue Pfade, Remotehashes und Shell-Syntax bestätigt. Aktivierungsskript unverändert.
+- Evidence: `.release/export-button-qa.json`, `.release/export-button-*.log` und `.debug-shots/export-button/`. Native iPad-Prüfung nicht erfolgt.

@@ -489,7 +489,7 @@ function ProjektApp() {
 
       <HistorienEingaben>
       {schritt === 0 && <SchrittProjekt key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
-      {schritt === 1 && <SchrittBelegung key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
+      {schritt === 1 && <SchrittBelegung key={aktiv?.id} projekt={projekt} onChange={setProjekt} onExport={() => setSchritt(2)} />}
       {schritt === 2 && (
         <SchrittExport
           key={aktiv?.id}
