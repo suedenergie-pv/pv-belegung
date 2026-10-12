@@ -73,3 +73,25 @@ it('trennt Klickzittern von Ziehen und ignoriert andere Maustasten sowie verlore
   }
   expect(down).toHaveBeenCalledTimes(3);
 });
+
+for (const mitFoto of [false, true]) {
+  it(`erhält Griffindizes und priorisiert Auswahl und Griffe (${mitFoto ? 'Foto' : 'Draufsicht'})`, () => {
+    const f = flaeche(); if (!mitFoto) f.foto = undefined;
+    const griff = vi.fn();
+    const anzeige = [true, false, true].map((ausgewaehlt, i) => ({
+      rect: { xM: 1 + i, yM: 1, breiteM: 4, hoeheM: 3 }, ausgewaehlt,
+    }));
+    const props = { flaeche: f, raster: rasterFuer(f, modul), modul,
+      pointer: { onDownM: vi.fn(), onGriffDownM: griff, onMoveM: vi.fn(), onUpM: vi.fn() } };
+    const ui = render(<DachSvg {...props} felderAnzeige={anzeige} />);
+    const ebenen = () => Array.from(ui.container.querySelectorAll('[data-feld-ebene]'))
+      .map(el => [el.getAttribute('data-feld-index'), el.getAttribute('data-feld-ebene')]);
+    expect(ebenen()).toEqual([['1', 'flaeche'], ['0', 'flaeche'], ['2', 'flaeche'], ['0', 'griffe'], ['2', 'griffe']]);
+    box(ui.container.querySelector('svg')!);
+    pointer(ui.container.querySelector('[data-feld-griff="e"][data-feld-index="0"]')!, 'pointerdown', 500, 350);
+    expect(griff.mock.calls[0]!.slice(0, 2)).toEqual([0, 'e']);
+    ui.rerender(<DachSvg {...props} felderAnzeige={anzeige.map(fa => ({ ...fa, ausgewaehlt: false }))} />);
+    expect(ebenen()).toEqual([['0', 'flaeche'], ['1', 'flaeche'], ['2', 'flaeche']]);
+    expect(anzeige.map(fa => fa.rect.xM)).toEqual([1, 2, 3]);
+  });
+}

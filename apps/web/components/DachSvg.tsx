@@ -500,6 +500,14 @@ export function DachSvg({
   // Dasselbe Dach kann gleichzeitig in Foto-Vorschau, Editor und PDF-Vorschau
   // vorkommen. Reacts useId trennt die dokumentweit geltenden SVG-Clip-IDs.
   const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
+  // Nur die Anzeige umschichten: Originalindizes bleiben für Griffe und Engine erhalten.
+  const feldReihenfolge = (felderAnzeige ?? []).map((fa, i) => ({ fa, i }))
+    .sort((a, b) => Number(a.fa.ausgewaehlt) - Number(b.fa.ausgewaehlt));
+  const feldEbenen = [
+    ...feldReihenfolge.map(feld => ({ ...feld, griffe: false })),
+    // Alle ausgewählten Griffe liegen auch über den Körpern anderer ausgewählter Felder.
+    ...feldReihenfolge.filter(({ fa }) => fa.ausgewaehlt).map(feld => ({ ...feld, griffe: true })),
+  ];
   const feldZeigerGeste = useRef<FeldZeigerGeste | null>(null);
   useEffect(() => { feldZeigerGeste.current = null; }, [cancelRevision]);
   const perspektivZug = useRef<{ pointerId: number; ecken: Ecken } | null>(null);
@@ -832,9 +840,9 @@ export function DachSvg({
           />
         </g>
       ))}
-      {(felderAnzeige ?? []).map((fa, i) => (
-        <g key={i}>
-          <rect
+      {feldEbenen.map(({ fa, i, griffe }) => (
+        <g key={`${i}-${griffe}`} data-feld-ebene={griffe ? 'griffe' : 'flaeche'} data-feld-index={i}>
+          {!griffe && <rect
             x={fa.rect.xM}
             y={fa.rect.yM}
             width={fa.rect.breiteM}
@@ -844,9 +852,9 @@ export function DachSvg({
             strokeWidth={fa.ausgewaehlt ? 0.08 : 0.04}
             strokeDasharray={fa.ausgewaehlt ? undefined : '0.15 0.1'}
             {...overlayZeiger('move')}
-          />
+          />}
           {/* Griffe: nur am ausgewählten Feld — daran zieht man die Größe */}
-          {fa.ausgewaehlt &&
+          {griffe &&
             griffPunkte(fa.rect).map(({ id, p }) => (
               <g key={id}>
                 <rect
@@ -1032,14 +1040,14 @@ export function DachSvg({
       const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh, feldZeigerGeste) : undefined;
       const felderFoto = !druck ? (
         <g data-testid="belegungsfeld-overlays">
-          {(felderAnzeige ?? []).map((fa, i) => {
+          {feldEbenen.map(({ fa, i, griffe }) => {
             const pfad = projPfad(
               h,
               rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
             );
             if (!pfad.ok) return null;
-            return <g key={i}>
-              <path
+            return <g key={`${i}-${griffe}`} data-feld-ebene={griffe ? 'griffe' : 'flaeche'} data-feld-index={i}>
+              {!griffe && <path
                 d={pfad.d}
                 fill="rgba(2,132,199,0.06)"
                 stroke="#0284c7"
@@ -1050,9 +1058,9 @@ export function DachSvg({
                     : `${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`
                 }
                 {...overlayZeiger('move')}
-              />
+              />}
               {/* Griffe am ausgewählten Feld — an die projizierten Punkte gesetzt */}
-              {fa.ausgewaehlt &&
+              {griffe &&
                 griffPunkte(fa.rect).map(({ id, p }) => {
                   const [gx, gy] = projiziere(h, [p[0], p[1]]);
                   const r = foto.breitePx * 0.008;

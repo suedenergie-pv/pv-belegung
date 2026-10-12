@@ -1056,7 +1056,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     const felder = felderVon(f);
     // Griffe der AUSGEWÄHLTEN Felder haben Vorrang vor allem anderen — sie liegen
     // auf dem Feldrand, dort würde sonst sofort das Verschieben starten.
-    for (const i of auswahlVon(f)) {
+    const gewaehlt = auswahlVon(f);
+    for (const i of [...gewaehlt].sort((a, b) => b - a)) {
       const feld = felder[i];
       if (!feld) continue;
       for (const { id, p: gp } of griffPunkte(feld)) {
@@ -1066,14 +1067,11 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         }
       }
     }
-    // Oberstes Feld unter dem Zeiger gewinnt (später gezogen = weiter oben)
-    let treffer = -1;
-    for (let i = felder.length - 1; i >= 0; i--) {
-      if (punktInRechteck(p, felder[i]!)) {
-        treffer = i;
-        break;
-      }
-    }
+    // Wie im SVG: ausgewählte Felder zuerst, innerhalb einer Ebene das spätere Feld.
+    // Die gespeicherte Feldreihenfolge (und damit die Modulpriorität) bleibt unverändert.
+    const reihenfolge = felder.map((_, i) => i).sort((a, b) =>
+      Number(gewaehlt.includes(b)) - Number(gewaehlt.includes(a)) || b - a);
+    const treffer = reihenfolge.find(i => punktInRechteck(p, felder[i]!)) ?? -1;
     if (treffer < 0) {
       // Erst ein abgeschlossener Klick wählt ab. Der erste Finger kann noch
       // Teil einer Zweifinger-Ansichtsgeste werden, die die Auswahl erhält.
@@ -1081,7 +1079,6 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       return;
     }
     // Feld aus der Auswahl angefasst → ganze Auswahl bewegen, sonst nur dieses
-    const gewaehlt = auswahlVon(f);
     const indices = gewaehlt.includes(treffer) ? gewaehlt : mehrfach ? [...gewaehlt, treffer] : [treffer];
     starteDrag({ art: 'move', flaecheId: f.id, start: p, aktuell: p, indices, treffer, mehrfach });
   };
