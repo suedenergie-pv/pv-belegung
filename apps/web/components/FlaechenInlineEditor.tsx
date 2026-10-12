@@ -6,6 +6,8 @@ import { useEntwurfNavigation } from '../lib/entwurf-navigation';
 import { geometrieEntwurfAufStand } from '../lib/geometrie-entwurf';
 import { patchFlaechenGeometrie } from '../lib/model';
 import { SchrittFlaechen } from './SchrittFlaechen';
+import { DachSkizze } from './DachSkizze';
+import { EditorAktionen } from './EditorAktionen';
 import { ZonenBadge } from './ui';
 import styles from './FlaechenInlineEditor.module.css';
 
@@ -59,7 +61,7 @@ export function FlaechenInlineEditor({
   const uebernehmen = (schliessen = true) => {
     if (!gueltig() || !aktuell.current.entwurf) return;
     // Entwurf enthält bereits metrisch skalierte Felder; Elternkomponente übernimmt atomar.
-    aktuell.current.onPatch({ ...aktuell.current.entwurf, grunddatenFertig: true, massStatus: 'bestaetigt' });
+    aktuell.current.onPatch({ ...aktuell.current.entwurf, grunddatenFertig: true, massStatus: 'bestaetigt', massEingabeOffen: false });
     verwerfen(schliessen);
   };
   const callbacks = useRef({ gueltig, uebernehmen, verwerfen });
@@ -78,7 +80,7 @@ export function FlaechenInlineEditor({
   useEffect(() => { if (!geaendert) { basis.current = flaeche; setEntwurf((alt) => alt ? flaeche : null); } }, [flaeche, geaendert]);
   useEffect(() => {
     if (!massVorschlag) return;
-    setEntwurf((alt) => patchFlaechenGeometrie(alt ?? basis.current, massVorschlag));
+    setEntwurf((alt) => patchFlaechenGeometrie(alt ?? basis.current, { ...massVorschlag, massEingabeOffen: false }));
     setGeaendert(true);
     setFehler(null);
     document.getElementById(`flaechen-masse-${basis.current.id}`)?.scrollIntoView?.({ block: 'start' });
@@ -89,20 +91,21 @@ export function FlaechenInlineEditor({
   const freigabe = massFreigabe(flaeche);
   const neuKalibrieren = !!vorschau?.fotoZuordnungen?.some((z) => z.perspektiveBestaetigt === false) && !!flaeche.fotoZuordnungen?.some((z) => z.perspektiveBestaetigt === true);
   return <div id={`flaechen-masse-${flaeche.id}`} className={kompakt ? styles.kompakt : 'mb-4 rounded-xl border border-slate-200 bg-white p-3'} data-masspanel={kompakt || undefined}>
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3" hidden={kompakt && !!entwurf}>
       {!kompakt && <ZonenBadge label={zonenVon(flaeche, index)} />}
       <div className="min-w-0 flex-1">
         {!kompakt && <strong className="block text-sm text-slate-800">{flaeche.name}</strong>}
-        <span className="text-sm text-slate-600">{artVon(flaeche) === 'flachdach' ? 'Flachdach' : artVon(flaeche) === 'fassade' ? 'Fassade' : 'Schrägdach'} · {fmtDe(flaeche.breiteM)} × {fmtDe(flaeche.hoeheM)} m</span>
+        <span className="text-sm text-slate-600">{artVon(flaeche) === 'flachdach' ? 'Flachdach' : artVon(flaeche) === 'fassade' ? 'Fassade' : 'Schrägdach'}{flaeche.massEingabeOffen && !massFreigabe(flaeche).belegen ? ' · Maße noch eingeben' : ` · ${fmtDe(flaeche.breiteM)} × ${fmtDe(flaeche.hoeheM)} m`}</span>
       </div>
       {!kompakt && <span aria-label={`Leistung ${flaeche.name}: ${fmtDe(flaecheKwp, 2)} kWp`} className="text-sm font-semibold text-slate-800">{vorher} Module · {fmtDe(flaecheKwp, 2)} kWp</span>}
       {!entwurf && <button type="button" onClick={() => { basis.current = flaeche; setEntwurf(flaeche); setFehler(null); }} className="rounded-lg border border-slate-300 px-3 text-sm font-semibold">{freigabe.belegen ? 'Maße & Dachform' : 'Maße bestätigen'}</button>}
       {onFotoPruefen && <button type="button" aria-pressed={fotoFokusAktiv} onClick={onFotoPruefen} className="rounded-lg border border-slate-300 px-3 text-sm font-semibold">{fotoFokusAktiv ? 'Foto im Blick' : 'Am Foto anpassen'}</button>}
       {onLoeschen && <button type="button" onClick={() => navigation.weiter(onLoeschen)} className="rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-700">Entfernen</button>}
     </div>
-    <p className="mt-2 text-xs text-slate-600">Maße: {freigabe.status === 'bestaetigt' ? 'von dir bestätigt' : freigabe.status === 'bestand' ? 'aus bestehender Belegung übernommen' : 'Entwurf · noch nicht bestätigt'}</p>
+    <p hidden={kompakt && !!entwurf} className="mt-2 text-xs text-slate-600">Maße: {freigabe.status === 'bestaetigt' ? 'von dir bestätigt' : freigabe.status === 'bestand' ? 'aus bestehender Belegung übernommen' : 'Entwurf · noch nicht bestätigt'}</p>
     {entwurf && <div ref={formularRef} className="mt-4 border-t border-slate-200 pt-4" data-geometrie-entwurf onChange={() => setGeaendert(true)}>
-      <p className="mb-3 text-sm font-medium text-slate-700">{kompakt ? 'Wahre Maße eingeben und Vorschau prüfen.' : 'Maßentwurf – der bisherige Plan bleibt bis zur Übernahme erhalten.'}</p>
+      <p hidden={kompakt} className="mb-3 text-sm font-medium text-slate-700">{kompakt ? 'Wahre Maße eingeben und Vorschau prüfen.' : 'Maßentwurf – der bisherige Plan bleibt bis zur Übernahme erhalten.'}</p>
+      {artVon(flaeche) === 'dach' && <DachSkizze />}
       <SchrittFlaechen projekt={{ ...projekt, flaechen: projekt.flaechen.map((f) => f.id === vorschau!.id ? vorschau! : f) }} onChange={(p) => {
         setEntwurf(p.flaechen.find((f) => f.id === flaeche.id) ?? null);
         setGeaendert(true); setFehler(null);
@@ -110,10 +113,10 @@ export function FlaechenInlineEditor({
       <p className="my-3 text-sm font-semibold text-slate-800" aria-live="polite">Vorschau: {vorher} → {nachher} Module</p>
       {neuKalibrieren && <p className="mb-3 text-sm text-amber-900">Nach dem Übernehmen müssen die Dachecken neu bestätigt werden.</p>}
       {fehler && <p role="alert" className="mb-3 text-sm text-red-700">{fehler}</p>}
-      <div className="flex flex-wrap gap-2">
+      <EditorAktionen>
         <button type="button" onClick={() => uebernehmen()} className="rounded-lg bg-akzent px-4 text-sm font-semibold text-white">Maße übernehmen</button>
         <button type="button" onClick={() => verwerfen()} className="rounded-lg border border-slate-300 px-4 text-sm font-semibold">Abbrechen</button>
-      </div>
+      </EditorAktionen>
       <p className="mt-2 text-xs text-slate-600">Übernehmen bestätigt deine Angaben; es ersetzt keine unabhängige Vermessung.</p>
     </div>}
   </div>;

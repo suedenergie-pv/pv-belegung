@@ -37,6 +37,8 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
   expect(await page.evaluate(() => navigator.maxTouchPoints)).toBeGreaterThan(0);
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByLabel(/^Traufe/).fill('10');
+  await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   const b64 = await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 1600; c.height = 900;
@@ -75,7 +77,7 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
   await expect(ecke).not.toHaveAttribute('cx', vorher!);
   await page.screenshot({ path: resolve(ordner, `${info.project.name}-${coarse}-maus.png`) });
   await page.getByRole('button', { name: '4 Ecken übernehmen', exact: true }).click();
-  await page.getByRole('button', { name: 'Aussparungen überspringen · Belegen', exact: true }).click();
+  await page.getByRole('button', { name: 'Weiter zur Modulplatzierung', exact: true }).click();
   // Gaubenpunkte lassen sich trotz Touch-Hardware unmittelbar setzen und ziehen.
   await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true }).click();
   await page.getByRole('button', { name: 'Satteldachgaube', exact: true }).click();

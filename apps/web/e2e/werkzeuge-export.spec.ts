@@ -83,17 +83,17 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
 
   // Derselbe Schutz gilt auch für die nun direkt erreichbaren Aktionen.
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
-  await page.getByLabel('Traufe', { exact: false }).fill('19');
+  await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('19');
   if (!kompakt) {
     await perspektive.click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Bleiben', exact: true }).click();
-    await expect(page.getByLabel('Traufe', { exact: false })).toHaveValue('19');
+    await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('19');
   }
   await exportButton.click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Bleiben', exact: true }).click();
-  await expect(page.getByLabel('Traufe', { exact: false })).toHaveValue('19');
+  await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('19');
   await exportButton.click();
   await dialog.getByRole('button', { name: 'Verwerfen', exact: true }).click();
   await expect(page.getByRole('button', { name: '2. Dach & Belegung', exact: true })).toBeVisible();

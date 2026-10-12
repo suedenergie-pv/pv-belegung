@@ -85,6 +85,8 @@ async function fotoKalibrieren(
 ) {
   await page.getByRole('button', { name: '2. Dach & Belegung' }).click();
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByLabel(/^Traufe/).fill('10');
+  await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   const dateiauswahl = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Foto hinzufügen' }).click();
@@ -115,8 +117,8 @@ async function fotoKalibrieren(
   await foto.screenshot({ path: resolve('.debug-shots', `perspektive-vier-punkte-${page.viewportSize()!.width}.png`) });
   await page.getByRole('button', { name: '4 Ecken übernehmen' }).click();
   if (!dachDirektBelegen) return;
-  await page.getByRole('button', { name: /Aussparungen.*Belegen/ }).click();
-  await expect(page.getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeVisible();
+  await page.getByRole('button', { name: /Weiter zur Modulplatzierung/ }).click();
+  await expect(page.getByRole('button', { name: '+ Feld zeichnen', exact: true })).toHaveAttribute('aria-pressed', 'true');
 }
 
 async function erwarteGueltigenPdfDownload(page: Page) {
@@ -134,7 +136,7 @@ async function erwarteGueltigenPdfDownload(page: Page) {
 
 async function zeichneZweiFelderUndVerschiebe(page: Page) {
   const dach = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ });
-  await page.getByRole('button', { name: '+ Belegungsbereich zeichnen' }).click();
+  await expect(page.getByRole('button', { name: '+ Feld zeichnen', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await dach.scrollIntoViewIfNeeded();
   const box = await dach.boundingBox();
   const viewport = page.viewportSize();
@@ -258,7 +260,7 @@ test('ein zweites Belegungsfeld lässt sich aus dem ersten heraus aufziehen', as
 
   const dach = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ });
   await dach.scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: '+ Belegungsbereich zeichnen' }).click();
+  await expect(page.getByRole('button', { name: '+ Feld zeichnen', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await dach.scrollIntoViewIfNeeded();
   const erstesDachBox = await dach.boundingBox();
   const erstesViewport = page.viewportSize();
@@ -334,7 +336,7 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
   await expect(werkzeug).toBeVisible();
   await expect(page.getByTestId('editor-viewport')).toHaveCount(1);
 
-  await page.getByRole('button', { name: '+ Belegungsbereich zeichnen' }).click();
+  await expect(page.getByRole('button', { name: '+ Feld zeichnen', exact: true })).toHaveAttribute('aria-pressed', 'true');
   const dach = page.getByRole('img', { name: /Belegungsfläche Dachfläche 1/ });
   await dach.scrollIntoViewIfNeeded();
   const box = await dach.boundingBox();
@@ -475,7 +477,7 @@ test.describe('PDF-Dateiübergabe an iOS (Schnittstellentest)', () => {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await fotoKalibrieren(page);
-    await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).click();
+    await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).filter({ visible: true }).click();
     await page.getByRole('button', { name: '3. Export' }).click();
     await expect(page.getByText(/In Dateien sichern/)).toBeVisible({ timeout: 25_000 });
     await page.screenshot({ path: resolve('.debug-shots', `ios-export-${testInfo.project.name}.png`), fullPage: true });
@@ -598,6 +600,7 @@ test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben
   await expect(page.getByTestId('umriss-griff').first()).toHaveCSS('cursor', 'crosshair');
   await foto.click({ position: { x: box.width * 0.15, y: box.height * 0.85 } });
   await expect(page.getByRole('button', { name: /Umriss fertig/ })).toHaveCount(0);
+  if (!await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).isVisible()) await page.getByText('Anderen Einrichtungsschritt bearbeiten', { exact: true }).click();
   await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).getByRole('button', { name: 'Umriss', exact: true }).click();
 
   const griffe = page.getByTestId('umriss-griff');
@@ -617,11 +620,13 @@ test('Dachumriss schließt am Startpunkt und lässt sich erst danach verschieben
   await page.mouse.up();
   await page.getByRole('button', { name: /Umriss übernehmen/ }).click();
 
+  if (!await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).isVisible()) await page.getByText('Anderen Einrichtungsschritt bearbeiten', { exact: true }).click();
   await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).getByRole('button', { name: 'Umriss', exact: true }).click();
   await page.getByRole('button', { name: 'Manuellen Umriss entfernen' }).click();
   await expect(page.getByRole('button', { name: 'Manuellen Umriss entfernen' })).toHaveCount(0);
   await expect(page.getByTestId('umriss-griff')).toHaveCount(0);
 
+  if (!await page.getByRole('toolbar', { name: 'Werkzeuge für die Foto-Markierung' }).isVisible()) await page.getByText('Anderen Einrichtungsschritt bearbeiten', { exact: true }).click();
   await page.getByRole('button', { name: 'Dachecken', exact: true }).click();
   await expect(page.getByRole('button', { name: '4 Ecken übernehmen' })).toBeEnabled();
   expect(browserFehler).toEqual([]);

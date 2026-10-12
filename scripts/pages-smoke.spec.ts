@@ -44,6 +44,8 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
 
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByLabel(/^Traufe/).fill('10');
+  await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   // Öffentliche neutrale Laufzeit-Fixture; kein Kundendokument und kein privates Foto.
   const image = await page.evaluate(() => {
@@ -65,8 +67,8 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
     await photo.click({ position: { x: bounds.width * x!, y: bounds.height * y! } });
   }
   await page.getByRole('button', { name: '4 Ecken übernehmen', exact: true }).click();
-  await page.getByRole('button', { name: /Aussparungen.*Belegen/ }).click();
-  await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).click();
+  await page.getByRole('button', { name: /Weiter zur Modulplatzierung/ }).click();
+  await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).filter({ visible: true }).click();
   const before = await gespeichertesProjekt(page);
   expect(before.flaechen[0].massStatus).toBe('bestaetigt');
   expect(before.flaechen[0].felder).toHaveLength(1);

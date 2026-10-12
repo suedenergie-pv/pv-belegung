@@ -87,3 +87,48 @@
 .exportAbschluss button{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:48px;padding:10px 14px;border-radius:4px;background:#b83d1e;color:#fff;font-size:14px;font-weight:600}
 .exportAbschluss button:hover{background:#963115}.exportAbschluss>span{font-size:11px;color:var(--muted)}
 @media(max-width:900px),(max-height:500px) and (orientation:landscape){.exportAbschluss{padding:8px 12px;gap:3px}}
+
+/* Fester Abschluss folgt der aktuellen Aufgabe; Aktionen existieren nur einmal. */
+.exportAbschluss:has([data-editor-aktionsziel]:empty):not(:has(>button)){display:none}
+.exportAbschluss [data-editor-aktionen]{display:flex;flex-wrap:wrap;gap:6px;text-align:left}
+.exportAbschluss [data-editor-aktionen]>button{flex:1 1 auto;width:auto;justify-content:center}
+.exportAbschluss [data-editor-aktionen]>button+button{flex:0 0 auto;background:transparent;color:var(--ink);border:1px solid #c7ced3}
+.exportAbschluss:has([data-editor-aktionen])>button{background:transparent;color:#52616b;border:1px solid #c7ced3;min-height:44px;padding:4px 10px}
+.exportAbschluss:has([data-editor-aktionen])>[data-export-hinweis]{display:none}
+.kontext{overflow:visible;flex:none}.kontextKopf{position:static}
+.kontextInhalt,.kontextInhalt p,.kontextInhalt button,.kontextInhalt input,.kontextInhalt select{font-size:14px}
+.kontextInhalt label,.werkzeugOptionen label,.optionGruppe h4,.optionGruppe p,.randEingabe,.ebenen>summary{font-size:13px}
+.anleitung{font-size:14px}.werkzeugZeile button{font-size:11px}
+@media(max-width:900px) and (min-height:501px){
+ .arbeitsbereich[data-masse-offen=true]{grid-template-rows:minmax(0,1fr) minmax(0,68%)}
+ .arbeitsbereich[data-masse-offen=true] .ebenen{display:none}
+}
+@media(max-height:500px) and (orientation:landscape){
+ .arbeitsbereich[data-masse-offen=true] .ebenen{display:none}
+ .kontextKopf{padding:0 10px}.anleitung{font-size:12px}
+ .exportAbschluss{padding:4px 8px}
+}
+
+.exportAbschluss [data-editor-aktionen]>button:first-child{flex:1 1 0;min-width:0;padding:8px 10px}
+@media(max-height:500px) and (orientation:landscape){
+ .exportAbschluss [data-editor-aktionen]>button{font-size:13px;padding:8px}
+ .exportAbschluss [data-editor-aktionen]>button:first-child{padding:8px}
+}
+.arbeitsbereich[data-masse-offen=true] .canvasLeer p{display:none}
+.arbeitsbereich[data-masse-offen=true] .canvasLeer{gap:8px;padding:12px}
+@media(max-width:600px){.arbeitsbereich[data-masse-offen=true] .canvasLeer strong{font-size:15px}}
+
+@media(max-width:900px){.arbeitsbereich[data-kontext-offen=true] .ebenen:not([open]){display:none}}
+
+@media(max-width:900px) and (max-height:700px){
+ .arbeitsbereich[data-masse-offen=true] .canvasLeer strong{display:none}
+ .arbeitsbereich[data-masse-offen=true] .canvasLeer{padding:4px}
+}
+
+@media(max-width:360px){.werkzeugZeile button{font-size:10px}}
+
+@media(max-height:700px){
+ .canvasLeer{padding:8px;gap:8px}
+ .canvasLeer p{display:none}.canvasLeer strong{font-size:15px;line-height:1.3}
+ .canvasLeer button{flex-shrink:0;min-height:44px}
+}

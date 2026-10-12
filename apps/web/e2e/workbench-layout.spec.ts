@@ -32,6 +32,7 @@ test('Mehrere Dachflächen lassen Eigenschaften auch im kurzen Querformat erreic
   await page.screenshot({ path: resolve(ordner, `${info.project.name}-mehrere-flaechen.png`) });
   await masse.click();
   await page.getByLabel(/^Traufe/).fill('14');
+  await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   expect(await page.evaluate(() => ({ y: scrollY, hoehe: document.documentElement.scrollHeight > innerHeight + 1 }))).toEqual({ y: 0, hoehe: false });
   await expect(page.getByTestId('editor-viewport')).toBeInViewport({ ratio: 1 });

@@ -61,7 +61,7 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   for (const [x, y] of [[.35, .52], [.72, .81]]) {
     await foto.click({ position: { x: aussparung.width * x!, y: aussparung.height * y! } });
   }
-  await page.getByRole('button', { name: 'Aussparungen fertig · Belegen', exact: true }).click();
+  await page.getByRole('button', { name: 'Weiter zur Modulplatzierung', exact: true }).click();
   await page.getByRole('button', { name: 'Vergrößern', exact: true }).click();
   await page.getByRole('button', { name: '+ Feld zeichnen', exact: true }).click();
   await page.getByRole('button', { name: 'Mit zwei Punkten zeichnen', exact: true }).click();
@@ -150,7 +150,7 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   await dachWerkzeuge.getByRole('button', { name: 'Aussparungen', exact: true }).click();
   await entwurf.getByRole('button', { name: 'Verwerfen', exact: true }).click();
   expect((await stand(page)).flaechen[0].umrissM).toBeUndefined();
-  await expect(page.getByRole('button', { name: 'Aussparungen fertig · Belegen', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Weiter zur Modulplatzierung', exact: true })).toBeVisible();
   await dachWerkzeuge.getByRole('button', { name: 'Umriss', exact: true }).click();
   for (const [x, y] of [[.1, .85], [.9, .85], [.9, .2], [.1, .2]]) await punkt(x!, y!);
   await page.getByRole('button', { name: 'Umriss übernehmen', exact: true }).click();

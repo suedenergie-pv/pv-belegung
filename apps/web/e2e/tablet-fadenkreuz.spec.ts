@@ -61,6 +61,8 @@ test('Fadenkreuz: Finger bewegt nur den Cursor, fester Button setzt Punkte, Pinc
   await page.goto('./', { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByLabel(/^Traufe/).fill('10');
+  await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   // Die Geometrie benötigt echte Pixelabstände; ein 1×1-PNG ist kein geeignetes Aufmaß-Foto.
   const testFoto = process.env.PV_QA_PHOTO ? null : await page.evaluate(() => {

@@ -68,13 +68,13 @@ test('Dach direkt entfernen: Abbruch, Gauben, Fotos, Strings und Rückgängig', 
   expect(b.width).toBeGreaterThanOrEqual(44); expect(b.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({ path: resolve(shots, `${info.project.name}-entfernen.png`) });
   await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
-  await page.getByLabel('Traufe', { exact: false }).fill('19');
+  await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('19');
   await oeffneListe(page);
   await entfernen.click();
   const entwurf = page.getByRole('dialog', { name: 'Maßentwurf noch offen' });
   await expect(entwurf).toBeVisible();
   await entwurf.getByRole('button', { name: 'Bleiben', exact: true }).click();
-  await expect(page.getByLabel('Traufe', { exact: false })).toHaveValue('19');
+  await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('19');
   expect((await stand(page)).flaechen).toEqual(vorher.flaechen);
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
   await oeffneListe(page);

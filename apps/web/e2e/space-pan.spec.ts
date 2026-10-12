@@ -40,7 +40,8 @@ test('Leertaste schiebt nur die Fotoansicht und erhält Werkzeug, Daten und Touc
     await page.mouse.move(x, y); await page.keyboard.down('Space');
     await expect(viewport).toHaveCSS('cursor', 'grab');
     await page.mouse.down(); await page.mouse.move(x + 80, y + 50, { steps: 5 });
-    await expect(transform).not.toHaveAttribute('style', before!);
+    // WebKit can deliver the final move before its React style commit.
+    await expect(transform).toHaveAttribute('style', /translate\(80px, 50px\)/);
     await expect(viewport).toHaveCSS('cursor', 'grabbing');
     const moved = await transform.getAttribute('style');
     await page.keyboard.up('Space');

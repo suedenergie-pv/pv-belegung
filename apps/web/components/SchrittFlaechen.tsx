@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import {
   AZIMUT_PRESETS,
+  massFreigabe,
   artVon,
   farbenFuer,
   flachdachPitchDefault,
@@ -36,6 +37,7 @@ function KompaktZahl({
   step = 0.1,
   einheit,
   breite = 'w-24',
+  initialLeer = false,
 }: {
   label: string;
   value: number;
@@ -45,10 +47,17 @@ function KompaktZahl({
   step?: number;
   einheit?: string;
   breite?: string;
+  initialLeer?: boolean;
 }) {
-  const [eingabe, setEingabe] = useState(String(value));
+  const [eingabe, setEingabe] = useState(initialLeer ? '' : String(value));
   const fehlerId = useId();
-  useEffect(() => setEingabe(Number.isFinite(value) ? String(value) : ''), [value]);
+  const [beruehrt, setBeruehrt] = useState(false);
+  const letzterWert = useRef({ value, initialLeer });
+  useEffect(() => {
+    if (letzterWert.current.initialLeer !== initialLeer) setEingabe(initialLeer ? '' : String(value));
+    else if (letzterWert.current.value !== value) setEingabe(Number.isFinite(value) ? String(value) : '');
+    letzterWert.current = { value, initialLeer };
+  }, [value, initialLeer]);
   const pruefe = (roh: string): { wert?: number; fehler?: string } => {
     if (!roh.trim()) return { fehler: `${label} ist erforderlich.` };
     const wert = Number(roh);
@@ -71,17 +80,18 @@ function KompaktZahl({
           max={max}
           step={step}
           aria-invalid={!!ergebnis.fehler}
-          aria-describedby={ergebnis.fehler ? fehlerId : undefined}
+          aria-describedby={ergebnis.fehler && (!initialLeer || beruehrt) ? fehlerId : undefined}
           onChange={(e) => {
             const roh = e.target.value;
             setEingabe(roh);
+            setBeruehrt(true);
             const neu = pruefe(roh);
             if (neu.wert !== undefined) onChange(neu.wert);
           }}
         />
         {einheit && <span className="text-sm text-slate-600">{einheit}</span>}
       </span>
-      {ergebnis.fehler && <span id={fehlerId} className="mt-1 block max-w-40 text-xs text-red-600">{ergebnis.fehler}</span>}
+      {ergebnis.fehler && (!initialLeer || beruehrt) && <span id={fehlerId} className="mt-1 block max-w-40 text-xs text-red-600">{ergebnis.fehler}</span>}
     </label>
   );
 }
@@ -262,6 +272,22 @@ export function SchrittFlaechen({
           )}
 
           <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+            <KompaktZahl
+              label={artVon(f) === 'dach' ? 'Traufe' : 'Breite'}
+              einheit="m"
+              value={f.breiteM}
+              initialLeer={!!f.massEingabeOffen && !f.grunddatenFertig && !massFreigabe(f).belegen}
+              min={1}
+              onChange={(breiteM) => setFlaeche(f.id, { breiteM })}
+            />
+            <KompaktZahl
+              label={artVon(f) === 'dach' ? 'Sparrenlänge' : artVon(f) === 'fassade' ? 'Höhe' : 'Tiefe'}
+              einheit="m"
+              value={f.hoeheM}
+              initialLeer={!!f.massEingabeOffen && !f.grunddatenFertig && !massFreigabe(f).belegen}
+              min={1}
+              onChange={(hoeheM) => setFlaeche(f.id, { hoeheM })}
+            />
             <label>
               <span className="mb-1 block text-xs font-medium text-slate-600">Art der Fläche</span>
               <select
@@ -275,20 +301,6 @@ export function SchrittFlaechen({
                 {artVon(f) === 'fassade' && <option value="fassade">Fassade · Bestand</option>}
               </select>
             </label>
-            <KompaktZahl
-              label={artVon(f) === 'dach' ? 'Traufe' : 'Breite'}
-              einheit="m"
-              value={f.breiteM}
-              min={1}
-              onChange={(breiteM) => setFlaeche(f.id, { breiteM })}
-            />
-            <KompaktZahl
-              label={artVon(f) === 'dach' ? 'Sparrenlänge' : artVon(f) === 'fassade' ? 'Höhe' : 'Tiefe'}
-              einheit="m"
-              value={f.hoeheM}
-              min={1}
-              onChange={(hoeheM) => setFlaeche(f.id, { hoeheM })}
-            />
             {artVon(f) !== 'flachdach' && (
               <label>
                 <span className="mb-1 block text-xs font-medium text-slate-600">Dachform</span>

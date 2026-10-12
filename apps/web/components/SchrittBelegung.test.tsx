@@ -222,7 +222,7 @@ describe('Belegungsbedienung', () => {
     expect(ui.getAllByTestId('umriss-griff')).toHaveLength(4);
     fireEvent.click(dach.getByRole('button', { name: 'Aussparungen' }));
     expect(ui.queryAllByTestId('umriss-griff')).toHaveLength(0);
-    expect(ui.getByRole('button', { name: 'Aussparungen überspringen · Belegen' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Weiter zur Modulplatzierung' })).toBeTruthy();
     fireEvent.click(dach.getByRole('button', { name: 'Gauben' }));
     expect(ui.getByRole('button', { name: 'Satteldachgaube' })).toBeTruthy();
     expect(ui.getByRole('button', { name: 'Im Foto markieren →' })).toBeTruthy();

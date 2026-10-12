@@ -1,0 +1,105 @@
+import { expect, test } from '@playwright/test';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import sharp from 'sharp';
+
+const shots = resolve(process.env.PV_QA_SHOTS ?? '.debug-shots/walter-fix');
+test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung korrigieren', async ({ page }, info) => {
+  test.setTimeout(120_000);
+  mkdirSync(shots, { recursive: true });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const screenshot = async (name: string) => {
+    await page.screenshot({ path: resolve(shots, `${info.project.name}-${name}.png`) });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  };
+  const button = (name: string) => page.getByRole('button', { name, exact: true });
+  await page.goto('./');
+  await button('2. Dach & Belegung').click();
+  const input = process.env.PV_QA_PHOTO ? readFileSync(process.env.PV_QA_PHOTO)
+    : Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><path fill="#8d513c" d="M0 0h1600v900H0z"/></svg>');
+  const photoBuffer = await sharp(input).resize(1600, 900).jpeg().toBuffer();
+  const chooser = page.waitForEvent('filechooser');
+  await button('Foto hinzufügen').click();
+  await (await chooser).setFiles({ name: 'Dach.jpg', mimeType: 'image/jpeg', buffer: photoBuffer });
+  await button('Maße & Dachform festlegen').click();
+  const traufe = page.getByRole('spinbutton', { name: /^Traufe/ });
+  const sparren = page.getByRole('spinbutton', { name: /^Sparrenlänge/ });
+  await expect(traufe).toHaveValue('');
+  await expect(sparren).toHaveValue('');
+  await expect(button('Maße übernehmen')).toHaveCount(1);
+  await expect(button('Maße übernehmen')).toBeInViewport({ ratio: 1 });
+  expect(await button('Maße übernehmen').evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width/2, r.y + r.height/2)); })).toBe(true);
+  await expect(page.getByText('Dachmaße eingeben und übernehmen.', { exact: true })).toBeVisible();
+  await expect(button('Punkt setzen')).toHaveCount(0);
+  await screenshot('01-masse');
+  await button('Maße übernehmen').click();
+  await expect(page.getByRole('alert').filter({ hasText: 'korrigieren' })).toBeVisible();
+  await traufe.fill('10');
+  await sparren.fill('6');
+  // Scroll to the last setting; the sole commit action remains visible.
+  await page.getByRole('spinbutton', { name: /^Neigung/ }).scrollIntoViewIfNeeded();
+  await expect(button('Maße übernehmen')).toBeInViewport({ ratio: 1 });
+  await button('Maße übernehmen').click();
+  const skip = page.getByRole('button', { name: /Überspringen \(/ });
+  await expect(skip).toBeInViewport({ ratio: 1 });
+  await skip.click();
+  await screenshot('02-dachecken');
+  const photo = page.getByRole('img', { name: /im Foto markieren/ });
+  // Switch from emulated coarse input to actual mouse before measuring the photo.
+  await photo.hover();
+  const box = await photo.boundingBox();
+  if (!box) throw new Error('Foto fehlt');
+  for (const [x,y] of [[.06,.87],[.94,.87],[.94,.17],[.06,.17]]) {
+    await photo.click({ position: { x: box.width*x!, y: box.height*y! } });
+  }
+  await expect(button('4 Ecken übernehmen')).toHaveCount(1);
+  await expect(button('4 Ecken übernehmen')).toBeInViewport({ ratio: 1 });
+  await screenshot('03-ecken-bestaetigen');
+  await button('4 Ecken übernehmen').click();
+  await expect(button('Weiter zur Modulplatzierung')).toBeInViewport({ ratio: 1 });
+  await screenshot('04-aussparungen');
+  await button('Weiter zur Modulplatzierung').click();
+  await expect(button('+ Feld zeichnen')).toHaveAttribute('aria-pressed', 'true');
+  await screenshot('05-direkt-zeichnen');
+  // Crucial regression: no second tool click before the first field.
+  const roof = page.getByRole('img', { name: /^Belegungsfläche/ });
+  const b = await roof.boundingBox();
+  if (!b) throw new Error('Belegungsfläche fehlt');
+  await page.mouse.move(b.x+b.width*.2, b.y+b.height*.25);
+  await page.mouse.down();
+  await page.mouse.move(b.x+b.width*.65, b.y+b.height*.75, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
+  await expect(page.getByTestId('flaechen-status')).toContainText(/[1-9]\d* Module/);
+  await expect(button('Weiter zum Export')).toBeInViewport({ ratio: 1 });
+  await screenshot('06-belegt');
+  await button('Weiter zum Export').click();
+  await expect(button('PDF herunterladen')).toBeInViewport({ ratio: 1 });
+  await screenshot('07-export');
+  await page.locator('[data-export-vorschau]').scrollIntoViewIfNeeded();
+  await expect(button('PDF herunterladen')).toBeInViewport({ ratio: 1 });
+  const download = page.waitForEvent('download');
+  await button('PDF herunterladen').click();
+  expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
+  await button('2. Dach & Belegung').click();
+  await expect(button('Auswählen')).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(500);
+  await page.reload();
+  await expect(button('Auswählen')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
+  if (await button('Dachdetails').getAttribute('aria-expanded') !== 'true') await button('Dachdetails').click();
+  await expect(traufe).toHaveValue('10');
+  await expect(sparren).toHaveValue('6');
+  await traufe.fill('11');
+  await button('Weiter zum Export').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Bleiben', exact: true }).click();
+  await expect(traufe).toHaveValue('11');
+  await button('Weiter zum Export').click();
+  await dialog.getByRole('button', { name: 'Verwerfen', exact: true }).click();
+  await button('2. Dach & Belegung').click();
+  if (await button('Dachdetails').getAttribute('aria-expanded') !== 'true') await button('Dachdetails').click();
+  await expect(traufe).toHaveValue('10');
+  expect(errors).toEqual([]);
+});

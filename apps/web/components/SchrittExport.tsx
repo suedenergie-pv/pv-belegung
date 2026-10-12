@@ -134,60 +134,9 @@ export function SchrittExport({
 
   return (
     <div className="space-y-4">
-      <Karte>
-        <KartenTitel>Zusammenfassung</KartenTitel>
-        <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-          <div>
-            <span className="text-4xl font-bold">{fmtDe(kwpGesamt(projekt), 2)}</span>
-            <span className="ml-1 text-lg font-semibold text-slate-600">kWp</span>
-          </div>
-          {projekt.kunde && <span className="text-slate-600">{projekt.kunde}</span>}
-          {projekt.adresse && <span className="text-slate-600">{projekt.adresse}</span>}
-        </div>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <dt className="text-slate-600">Modul</dt>
-            <dd className="font-medium">{modul.name}</dd>
-          </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <dt className="text-slate-600">Wechselrichter</dt>
-            <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : '— (nur Belegung)'}</dd>
-          </div>
-          {projekt.flaechen.map((f, i) => {
-            const raster = rasterFuer(f, modul);
-            const ausrichtungen = ausrichtungenVon(f, raster);
-            return (
-              <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
-                <dt className="text-slate-600">
-                  {flaechenTitel(f, i)} · {f.neigungDeg}° · {flaechenAusrichtungsLabel(f)}
-                </dt>
-                <dd className="font-medium">
-                  {aktiveModule(f, raster)} Module ({ausrichtungen.bezeichnung}) ·{' '}
-                  {fmtDe(flaecheM2(f), 1)} m²
-                </dd>
-              </div>
-            );
-          })}
-          {result && (
-            <div
-              className={`rounded-lg px-3 py-2 ${result.valid ? 'bg-green-50' : 'bg-red-50'}`}
-            >
-              <dt className="text-slate-600">Regelprüfung R1–R12</dt>
-              <dd className={`font-medium ${result.valid ? 'text-green-700' : 'text-red-700'}`}>
-                {result.valid ? 'bestanden' : 'NICHT bestanden'}
-              </dd>
-            </div>
-          )}
-        </dl>
-      </Karte>
 
+      <div className="pdf-aktionen">
       <Karte>
-        {projekt.fotos.filter((foto) => fertigeFotoFlaechen(projekt, foto.id).length > 0).map((foto) => (
-          <figure key={foto.id} className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50" data-export-vorschau={foto.id}>
-            <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />
-            <figcaption className="px-3 py-2 text-sm text-slate-600">{foto.name} · Belegung ohne Bearbeitungsmarkierungen</figcaption>
-          </figure>
-        ))}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <KartenTitel>Belegungsplan (PDF)</KartenTitel>
           {pdfDownload ? (
@@ -272,6 +221,62 @@ export function SchrittExport({
         {pdfFehler && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{pdfFehler}</p>
         )}
+      </Karte>
+      </div>
+      <Karte>
+        <KartenTitel>Zusammenfassung</KartenTitel>
+        <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+          <div>
+            <span className="text-4xl font-bold">{fmtDe(kwpGesamt(projekt), 2)}</span>
+            <span className="ml-1 text-lg font-semibold text-slate-600">kWp</span>
+          </div>
+          {projekt.kunde && <span className="text-slate-600">{projekt.kunde}</span>}
+          {projekt.adresse && <span className="text-slate-600">{projekt.adresse}</span>}
+        </div>
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <dt className="text-slate-600">Modul</dt>
+            <dd className="font-medium">{modul.name}</dd>
+          </div>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <dt className="text-slate-600">Wechselrichter</dt>
+            <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : '— (nur Belegung)'}</dd>
+          </div>
+          {projekt.flaechen.map((f, i) => {
+            const raster = rasterFuer(f, modul);
+            const ausrichtungen = ausrichtungenVon(f, raster);
+            return (
+              <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                <dt className="text-slate-600">
+                  {flaechenTitel(f, i)} · {f.neigungDeg}° · {flaechenAusrichtungsLabel(f)}
+                </dt>
+                <dd className="font-medium">
+                  {aktiveModule(f, raster)} Module ({ausrichtungen.bezeichnung}) ·{' '}
+                  {fmtDe(flaecheM2(f), 1)} m²
+                </dd>
+              </div>
+            );
+          })}
+          {result && (
+            <div
+              className={`rounded-lg px-3 py-2 ${result.valid ? 'bg-green-50' : 'bg-red-50'}`}
+            >
+              <dt className="text-slate-600">Regelprüfung R1–R12</dt>
+              <dd className={`font-medium ${result.valid ? 'text-green-700' : 'text-red-700'}`}>
+                {result.valid ? 'bestanden' : 'NICHT bestanden'}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </Karte>
+
+      <Karte>
+        {projekt.fotos.filter((foto) => fertigeFotoFlaechen(projekt, foto.id).length > 0).map((foto) => (
+          <figure key={foto.id} className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50" data-export-vorschau={foto.id}>
+            <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />
+            <figcaption className="px-3 py-2 text-sm text-slate-600">{foto.name} · Belegung ohne Bearbeitungsmarkierungen</figcaption>
+          </figure>
+        ))}
       </Karte>
 
       <Karte>

@@ -41,11 +41,18 @@ describe('Sichere Maßentwürfe', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
     expect(ui.patch).toHaveBeenCalledWith(expect.objectContaining({ breiteM: 9, hoeheM: 5, massStatus: 'bestaetigt' }));
   });
-  it('bestätigt gültige voreingestellte Werte nur nach Übernehmen', () => {
+  it('verlangt beide Maße ausdrücklich und bestätigt erst nach Übernehmen', () => {
     const ui = editor();
-    expect(ui.patch).not.toHaveBeenCalled();
+    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
+    expect((ui.getByLabelText(/^Sparrenlänge/) as HTMLInputElement).value).toBe('');
     fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
-    expect(ui.patch).toHaveBeenCalledWith(expect.objectContaining({ massStatus: 'bestaetigt', breiteM: 10, hoeheM: 6 }));
+    expect(ui.patch).not.toHaveBeenCalled();
+    fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '10' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    expect(ui.patch).not.toHaveBeenCalled();
+    fireEvent.change(ui.getByLabelText(/^Sparrenlänge/), { target: { value: '6' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    expect(ui.patch).toHaveBeenCalledWith(expect.objectContaining({ massStatus: 'bestaetigt', massEingabeOffen: false, breiteM: 10, hoeheM: 6 }));
   });
   it('hält den bestehenden Plan bei Änderung und Abbrechen vollständig unverändert', () => {
     const ui = editor(true);
@@ -99,4 +106,22 @@ describe('Sichere Maßentwürfe', () => {
     expect(onSchliessen).toHaveBeenCalledOnce();
     expect(onPatch).not.toHaveBeenCalled();
   });
+  it('zeigt übernommene Foto-Maßvorschläge auch dann, wenn sie den internen Startmaßen entsprechen', () => {
+    const ui = editor();
+    ui.rerender(<FlaechenInlineEditor projekt={ui.projekt} flaeche={ui.f} index={0} onPatch={ui.patch} onProjektChange={vi.fn()} flaecheKwp={0} gesamtKwp={0} massVorschlag={{ breiteM: 10, hoeheM: 6 }} />);
+    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('10');
+    expect((ui.getByLabelText(/^Sparrenlänge/) as HTMLInputElement).value).toBe('6');
+    expect(ui.patch).not.toHaveBeenCalled();
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    expect(ui.patch).toHaveBeenCalledOnce();
+  });
+  it('erhält Maße eines alten noch unbestätigten Projekts ohne neues Eingabekennzeichen', () => {
+    const projekt = neuesProjekt();
+    const flaeche = { ...projekt.flaechen[0]!, breiteM: 13, hoeheM: 7 };
+    delete flaeche.massEingabeOffen;
+    const ui = render(<FlaechenInlineEditor projekt={projekt} flaeche={flaeche} index={0} onPatch={vi.fn()} onProjektChange={vi.fn()} flaecheKwp={0} gesamtKwp={0} />);
+    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('13');
+    expect((ui.getByLabelText(/^Sparrenlänge/) as HTMLInputElement).value).toBe('7');
+  });
+
 });

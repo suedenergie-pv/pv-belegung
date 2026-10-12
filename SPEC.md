@@ -35,6 +35,17 @@ Diese Ergänzung beschreibt den freigegebenen fachlichen Zielzustand. Sie hat f�
 
 - Export-Ergänzung 12.10.2026: Zusätzlich zur oberen Schrittnavigation bleibt im Belegungs-Arbeitsbereich ein großer orangefarbener „Weiter zum Export“-Knopf sichtbar, auch nach dem Zeichnen/Auswählen und beim Scrollen von Einstellungen. Der Hinweis „PDF-Vorschau und Download“ erklärt das Ziel. Derselbe Entwurfsschutz gilt; Desktop und kompakte Ansichten behalten erreichbare Werkzeuge.
 
+### Bedienkorrektur 12.10.2026 – durchgängiger Einstieg bis PDF
+
+Vom Nutzer nach dem vollständigen UX-Durchlauf freigegeben, einschließlich Vermeidung doppelter Zeichenaktionen:
+- Die bestehende Workbench und drei Hauptschritte bleiben. Während der Einrichtung steht die jeweilige Bestätigung einmal im festen Inspektorabschluss (Maße, Dachecken, Umriss, Weiter zur Modulplatzierung). Formulare und zusätzliche Einstellungen scrollen darüber. Die obere Exportnavigation ist wieder ein normaler Schrittzugang; der große Exportknopf steht im Belegungsbereich, sobald das Projekt Modulfelder enthält. Bei offenen Maßänderungen bleibt Export zweitrangig und verwendet denselben Entwurfsschutz.
+- Neue Flächen tragen `massEingabeOffen`; interne Startmaße sind keine Eingabe und werden im Maßformular leer dargestellt. Beide tatsächlichen Maße müssen bewusst eingegeben und übernommen werden. Bestandsprojekte ohne Kennzeichen sowie bestätigte Flächen behalten ihre Werte. Foto-Maßvorschläge füllen ausschließlich den Entwurf. Übernahme löscht den offenen Eingabestatus atomar mit Geometrie und Bestätigung; Undo stellt den vorherigen Status wieder her.
+- Auf Smartphone/Tablet erhält das aktive Maßformular mehr Platz. Die beiden Hauptmaße stehen zuerst; eine kleine Skizze erläutert Dachkante/Sparrenlänge. Hilfsskizzen sind Orientierung, keine Geometrieberechnung. In sehr kurzer Queransicht wird die Skizze zugunsten der Eingaben ausgeblendet.
+- Fotoeinrichtung erläutert Dachrechteck und zusätzlichen Dachumriss. Alternative Einrichtungsschritte liegen hinter einem beschrifteten Zugang. „Weiter zur Modulplatzierung“ startet auf leerer Fläche unmittelbar `feld_neu`; der erste Zug erzeugt ein Feld ohne weiteren Werkzeugklick. Vorhandene Felder führen weiterhin in Auswahl. Automatische Belegung bleibt eine ausdrücklich wählbare Alternative.
+- Ansichtshinweise unterscheiden Maus und Touch; Desktop zeigt „Leertaste halten + ziehen: Bild verschieben“. Wichtige Paneltexte sind größer. Keine neuen Rechenregeln oder geänderten Gesten.
+- Auf der Exportseite steht genau ein PDF-Download oberhalb von Zusammenfassung und Bildvorschau. Die Downloadleiste bleibt beim Scrollen sichtbar; Vorbereitung, Fehlerbehandlung und iOS-Teilen bleiben erhalten.
+- Abnahme umfasst echte neue Projekte bis PDF, Bestandskorrektur, Entwurfsschutz, mehrere Dachflächen, Maus/Touch und alle fünf Zielgrößen. Technische Tests ersetzen weder die Sichtprüfung noch einen echten Nutzertest. Native iPad-Praxisabnahme bleibt gesondert offen.
+
 ## 1. Zweck
 
 Internes Web-Tool, mit dem Vertriebler und Niederlassungsleiter selbstständig **grobe Dachbelegungen und Stringpläne** erstellen und als strukturierten Datensatz ins Ticketsystem exportieren. Ziel: Entlastung des einzigen Projektleiters, der aktuell alle Planungen für Hauptsitz + 2 Niederlassungen stemmt.

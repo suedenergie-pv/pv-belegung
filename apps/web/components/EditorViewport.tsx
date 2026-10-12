@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { bildRahmen, begrenzeAnsicht, transformiereAnsicht, type AnsichtPunkt, type BildRahmen } from '../lib/editor-ansicht';
 import { STANDARD_ANSICHT, type EditorAnsicht } from '../lib/editor-sitzung';
+import { useTouchBedienung } from '../lib/touch-bedienung';
 import styles from './EditorViewport.module.css';
 
 export interface FotoPunktSteuerung {
@@ -34,6 +35,7 @@ const distanz = (p: AnsichtPunkt[]) => p.length > 1 ? Math.max(1, Math.hypot(p[0
 
 /** CSS-Ansichtstransformation: die SVG-Projektion bleibt unverändert und liest ihre transformierte Client-Box. */
 export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, verschieben = false, onGesteAbbrechen, bildSeitenverhaeltnis, children, className = '', punktSteuerung }: Props) {
+  const [touchHinweis, hinweisTouch, hinweisMaus] = useTouchBedienung();
   const fenster = useRef<HTMLDivElement>(null);
   const [groesse, setGroesse] = useState({ breite: 1, hoehe: 1 });
   const rahmen = bildRahmen(groesse.breite, groesse.hoehe, bildSeitenverhaeltnis);
@@ -168,6 +170,7 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
 
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'mouse') hinweisMaus(); else hinweisTouch();
     mausImBild.current = e.pointerType === 'mouse';
     if (e.pointerType !== 'mouse') { leertasteRef.current = false; setLeertaste(false); }
     if (e.pointerType === 'mouse' && !pointer.current.size) {
@@ -233,7 +236,7 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
   const schieben = (x: number, y: number) => schreibe({ ...refs.current.ansicht, x: refs.current.ansicht.x + x * 44 / refs.current.rahmen.bildBreite, y: refs.current.ansicht.y + y * 44 / refs.current.rahmen.bildHoehe });
   return <section className={`${styles.rahmen} ${className}`} aria-label="Fotoansicht" data-punkt-steuerung={punktSteuerung?.aktiv || undefined}>
     <div ref={fenster} className={`${styles.fenster} ${verschieben || leertaste ? styles.pan : ''}`} data-testid="editor-viewport"
-      onPointerEnter={(e) => { mausImBild.current = e.pointerType === 'mouse'; }} onPointerLeave={() => { mausImBild.current = false; }}
+      onPointerEnter={(e) => { mausImBild.current = e.pointerType === 'mouse'; if (e.pointerType === 'mouse') hinweisMaus(); }} onPointerLeave={() => { mausImBild.current = false; }}
       onPointerDownCapture={down} onPointerMoveCapture={move} onPointerUpCapture={up}
       onPointerCancelCapture={(e) => { e.stopPropagation(); klickSperreBis.current = Date.now() + 500; abbrechen(); }}
       onClickCapture={(e) => { if (punktSteuerung?.aktiv || verschieben || Date.now() < klickSperreBis.current) { e.stopPropagation(); e.preventDefault(); } }}
@@ -277,7 +280,7 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
         <button type="button" aria-label="Ansicht nach oben" onClick={() => schieben(0, -1)}>↑</button>
         <button type="button" aria-label="Ansicht nach unten" onClick={() => schieben(0, 1)}>↓</button>
         <button type="button" aria-label="Ansicht nach rechts" onClick={() => schieben(1, 0)}>→</button>
-      </div> : <span className={styles.hinweis}>Zwei Finger: Bild verschieben und zoomen</span>}
+      </div> : <span className={styles.hinweis}>{touchHinweis ? 'Zwei Finger: Bild verschieben und zoomen' : 'Leertaste halten + ziehen: Bild verschieben'}</span>}
       <button type="button" aria-label="Verkleinern" disabled={sichtbar.zoom <= 1} onClick={() => zoom(1 / 1.25)}>−</button>
       <span className={styles.prozent} aria-label={`Zoom ${Math.round(sichtbar.zoom * 100)} Prozent`}>{Math.round(sichtbar.zoom * 100)}%</span>
       <button type="button" aria-label="Vergrößern" disabled={sichtbar.zoom >= 8} onClick={() => zoom(1.25)}>+</button>

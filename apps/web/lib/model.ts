@@ -165,6 +165,8 @@ export type Dachform = 'rechteck' | 'trapez' | 'schief';
 export type MassStatus = 'offen' | 'bestaetigt' | 'bestand';
 
 export interface Flaeche {
+  /** Nur neue Flächen: interne Startmaße sind keine Nutzereingabe. Altprojekte bleiben unverändert. */
+  massEingabeOffen?: boolean;
   id: string;
   name: string;
   /**
@@ -472,6 +474,7 @@ export function neueFlaeche(nr: number, zone?: string): Flaeche {
     ausrichtung: 'hoch',
     grunddatenFertig: false,
     massStatus: 'offen',
+    massEingabeOffen: true,
     // Neue Flächen starten UNBELEGT — der Nutzer zieht seine Felder selbst
     // (oder klickt „Automatisch füllen"). Genrih 16.07.: Automatismus mildern.
     felder: [],

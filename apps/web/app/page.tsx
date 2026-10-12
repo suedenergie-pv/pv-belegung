@@ -464,13 +464,13 @@ function ProjektApp() {
               aria-label={`${i + 1}. ${name}`}
               aria-current={i === schritt ? 'step' : undefined}
               onClick={() => setSchritt(i)}
-              className={`h-11 rounded-full px-4 text-sm font-medium transition ${schritt === 1 && i === 2 ? 'export-weiter' : ''} ${
+              className={`h-11 rounded-full px-4 text-sm font-medium transition ${
                 i === schritt
                   ? 'bg-akzent text-white'
                   : 'bg-white text-slate-700 shadow-sm'
               }`}
             >
-              {schritt === 1 && i === 2 ? <><span className="export-lang">Weiter zum Export</span><span className="export-kurz">Export</span><span aria-hidden="true"> →</span></> : <>{i + 1}. {name}</>}
+              {i + 1}. {name}
             </button>
           );
         })}

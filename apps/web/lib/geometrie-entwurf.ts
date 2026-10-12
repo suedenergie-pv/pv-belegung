@@ -1,6 +1,6 @@
 import { artVon, fotoZuordnungenVon, patchFlaechenGeometrie, type Flaeche } from './model';
 
-const PARAMETER = ['art', 'breiteM', 'hoeheM', 'neigungDeg', 'azimutDeg', 'dachfarbe', 'dachform', 'firstBreiteM', 'firstVersatzM', 'flachdach', 'randM'] as const;
+const PARAMETER = ['massEingabeOffen', 'art', 'breiteM', 'hoeheM', 'neigungDeg', 'azimutDeg', 'dachfarbe', 'dachform', 'firstBreiteM', 'firstVersatzM', 'flachdach', 'randM'] as const;
 
 /** Nur geänderte Geometrieparameter übernehmen; jüngere Foto-/Feldänderungen erhalten. */
 export function geometrieEntwurfAufStand(basis: Flaeche, entwurf: Flaeche, aktuell: Flaeche): Flaeche {

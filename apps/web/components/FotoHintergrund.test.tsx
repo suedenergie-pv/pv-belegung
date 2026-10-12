@@ -235,7 +235,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
       renderArbeitsbereich={({ bild, steuerung, hinweis, bildSeitenverhaeltnis }) => <div data-testid="arbeitsbereich" data-seitenverhaeltnis={bildSeitenverhaeltnis}><main>{bild}</main><aside>{steuerung}{hinweis}</aside></div>} />);
     expect(ui.container.querySelectorAll('svg image')).toHaveLength(1);
     expect(ui.getByTestId('arbeitsbereich').dataset.seitenverhaeltnis).toBe(String(1000 / 600));
-    fireEvent.click(ui.getByRole('button', { name: 'Aussparungen überspringen · Belegen' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Weiter zur Modulplatzierung' }));
     expect(onPatch).toHaveBeenCalledExactlyOnceWith({ markierungFertig: true });
   });
 

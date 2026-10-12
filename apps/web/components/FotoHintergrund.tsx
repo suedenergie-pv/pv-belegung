@@ -20,6 +20,8 @@ import { artVon, DACHFARBEN, fmtDe, massFreigabe, perspektiveQuelle, rahmenBreit
 import { IconFoto } from './icons';
 import { useEntwurfNavigation } from '../lib/entwurf-navigation';
 import { useTouchBedienung } from '../lib/touch-bedienung';
+import { DachSkizze } from './DachSkizze';
+import { EditorAktionen } from './EditorAktionen';
 import type { FotoPunktSteuerung } from './EditorViewport';
 
 /**
@@ -598,18 +600,18 @@ export function FotoHintergrund({
         <li aria-current={massCheck.belegen && modus === 'first' ? 'step' : undefined}>{kantenName}</li>
         <li aria-current={massCheck.belegen && modus === 'perspektive' ? 'step' : undefined}>Dachecken {foto.eckenPx && foto.perspektiveBestaetigt !== false ? '✓' : ''}</li>
         <li aria-current={modus === 'hindernis' ? 'step' : undefined}>Aussparungen</li>
-        <li>Belegen</li>
+        <li>Module</li>
       </ol>
       {!massCheck.belegen ? <div>
         <p className="mb-2">Dachform und wahre Maße bestätigen, dann die Lage im Foto festlegen.</p>
-        {onMasseBearbeiten && <button type="button" className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white" onClick={onMasseBearbeiten}>Maße & Dachform festlegen</button>}
+        {onMasseBearbeiten && <EditorAktionen><button type="button" className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white" onClick={onMasseBearbeiten}>Maße & Dachform festlegen</button></EditorAktionen>}
       </div> : <>
-        <div role="toolbar" aria-label="Werkzeuge für die Foto-Markierung" className="flex flex-wrap gap-2">
+        <details><summary className="min-h-11 cursor-pointer">Anderen Einrichtungsschritt bearbeiten</summary><div role="toolbar" aria-label="Werkzeuge für die Foto-Markierung" className="flex flex-wrap gap-2">
           <button type="button" className={modusKnopfKlasse(modus === 'first')} aria-pressed={modus === 'first'} onClick={() => werkzeugWaehlen('first')}>{kantenName}</button>
           <button type="button" className={modusKnopfKlasse(modus === 'perspektive')} aria-pressed={modus === 'perspektive'} onClick={() => werkzeugWaehlen('perspektive')}>Dachecken</button>
           <button type="button" className={modusKnopfKlasse(modus === 'hindernis')} aria-pressed={modus === 'hindernis'} disabled={!foto.eckenPx || !!fotoEntwurf} onClick={() => werkzeugWaehlen('hindernis')}>Aussparungen</button>
           <button type="button" className={modusKnopfKlasse(modus === 'umriss')} aria-pressed={modus === 'umriss'} disabled={!foto.eckenPx || !!fotoEntwurf} onClick={() => werkzeugWaehlen('umriss')}>Umriss</button>
-        </div>
+        </div></details>
         <p className="text-sm text-slate-700">
           {modus === 'first' ? `Zwei Punkte entlang der ${kantenName} setzen. Die Linie bestimmt die Ausrichtung.`
             : modus === 'perspektive' ? parametrisch
@@ -619,20 +621,21 @@ export function FotoHintergrund({
             : modus === 'umriss' ? 'Optionalen Dachumriss Ecke für Ecke zeichnen. Vorhandene Eckpunkte lassen sich ziehen.'
             : `Eine Reihe über ${anzahlZiegel} Ziegel mit bekannter Deckbreite markieren.`}
         </p>
+        {modus === 'perspektive' && !parametrisch && <DachSkizze ecken />}
         <div className="flex flex-wrap gap-2">
-          {modus === 'first' && <button type="button" className={knopfKlasse} onClick={() => { setPunkte([]); setEntwurfGeaendert(false); wechsleModus('perspektive'); }}>Überspringen ({kantenName} unten)</button>}
+          {modus === 'first' && <EditorAktionen><button type="button" className={knopfKlasse} onClick={() => { setPunkte([]); setEntwurfGeaendert(false); wechsleModus('perspektive'); }}>Überspringen ({kantenName} unten)</button></EditorAktionen>}
           {modus === 'perspektive' && <>
-            {punkte.length === 4 && <button type="button" disabled={vorschauCheck?.status === 'fehler'} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:opacity-40" onClick={() => perspektiveAbschliessen(punkte)}>4 Ecken übernehmen</button>}
+            {punkte.length === 4 && <EditorAktionen><button type="button" disabled={vorschauCheck?.status === 'fehler'} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:opacity-40" onClick={() => perspektiveAbschliessen(punkte)}>4 Ecken übernehmen</button></EditorAktionen>}
             {punkte.length === 4 && <button type="button" className={knopfKlasse} onClick={() => { setPunkte(traufeWechseln((perspektivVorschau ?? punkte) as Ecken)); setEckenOrientiert(true); setEntwurfGeaendert(true); }}>↻ {kantenName} wechseln</button>}
             {!!foto.eckenPx && <button type="button" className={knopfKlasse} onClick={() => { setPunkte([]); setEckenOrientiert(false); setEntwurfGeaendert(true); }}>Ecken neu</button>}
           </>}
           {modus === 'umriss' && <>
-            <button type="button" disabled={punkte.length < 3 || !!umrissVorschauFehler} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:opacity-40" onClick={() => umrissAbschliessen(punkte)}>Umriss übernehmen</button>
+            <EditorAktionen><button type="button" disabled={punkte.length < 3 || !!umrissVorschauFehler} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:opacity-40" onClick={() => umrissAbschliessen(punkte)}>Umriss übernehmen</button></EditorAktionen>
             {!!flaeche.umrissM && <button type="button" className={knopfKlasse} onClick={umrissEntfernen}>Manuellen Umriss entfernen</button>}
           </>}
           {punkte.length > 0 && <button type="button" className={knopfKlasse} onClick={() => { setPunkte(punkte.slice(0, -1)); setEntwurfGeaendert(true); }}>Punkt zurück</button>}
           {(entwurfGeaendert || fotoEntwurf) && <button type="button" className={knopfKlasse} onClick={entwurfVerwerfen}>Entwurf verwerfen</button>}
-          {modus === 'hindernis' && !entwurfGeaendert && <button type="button" disabled={!belegenFreigegeben || !!fotoEntwurf} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:bg-slate-200 disabled:text-slate-600" onClick={belegen}>{(flaeche.hindernisse ?? []).length ? 'Aussparungen fertig · Belegen' : 'Aussparungen überspringen · Belegen'}</button>}
+          {modus === 'hindernis' && !entwurfGeaendert && <EditorAktionen><button type="button" disabled={!belegenFreigegeben || !!fotoEntwurf} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:bg-slate-200 disabled:text-slate-600" onClick={belegen}>Weiter zur Modulplatzierung</button></EditorAktionen>}
         </div>
         {modus === 'hindernis' && (flaeche.hindernisse ?? []).length > 0 && <ul className="space-y-1">
           {flaeche.hindernisse!.map((h, i) => <li key={i} className="flex items-center justify-between gap-3"><span>Aussparung {i + 1} · {fmtDe(h.breiteM, 1)} × {fmtDe(h.hoeheM, 1)} m</span><button type="button" className="min-h-11 px-3 text-red-700" aria-label={`Aussparung ${i + 1} entfernen`} onClick={() => onPatch({ hindernisse: flaeche.hindernisse!.filter((_, j) => j !== i), inaktiv: [] })}>Entfernen</button></li>)}

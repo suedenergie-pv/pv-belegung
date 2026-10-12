@@ -89,6 +89,7 @@ describe('Kompakte Flächengrunddaten', () => {
       <SchrittFlaechen projekt={neuesProjekt()} onChange={onChange} nurFlaecheId="p1" eingebettet />,
     );
     const traufe = getByLabelText(/^Traufe/);
+    fireEvent.change(traufe, { target: { value: '-1' } });
     fireEvent.change(traufe, { target: { value: '' } });
     expect(getByText('Traufe ist erforderlich.')).toBeTruthy();
     fireEvent.change(traufe, { target: { value: '-2' } });
