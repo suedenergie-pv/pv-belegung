@@ -31,6 +31,8 @@ Diese Ergänzung beschreibt den freigegebenen fachlichen Zielzustand. Sie hat f�
 - Release-Freigabe 01.10.2026: Genrih hat den Workbench-Stand angenommen und den Deploy nach Umstellung des pauschalen Randstandards auf 0 cm und erfolgreicher technischer Prüfung ausdrücklich freigegeben. Die native iPad-Praxisabnahme bleibt separat offen; sie wird nicht als bestanden ausgewiesen.
 - Bedienkorrektur 02.10.2026: „Automatisch belegen“ und „Perspektive bearbeiten“ stehen auf Desktop/Tablet direkt in der linken Werkzeugleiste. „Mehr“ ordnet die verbleibenden Optionen nach Randabstand, Anzeige und Belegung zurücksetzen; auf kompakten Ansichten bleiben die ausgelagerten Aktionen dort eindeutig erklärt erreichbar. Doppelte Verwaltungszugänge entfallen, die vollständige Foto-Markierung bleibt bei „Fotos“. Der Export-Schritt erscheint während der Belegung als auffälliger „Weiter zum Export“-Knopf, auf kleinen Geräten als „Export →“. Bestehende Entwurfsschutz-, Bestätigungs- und Historienlogik gilt auch für direkte Werkzeuge.
 
+- Desktop-Ergänzung 12.10.2026: Über dem Foto schaltet gehaltene Leertaste vorübergehend auf Verschieben mit der linken Maustaste. Loslassen stellt das bisherige Werkzeug wieder her; das Ende einer begonnenen Ansichtsgeste darf keine Modellaktion auslösen. Texteingaben, Dialoge und Touchgesten bleiben unverändert. Fenster-/Fokusverlust darf keinen gehaltenen Shortcut hinterlassen.
+
 ## 1. Zweck
 
 Internes Web-Tool, mit dem Vertriebler und Niederlassungsleiter selbstständig **grobe Dachbelegungen und Stringpläne** erstellen und als strukturierten Datensatz ins Ticketsystem exportieren. Ziel: Entlastung des einzigen Projektleiters, der aktuell alle Planungen für Hauptsitz + 2 Niederlassungen stemmt.

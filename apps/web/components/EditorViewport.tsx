@@ -42,6 +42,10 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
   refs.current = { ansicht: sichtbar, onAnsichtChange, onGesteAbbrechen, verschieben, rahmen, punktSteuerung };
   const cursorGeste = useRef<{ id: number; x: number; y: number } | null>(null);
   const [fingerUnten, setFingerUnten] = useState(false);
+  const [leertaste, setLeertaste] = useState(false);
+  const leertasteRef = useRef(false);
+  const mausImBild = useRef(false);
+  const kurzPanGeste = useRef(false);
   const bestaetigungsFinger = useRef<{ id: number; x: number; y: number } | null>(null);
   const bestaetigungsKlickSperre = useRef(0);
   const pointer = useRef(new Map<number, AnsichtPunkt>());
@@ -71,7 +75,40 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     if (pointer.current.size) refs.current.onGesteAbbrechen?.();
     pointer.current.clear(); geste.current = null; ansichtGeste.current = false;
     cursorGeste.current = null; setFingerUnten(false);
+    kurzPanGeste.current = false;
   };
+
+  useEffect(() => {
+    const eingabe = (ziel: EventTarget | null) => ziel instanceof Element && !!ziel.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]');
+    const loslassen = () => { leertasteRef.current = false; setLeertaste(false); };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey
+        || !mausImBild.current || eingabe(e.target) || document.querySelector('[role="dialog"], dialog[open]')
+        || (!leertasteRef.current && (e.repeat || pointer.current.size > 0))) return;
+      e.preventDefault(); e.stopPropagation();
+      leertasteRef.current = true; setLeertaste(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      if (leertasteRef.current) { e.preventDefault(); e.stopPropagation(); }
+      loslassen();
+    };
+    const blur = () => { mausImBild.current = false; loslassen(); abbrechen(); };
+    const fokus = (e: FocusEvent) => { if (eingabe(e.target) || (e.target instanceof Element && e.target.closest('[role="dialog"], dialog'))) loslassen(); };
+    const verborgen = () => { if (document.hidden) blur(); };
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    window.addEventListener('blur', blur);
+    window.addEventListener('focusin', fokus);
+    document.addEventListener('visibilitychange', verborgen);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+      window.removeEventListener('blur', blur);
+      window.removeEventListener('focusin', fokus);
+      document.removeEventListener('visibilitychange', verborgen);
+    };
+  }, []);
 
   const bewegeKreuz = (x: number, y: number) => {
     const { punktSteuerung: p, rahmen: r, ansicht: a } = refs.current;
@@ -121,18 +158,18 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     node.addEventListener('wheel', rad, { passive: false });
     window.addEventListener('pointerup', endeAusserhalb);
     window.addEventListener('pointercancel', abbrechen);
-    window.addEventListener('blur', abbrechen);
     return () => {
       observer?.disconnect(); window.removeEventListener('resize', messen);
       node.removeEventListener('wheel', rad);
       window.removeEventListener('pointerup', endeAusserhalb);
       window.removeEventListener('pointercancel', abbrechen);
-      window.removeEventListener('blur', abbrechen);
     };
   }, []);
 
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    mausImBild.current = e.pointerType === 'mouse';
+    if (e.pointerType !== 'mouse') { leertasteRef.current = false; setLeertaste(false); }
     if (e.pointerType === 'mouse' && !pointer.current.size) {
       refs.current.punktSteuerung?.deaktivieren();
       // Ein echter Mausdruck darf nach einer Fingergeste sofort wieder klicken.
@@ -140,7 +177,9 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     }
     pointer.current.set(e.pointerId, punkt(e));
     setFingerUnten(true);
-    if (refs.current.verschieben || pointer.current.size >= 2 || ansichtGeste.current) {
+    const kurzPan = e.pointerType === 'mouse' && leertasteRef.current;
+    if (refs.current.verschieben || kurzPan || pointer.current.size >= 2 || ansichtGeste.current) {
+      kurzPanGeste.current = kurzPan && !refs.current.verschieben;
       stoppeModellGeste();
       e.preventDefault(); e.stopPropagation();
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* Browser kann einen bereits beendeten Pointer melden. */ }
@@ -155,6 +194,9 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     }
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    // Pointer-Capture liefert beim Ziehen auch Bewegungen außerhalb des Fotos.
+    mausImBild.current = e.pointerType === 'mouse' && e.clientX >= box.left && e.clientX < box.right && e.clientY >= box.top && e.clientY < box.bottom;
     if (e.pointerType === 'mouse' && !pointer.current.size) refs.current.punktSteuerung?.deaktivieren();
     if (!pointer.current.has(e.pointerId)) return;
     pointer.current.set(e.pointerId, punkt(e));
@@ -169,6 +211,8 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
     }
     if (!ansichtGeste.current || !geste.current) return;
     e.preventDefault(); e.stopPropagation();
+    // Space-up beendet Pan; der Rest der Mausgeste darf kein Werkzeug auslösen.
+    if (kurzPanGeste.current && !leertasteRef.current) return;
     const p = [...pointer.current.values()].slice(0, 2); const start = geste.current;
     const zoom = start.abstand > 0 && p.length > 1 ? start.start.zoom * distanz(p) / start.abstand : start.start.zoom;
     schreibe(transformiereAnsicht(start.start, start.rahmen, start.mitte, mitte(p), zoom));
@@ -188,7 +232,8 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
   };
   const schieben = (x: number, y: number) => schreibe({ ...refs.current.ansicht, x: refs.current.ansicht.x + x * 44 / refs.current.rahmen.bildBreite, y: refs.current.ansicht.y + y * 44 / refs.current.rahmen.bildHoehe });
   return <section className={`${styles.rahmen} ${className}`} aria-label="Fotoansicht" data-punkt-steuerung={punktSteuerung?.aktiv || undefined}>
-    <div ref={fenster} className={`${styles.fenster} ${verschieben ? styles.pan : ''}`} data-testid="editor-viewport"
+    <div ref={fenster} className={`${styles.fenster} ${verschieben || leertaste ? styles.pan : ''}`} data-testid="editor-viewport"
+      onPointerEnter={(e) => { mausImBild.current = e.pointerType === 'mouse'; }} onPointerLeave={() => { mausImBild.current = false; }}
       onPointerDownCapture={down} onPointerMoveCapture={move} onPointerUpCapture={up}
       onPointerCancelCapture={(e) => { e.stopPropagation(); klickSperreBis.current = Date.now() + 500; abbrechen(); }}
       onClickCapture={(e) => { if (punktSteuerung?.aktiv || verschieben || Date.now() < klickSperreBis.current) { e.stopPropagation(); e.preventDefault(); } }}

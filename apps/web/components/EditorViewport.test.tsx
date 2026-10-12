@@ -17,6 +17,52 @@ function pointer(ziel: Element, art: string, id: number, x: number, y: number, p
 }
 
 describe('EditorViewport Eingabetrennung', () => {
+  it('verschiebt mit gehaltener Leertaste nur die Ansicht und schützt das Geste-Ende bei frühem Loslassen', () => {
+    const modell = vi.fn(), ansicht = vi.fn();
+    const ui = render(<EditorViewport bildSeitenverhaeltnis={2} onAnsichtChange={ansicht}>
+      <svg data-testid="bild" onPointerDown={modell} onPointerUp={modell} onClick={modell} />
+    </EditorViewport>);
+    const bild = ui.getByTestId('bild');
+    pointer(bild, 'pointermove', 1, 200, 200, 'mouse');
+    expect(fireEvent.keyDown(window, { code: 'Space', key: ' ' })).toBe(false);
+    pointer(bild, 'pointerdown', 1, 200, 200, 'mouse');
+    pointer(bild, 'pointermove', 1, 300, 250, 'mouse');
+    expect(ansicht).toHaveBeenCalledOnce();
+    expect(ansicht.mock.calls[0]![0].x).toBeCloseTo(.1);
+    expect(ansicht.mock.calls[0]![0].y).toBeCloseTo(.1);
+    expect(ansicht.mock.calls[0]![0].zoom).toBe(1);
+    fireEvent.keyUp(window, { code: 'Space', key: ' ' });
+    pointer(bild, 'pointermove', 1, 400, 300, 'mouse');
+    pointer(bild, 'pointerup', 1, 400, 300, 'mouse'); fireEvent.click(bild);
+    expect(ansicht).toHaveBeenCalledOnce(); expect(modell).not.toHaveBeenCalled();
+    pointer(bild, 'pointerdown', 2, 400, 300, 'mouse');
+    pointer(bild, 'pointerup', 2, 400, 300, 'mouse'); fireEvent.click(bild);
+    expect(modell).toHaveBeenCalledTimes(3);
+  });
+  it('respektiert Texteingaben, Dialoge, Modifikatoren und einen fehlenden Mauszeiger im Foto', () => {
+    const ui = render(<><input aria-label="Name" /><div contentEditable data-testid="text" /><div role="dialog" data-testid="dialog" />
+      <EditorViewport bildSeitenverhaeltnis={2} onAnsichtChange={vi.fn()}><svg data-testid="bild" /></EditorViewport></>);
+    expect(fireEvent.keyDown(window, { code: 'Space', key: ' ' })).toBe(true);
+    pointer(ui.getByTestId('bild'), 'pointermove', 1, 200, 200, 'mouse');
+    expect(fireEvent.keyDown(window, { code: 'Space', key: ' ' })).toBe(true);
+    ui.getByTestId('dialog').removeAttribute('role');
+    expect(fireEvent.keyDown(ui.getByLabelText('Name'), { code: 'Space', key: ' ' })).toBe(true);
+    expect(fireEvent.keyDown(ui.getByTestId('text'), { code: 'Space', key: ' ' })).toBe(true);
+    expect(fireEvent.keyDown(window, { code: 'Space', key: ' ', ctrlKey: true })).toBe(true);
+    expect(fireEvent.keyDown(window, { code: 'Space', key: ' ', repeat: true })).toBe(true);
+  });
+  it('setzt die Leertaste bei Fensterverlust zurück und verändert keine einzelne Touchgeste', () => {
+    const modell = vi.fn(), ansicht = vi.fn();
+    const ui = render(<EditorViewport bildSeitenverhaeltnis={2} onAnsichtChange={ansicht}><svg data-testid="bild" onPointerDown={modell} /></EditorViewport>);
+    const bild = ui.getByTestId('bild');
+    pointer(bild, 'pointermove', 1, 200, 200, 'mouse');
+    fireEvent.keyDown(window, { code: 'Space', key: ' ' }); fireEvent.blur(window);
+    pointer(bild, 'pointerdown', 1, 200, 200, 'mouse'); pointer(bild, 'pointerup', 1, 200, 200, 'mouse');
+    expect(modell).toHaveBeenCalledOnce();
+    fireEvent.keyDown(window, { code: 'Space', key: ' ' });
+    pointer(bild, 'pointerdown', 2, 200, 200, 'touch'); pointer(bild, 'pointermove', 2, 300, 200, 'touch'); pointer(bild, 'pointerup', 2, 300, 200, 'touch');
+    expect(modell).toHaveBeenCalledTimes(2); expect(ansicht).not.toHaveBeenCalled();
+  });
   it('lässt den ersten Mausdruck nach Touch direkt durch und aktiviert beim nächsten Finger wieder das Kreuz', () => {
     const down = vi.fn(), up = vi.fn(), klick = vi.fn();
     function Test() {

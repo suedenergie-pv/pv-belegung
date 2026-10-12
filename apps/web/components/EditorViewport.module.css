@@ -4,7 +4,7 @@
 .inhalt>div{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;aspect-ratio:auto!important;border:0!important;border-radius:0!important;overflow:visible!important}
 .inhalt svg{width:100%;height:100%;max-height:none;max-width:none}
 .inhalt .fadenkreuz{position:absolute;inset:0;pointer-events:none}
-.pan{cursor:grab}.pan:active{cursor:grabbing}
+.pan,.pan *{cursor:grab!important}.pan:active,.pan:active *{cursor:grabbing!important}
 .leiste{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:2px;min-height:48px;flex-shrink:0;padding:0 8px;border-top:1px solid #151e24;background:#20272b;color:#e0e6e9;font-size:11px}
 .leiste button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:44px;min-height:44px;border-radius:3px;padding:6px 10px;background:transparent;flex-shrink:0}
 .leiste button:hover{background:#364148}.leiste button:focus-visible{outline:2px solid #ffb494;outline-offset:-2px}.leiste button:disabled{opacity:.4}
