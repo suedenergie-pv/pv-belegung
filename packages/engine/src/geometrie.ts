@@ -167,25 +167,7 @@ function rechteckEcken(r: RechteckM): [PunktM, PunktM, PunktM, PunktM] {
  * dem Rasteraufbau (Nutzfläche = Fläche − Rand) nicht an Rundung scheitert.
  */
 export function rechteckImUmriss(r: RechteckM, umriss: readonly PunktM[], randM: number): boolean {
-  if (umriss.length < 3) return true;
-  for (const ecke of rechteckEcken(r)) {
-    if (!punktInPolygon(ecke, umriss)) return false;
-  }
-  const ecken = rechteckEcken(r);
-  const kanten: [PunktM, PunktM][] = [
-    [ecken[0], ecken[1]],
-    [ecken[1], ecken[2]],
-    [ecken[2], ecken[3]],
-    [ecken[3], ecken[0]],
-  ];
-  const mindest = Math.max(0, randM) - EPS_M;
-  for (let i = 0, j = umriss.length - 1; i < umriss.length; j = i++) {
-    const abstand = Math.min(
-      ...kanten.map(([k1, k2]) => segmentSegmentAbstand(umriss[j]!, umriss[i]!, k1, k2)),
-    );
-    if (abstand < mindest) return false;
-  }
-  return true;
+  return polygonImUmriss(rechteckEcken(r), umriss, randM);
 }
 
 /** Überlappen sich zwei achsparallele Rechtecke (Berührung zählt nicht)? */
@@ -233,4 +215,93 @@ export function rechteckUeberlapptHindernis(r: RechteckM, h: HindernisM): boolea
     return summe + a[0] * b[1] - a[1] * b[0];
   }, 0);
   return Math.abs(doppelteFlaeche) > EPS_M * EPS_M;
+}
+
+/** Rahmen eines Polygons; nur für räumliche Vorauswahl, nie als Kollisionsentscheidung. */
+export function polygonRahmen(polygon: readonly PunktM[]): RechteckM {
+  const xs = polygon.map((p) => p[0]);
+  const ys = polygon.map((p) => p[1]);
+  const xM = Math.min(...xs), yM = Math.min(...ys);
+  return { xM, yM, breiteM: Math.max(...xs) - xM, hoeheM: Math.max(...ys) - yM };
+}
+
+/**
+ * Beliebig gedrehtes konvexes Modul vollständig im (auch konkaven) Dachumriss.
+ * Ecken allein reichen bei einer konkaven Einbuchtung nicht: jede Modulkante
+ * wird an sämtlichen Schnittpunkten geteilt und jedes Teilstück innen geprüft.
+ */
+export function polygonImUmriss(modul: readonly PunktM[], umriss: readonly PunktM[], randM: number): boolean {
+  if (umriss.length < 3) return true;
+  if (!modul.every((p) => punktInPolygon(p, umriss))) return false;
+  const mindest = Math.max(0, randM) - EPS_M;
+  for (let k = 0; k < modul.length; k++) {
+    const a = modul[k]!, b = modul[(k + 1) % modul.length]!;
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const teilungen = [0, 1];
+    for (let j = 0; j < umriss.length; j++) {
+      const c = umriss[j]!, d = umriss[(j + 1) % umriss.length]!;
+      if (segmentSegmentAbstand(a, b, c, d) < mindest) return false;
+      const ex = d[0] - c[0], ey = d[1] - c[1];
+      const nenner = dx * ey - dy * ex;
+      if (Math.abs(nenner) < 1e-12) continue;
+      const t = ((c[0] - a[0]) * ey - (c[1] - a[1]) * ex) / nenner;
+      const u = ((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / nenner;
+      if (t > 0 && t < 1 && u >= 0 && u <= 1) teilungen.push(t);
+    }
+    teilungen.sort((x, y) => x - y);
+    for (let j = 1; j < teilungen.length; j++) {
+      const t = (teilungen[j - 1]! + teilungen[j]!) / 2;
+      if (!punktInPolygon([a[0] + t * dx, a[1] + t * dy], umriss)) return false;
+    }
+  }
+  return true;
+}
+
+/** SAT für zwei konvexe Modulpolygone, Kantenberührung bleibt zulässig. */
+export function konvexePolygoneUeberlappen(a: readonly PunktM[], b: readonly PunktM[]): boolean {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]!, q = poly[(i + 1) % poly.length]!;
+      const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (len < 1e-12) continue;
+      const nx = -(q[1] - p[1]) / len, ny = (q[0] - p[0]) / len;
+      const projA = a.map((v) => v[0] * nx + v[1] * ny);
+      const projB = b.map((v) => v[0] * nx + v[1] * ny);
+      if (Math.max(...projA) <= Math.min(...projB) + EPS_M ||
+          Math.max(...projB) <= Math.min(...projA) + EPS_M) return false;
+    }
+  }
+  return true;
+}
+
+/** Konkaves Hindernis gegen konvexes Modul schneiden; nur positive Fläche sperrt. */
+export function polygonUeberlapptHindernis(modul: readonly PunktM[], h: HindernisM): boolean {
+  let polygon = [...hindernisUmriss(h)];
+  const orient = modul.reduce((sum, a, i) => {
+    const b = modul[(i + 1) % modul.length]!;
+    return sum + a[0] * b[1] - a[1] * b[0];
+  }, 0) >= 0 ? 1 : -1;
+  for (let i = 0; i < modul.length; i++) {
+    const a = modul[i]!, b = modul[(i + 1) % modul.length]!;
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 1e-12) return false;
+    const abstand = (p: PunktM) => orient * orientierung(a, b, p) / len - EPS_M;
+    const neu: PunktM[] = [];
+    for (let j = 0; j < polygon.length; j++) {
+      const p = polygon[j]!, q = polygon[(j + 1) % polygon.length]!;
+      const dp = abstand(p), dq = abstand(q);
+      if (dp >= 0) neu.push(p);
+      if ((dp >= 0) !== (dq >= 0)) {
+        const t = dp / (dp - dq);
+        neu.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]);
+      }
+    }
+    polygon = neu;
+    if (polygon.length < 3) return false;
+  }
+  const flaeche2 = polygon.reduce((sum, a, i) => {
+    const b = polygon[(i + 1) % polygon.length]!;
+    return sum + a[0] * b[1] - a[1] * b[0];
+  }, 0);
+  return Math.abs(flaeche2) > EPS_M * EPS_M;
 }

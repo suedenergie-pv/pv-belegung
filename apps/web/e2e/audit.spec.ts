@@ -678,6 +678,7 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true }).click();
   const gaubenSvg = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
+  await page.getByRole('button', { name: 'Form korrigieren', exact: true }).click();
   const griffe = page.getByRole('button', { name: /Gaubenpunkt/ });
   await expect(griffe).toHaveCount(6);
   const trefferflaechen = await griffe.evaluateAll((elemente) =>
@@ -712,7 +713,7 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   });
   await expect(gaubenSvg.locator('[data-modul-darstellung="vorschau"]').first()).toBeVisible();
   await gaubenSvg.press('ArrowRight');
-  await page.getByRole('button', { name: 'Markierung übernehmen' }).click();
+  await page.getByRole('button', { name: 'Änderungen übernehmen' }).click();
 
   await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   const loeschen = page.getByRole('button', { name: 'Gaube löschen', exact: true });

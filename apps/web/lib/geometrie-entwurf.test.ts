@@ -1,8 +1,30 @@
 import { describe, expect, it } from 'vitest';
+import { dreheFeld, feldPunkt } from '@pv-belegung/engine';
 import { geometrieEntwurfAufStand } from './geometrie-entwurf';
 import { neuesProjekt, modulById, vollFeldFuer, type Flaeche } from './model';
 
 describe('Geometrieentwurf auf aktuellem Stand', () => {
+  it('hält bei ungleichmäßiger Maßkorrektur die sichtbare Mitte gedrehter Felder und ihren Winkel', () => {
+    const basis: Flaeche = { ...neuesProjekt().flaechen[0]!, breiteM: 10, hoeheM: 6,
+      felder: [dreheFeld({ xM: 1, yM: 1, breiteM: 5, hoeheM: 3, quer: true, leer: ['0-0'] }, 35)],
+    };
+    const alt = basis.felder![0]!, mitte = feldPunkt(alt, [alt.breiteM / 2, alt.hoeheM / 2]);
+    const neu = geometrieEntwurfAufStand(basis, { ...basis, breiteM: 20, hoeheM: 9 }, basis).felder![0]!;
+    const ziel = feldPunkt(neu, [neu.breiteM / 2, neu.hoeheM / 2]);
+    expect(ziel[0] / 20).toBeCloseTo(mitte[0] / 10, 10);
+    expect(ziel[1] / 9).toBeCloseTo(mitte[1] / 6, 10);
+    expect(neu.drehungDeg).toBe(35); expect(neu.leer).toEqual(['0-0']);
+  });
+  it('erhält entfernte Zellen und Feldwinkel beim Wechsel der Dachrichtung', () => {
+    const basis: Flaeche = { ...neuesProjekt().flaechen[0]!, art: 'flachdach',
+      flachdach: { aufstaenderung: 'ostwest', winkelDeg: 10, richtungSued: 'unten' },
+      felder: [{ xM: 1, yM: 1, breiteM: 5, hoeheM: 4, quer: true, drehungDeg: 15, leer: ['0-0'] }],
+    };
+    for (const richtungSued of ['oben', 'rechts', 'links'] as const) {
+      const neu = geometrieEntwurfAufStand(basis, { ...basis, flachdach: { ...basis.flachdach!, richtungSued } }, basis);
+      expect(neu.felder).toEqual(basis.felder);
+    }
+  });
   it('erhält nach Beginn ersetzte Fotos, verschobene Felder, Zelllöcher und neue Hindernisse', () => {
     const p = neuesProjekt();
     const basis = p.flaechen[0]!;

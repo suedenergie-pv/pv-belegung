@@ -1,6 +1,6 @@
 'use client';
 
-import { hindernisUmriss, posKey, type BelegungRaster, type ModuleType } from '@pv-belegung/engine';
+import { feldEcken, feldPunkt, hindernisUmriss, modulEcken, posKey, type BelegungRaster, type FeldGeometrie, type ModuleType } from '@pv-belegung/engine';
 import React, { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   homographie,
@@ -21,6 +21,7 @@ import {
 } from '../lib/modul-assets';
 import {
   DACHFARBEN,
+  flachdachSuedRichtung,
   fmtDe,
   hindernisseVon,
   perspektiveQuelle,
@@ -57,7 +58,7 @@ export interface Hervorheben {
  * Module hält. Ausgewählte Felder werden kräftig gezeichnet.
  */
 export interface FeldAnzeige {
-  rect: RechteckM;
+  rect: FeldGeometrie;
   ausgewaehlt: boolean;
 }
 
@@ -80,6 +81,7 @@ export interface GeistPosition {
   yM: number;
   wM: number;
   hM: number;
+  eckenM?: [PunktM, PunktM, PunktM, PunktM];
 }
 
 /**
@@ -101,17 +103,17 @@ const GRIFF_CURSOR: Record<GriffId, string> = {
 };
 
 /** Die 8 Griff-Punkte eines Felds in Flächen-Metern (Reihenfolge = Render-Reihenfolge). */
-export function griffPunkte(r: RechteckM): { id: GriffId; p: PunktM }[] {
-  const { xM: x, yM: y, breiteM: b, hoeheM: h } = r;
+export function griffPunkte(r: FeldGeometrie): { id: GriffId; p: PunktM }[] {
+  const { breiteM: b, hoeheM: h } = r;
   return [
-    { id: 'nw', p: [x, y] },
-    { id: 'n', p: [x + b / 2, y] },
-    { id: 'ne', p: [x + b, y] },
-    { id: 'e', p: [x + b, y + h / 2] },
-    { id: 'se', p: [x + b, y + h] },
-    { id: 's', p: [x + b / 2, y + h] },
-    { id: 'sw', p: [x, y + h] },
-    { id: 'w', p: [x, y + h / 2] },
+    { id: 'nw', p: feldPunkt(r, [0, 0]) },
+    { id: 'n', p: feldPunkt(r, [b / 2, 0]) },
+    { id: 'ne', p: feldPunkt(r, [b, 0]) },
+    { id: 'e', p: feldPunkt(r, [b, h / 2]) },
+    { id: 'se', p: feldPunkt(r, [b, h]) },
+    { id: 's', p: feldPunkt(r, [b / 2, h]) },
+    { id: 'sw', p: feldPunkt(r, [0, h]) },
+    { id: 'w', p: feldPunkt(r, [0, h / 2]) },
   ];
 }
 
@@ -124,6 +126,7 @@ export function griffPunkte(r: RechteckM): { id: GriffId; p: PunktM }[] {
 export interface PointerProps {
   onDownM: (p: PunktM, mehrfach: boolean) => void;
   onGriffDownM?: (index: number, griff: GriffId, p: PunktM) => void;
+  onDrehDownM?: (index: number, p: PunktM) => void;
   /** null = Zeiger hat die Fläche verlassen / Geste abgebrochen */
   onMoveM: (p: PunktM | null) => void;
   onUpM: (p: PunktM, gezogen: boolean) => void;
@@ -268,8 +271,28 @@ function pointerHandler(
       const m = zuM(e);
       if (!m) return;
       geste.current = { id: e.pointerId, x: e.clientX, y: e.clientY, gezogen: false };
-      const griff = e.target instanceof Element ? e.target.closest('[data-feld-griff]') : null;
-      if (griff && p.onGriffDownM) p.onGriffDownM(Number(griff.getAttribute('data-feld-index')), griff.getAttribute('data-feld-griff') as GriffId, m);
+      // Auf einem kleinen/weit herausgezoomten Foto überlappen 44px-Touchziele.
+      // Dann zählt der nächstgelegene sichtbare Griff statt der zufälligen SVG-Malreihenfolge.
+      let ziel = e.target instanceof Element ? e.target : null;
+      const ebene = ziel?.closest('[data-feld-ebene="griffe"]');
+      if (ebene && ziel?.closest('[data-feld-griff], [data-feld-drehen]')) {
+        let abstand = Infinity;
+        for (const kandidat of ebene.querySelectorAll('[data-feld-griff], [data-feld-drehen] circle:first-of-type')) {
+          const box = kandidat.getBoundingClientRect();
+          if (!box.width && !box.height) continue;
+          const d = Math.hypot(e.clientX - box.x - box.width / 2, e.clientY - box.y - box.height / 2);
+          if (d < abstand) { abstand = d; ziel = kandidat; }
+        }
+        const koerper = e.currentTarget.querySelector(`[data-feld-ebene="flaeche"][data-feld-index="${ebene.getAttribute('data-feld-index')}"]`);
+        const box = koerper?.getBoundingClientRect();
+        if (box && (box.width || box.height) && Math.hypot(e.clientX - box.x - box.width / 2, e.clientY - box.y - box.height / 2) < abstand) {
+          ziel = koerper; // Feldmitte bleibt auch zwischen großen Touchzielen auswählbar.
+        }
+      }
+      const drehgriff = ziel?.closest('[data-feld-drehen]');
+      const griff = ziel?.closest('[data-feld-griff]');
+      if (drehgriff && p.onDrehDownM) p.onDrehDownM(Number(drehgriff.getAttribute('data-feld-index')), m);
+      else if (griff && p.onGriffDownM) p.onGriffDownM(Number(griff.getAttribute('data-feld-index')), griff.getAttribute('data-feld-griff') as GriffId, m);
       else p.onDownM(m, e.shiftKey || e.ctrlKey || e.metaKey);
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* Fenster-Fallback beendet die Geste. */ }
     },
@@ -362,11 +385,9 @@ export function moduleAufHomographie({
     // projizierten Ecken. Eine modulweise Parallelogramm-Glättung ist hier
     // absichtlich verboten: Sie verschiebt benachbarte Reihen unterschiedlich,
     // öffnet Fugen und kann Module sogar über den markierten Dachrand schieben.
-    const TL = projiziere(h, [p.xM, p.yM]);
-    const TR = projiziere(h, [p.xM + mB, p.yM]);
-    const BR = projiziere(h, [p.xM + mB, p.yM + mH]);
-    const BL = projiziere(h, [p.xM, p.yM + mH]);
-    const pfad = projPfad(h, rechteck(p.xM, p.yM, mB, mH));
+    const ecken = modulEcken(p);
+    const [TL, TR, BR, BL] = ecken.map(ecke => projiziere(h, ecke)) as Ecken;
+    const pfad = projPfad(h, ecken.map(([x, y]) => [x, y]));
     // Eine einzelne instabile Projektion darf weder SVG noch Modulmatrix erzeugen.
     // Die zentrale Perspektivprüfung meldet den Grund bereits an der Oberfläche.
     if (!pfad.ok) return null;
@@ -815,6 +836,19 @@ export function DachSvg({
   const overlayZeiger = (cursor: string) =>
     pointer ? { style: { cursor } } : { style: { pointerEvents: 'none' as const } };
 
+  const drehgriff = (fa: FeldAnzeige, index: number, proj: (p: PunktM) => PunktM, massstab: number) => {
+    if (!fa.ausgewaehlt || !pointer?.onDrehDownM) return null;
+    const oben = proj(feldPunkt(fa.rect, [fa.rect.breiteM / 2, 0]));
+    const punkt = proj(feldPunkt(fa.rect, [fa.rect.breiteM / 2, Math.min(.65, fa.rect.hoeheM / 3)]));
+    return <g data-feld-drehen={index} data-feld-index={index} style={{ cursor: 'grab' }} aria-label={`Feld ${index + 1} drehen`}>
+      <title>Feld drehen · Winkel auch rechts eingeben</title>
+      <line x1={oben[0]} y1={oben[1]} x2={punkt[0]} y2={punkt[1]} stroke="#0284c7" strokeWidth={massstab * .0025} style={{ pointerEvents: 'none' }} />
+      <circle cx={punkt[0]} cy={punkt[1]} r={massstab * .01} fill="transparent" stroke="transparent" strokeWidth={44} vectorEffect="non-scaling-stroke" />
+      <circle cx={punkt[0]} cy={punkt[1]} r={massstab * .01} fill="#fff" stroke="#0284c7" strokeWidth={massstab * .002} style={{ pointerEvents: 'none' }} />
+      <text x={punkt[0]} y={punkt[1]} textAnchor="middle" dominantBaseline="central" fill="#036699" fontSize={massstab * .017} style={{ pointerEvents: 'none' }}>↻</text>
+    </g>;
+  };
+
   /** Belegungsfeld-Overlay in Flächen-Metern (Draufsicht/Alt-Foto). */
   const felderM = druck ? null : (
     <g>
@@ -827,11 +861,8 @@ export function DachSvg({
           className={toggle ? 'cursor-pointer' : undefined}
           onClick={toggle ? () => toggle(g.key) : undefined}
         >
-          <rect
-            x={g.xM}
-            y={g.yM}
-            width={g.wM}
-            height={g.hM}
+          <polygon
+            points={modulEcken(g).map(p => p.join(',')).join(' ')}
             fill="rgba(15,23,42,0.10)"
             stroke="#0f172a"
             strokeWidth={0.03}
@@ -842,11 +873,8 @@ export function DachSvg({
       ))}
       {feldEbenen.map(({ fa, i, griffe }) => (
         <g key={`${i}-${griffe}`} data-feld-ebene={griffe ? 'griffe' : 'flaeche'} data-feld-index={i}>
-          {!griffe && <rect
-            x={fa.rect.xM}
-            y={fa.rect.yM}
-            width={fa.rect.breiteM}
-            height={fa.rect.hoeheM}
+          {!griffe && <polygon
+            points={feldEcken(fa.rect).map(p => p.join(',')).join(' ')}
             fill="rgba(2,132,199,0.06)"
             stroke="#0284c7"
             strokeWidth={fa.ausgewaehlt ? 0.08 : 0.04}
@@ -883,6 +911,7 @@ export function DachSvg({
                 />
               </g>
             ))}
+          {griffe && drehgriff(fa, i, p => p, B)}
         </g>
       ))}
       {feldVorschau && (
@@ -939,9 +968,8 @@ export function DachSvg({
         if (aus && druck) return null; // deaktivierte Module im Druck weglassen
         const mB = p.wM; // Modulmaße je Position (je Feld verschieden)
         const mH = p.hM;
-        const TL: Punkt = [p.xM, p.yM];
-        const TR: Punkt = [p.xM + mB, p.yM];
-        const BL: Punkt = [p.xM, p.yM + mH];
+        const [TL, TR, , BL] = modulEcken(p);
+        const punkte = modulEcken(p).map(punkt => punkt.join(',')).join(' ');
         return (
           <g
             key={key}
@@ -953,22 +981,16 @@ export function DachSvg({
             <use href={`#${assetId}`} transform={modulMatrix(TL, TR, BL, p.quer)} />
             {/* Ost-West-Zelt: Westhälfte leicht abschatten (Kippung sichtbar) */}
             {p.seite === 'west' && (
-              <rect
-                x={p.xM}
-                y={p.yM}
-                width={mB}
-                height={mH}
+              <polygon
+                points={punkte}
                 fill="rgba(0,0,0,0.22)"
                 style={{ pointerEvents: 'none' }}
               />
             )}
-            <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="transparent" />
+            <polygon points={punkte} fill="transparent" />
             {aus && (
-              <rect
-                x={p.xM}
-                y={p.yM}
-                width={mB}
-                height={mH}
+              <polygon
+                points={punkte}
                 fill="none"
                 stroke="#ffffff"
                 strokeWidth={0.02}
@@ -976,7 +998,7 @@ export function DachSvg({
               />
             )}
             {hervorheben?.keys.includes(key) && (
-              <rect x={p.xM} y={p.yM} width={mB} height={mH} fill="none" stroke={hervorheben.farbe ?? '#e8603a'} strokeWidth={0.06} />
+              <polygon points={punkte} fill="none" stroke={hervorheben.farbe ?? '#e8603a'} strokeWidth={0.06} />
             )}
           </g>
         );
@@ -1043,7 +1065,7 @@ export function DachSvg({
           {feldEbenen.map(({ fa, i, griffe }) => {
             const pfad = projPfad(
               h,
-              rechteck(fa.rect.xM, fa.rect.yM, fa.rect.breiteM, fa.rect.hoeheM),
+              feldEcken(fa.rect).map(([x, y]) => [x, y]),
             );
             if (!pfad.ok) return null;
             return <g key={`${i}-${griffe}`} data-feld-ebene={griffe ? 'griffe' : 'flaeche'} data-feld-index={i}>
@@ -1094,6 +1116,7 @@ export function DachSvg({
                     </g>
                   );
                 })}
+              {griffe && drehgriff(fa, i, p => projiziere(h, p), foto.breitePx)}
             </g>;
           })}
           {feldVorschau && (() => {
@@ -1190,7 +1213,7 @@ export function DachSvg({
             {/* Abgeschaltete Module (Geister) — klickbar zum einzelnen Zurückholen */}
             {!druck &&
               (geister ?? []).map((g) => {
-                const pfad = projPfad(h, rechteck(g.xM, g.yM, g.wM, g.hM));
+                const pfad = projPfad(h, modulEcken(g).map(([x, y]) => [x, y]));
                 return pfad.ok ? (
                   <path
                     key={g.key}
@@ -1303,6 +1326,26 @@ export function DachSvg({
             })()}
             {!druck && masse && renderMasse(foto.breitePx * 0.02, (p) => projiziere(h, [p[0], p[1]]))}
             {!druck && perspektivGriffe}
+            {!druck && flaeche.art === 'flachdach' && (() => {
+              // Richtung auf der Dach-Ebene projizieren; „unten“ ist keine Foto-Pixelachse.
+              const sued = flachdachSuedRichtung(flaeche);
+              const v: PunktM = sued === 'unten' ? [0, 1] : sued === 'oben' ? [0, -1] : sued === 'links' ? [-1, 0] : [1, 0];
+              const mitte: PunktM = [B / 2, H / 2];
+              const mp = projiziere(h, mitte);
+              const richtungen: Array<[string, PunktM]> = [['S', v], ['N', [-v[0], -v[1]]], ['O', [v[1], -v[0]]], ['W', [-v[1], v[0]]]];
+              const r = foto.breitePx * .025;
+              const cx = r * 1.9, cy = foto.hoehePx - r * 2;
+              return <g data-testid="flachdach-kompass" aria-label="Grundrichtungen im Dachplan" style={{ pointerEvents: 'none' }}>
+                <circle cx={cx} cy={cy} r={r * 1.6} fill="rgba(255,255,255,.94)" />
+                {richtungen.map(([label, vec]) => {
+                  const q = projiziere(h, [mitte[0] + vec[0], mitte[1] + vec[1]]);
+                  const laenge = Math.hypot(q[0] - mp[0], q[1] - mp[1]);
+                  const dx = (q[0] - mp[0]) / laenge, dy = (q[1] - mp[1]) / laenge;
+                  return <g key={label}><line x1={cx} y1={cy} x2={cx + dx * r * .72} y2={cy + dy * r * .72} stroke="#526475" strokeWidth={r * .045} />
+                    <text x={cx + dx * r * 1.12} y={cy + dy * r * 1.12} fill={label === 'S' ? '#aa3b1b' : '#243c50'} fontWeight={700} fontSize={r * .55} textAnchor="middle" dominantBaseline="central">{label}</text></g>;
+                })}
+              </g>;
+            })()}
           </svg>
         </div>
       );

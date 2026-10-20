@@ -49,6 +49,18 @@ const optionen = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('PDF-Generator', () => {
+  it('trennt bei gedrehten Flachdachfeldern Grundraster, Feldwinkel und Gestellneigung', async () => {
+    const projekt = projektMitFlaechen();
+    Object.assign(projekt.flaechen[0]!, { art: 'flachdach', neigungDeg: 0,
+      flachdach: { aufstaenderung: 'ostwest', winkelDeg: 10 },
+      felder: [{ xM: 2, yM: 2, breiteM: 4, hoeheM: 3, quer: true, drehungDeg: 15 }],
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = ((doc as unknown as { internal: { pages: string[][] } }).internal.pages).flat(2).join('\n');
+    expect(inhalt).toContain('Grundraster'); expect(inhalt).toContain('Felder:'); expect(inhalt).toContain('15');
+    expect(inhalt).toContain('10'); expect(inhalt).toContain('Gestell');
+  });
   it('sperrt belegte Fotos mit unbestätigten Maßen auch beim direkten Generatoraufruf', async () => {
     const projekt = projektMitFlaechen();
     projekt.flaechen[0]!.massStatus = 'offen';

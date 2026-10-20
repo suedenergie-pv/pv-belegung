@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { dreheFeld, modulEcken } from '@pv-belegung/engine';
 import { homographie, projiziere } from '../lib/foto-geometrie';
 import {
   modulById,
@@ -14,6 +15,30 @@ import {
 import { DachSvg, moduleAufHomographie } from './DachSvg';
 
 describe('DachSvg', () => {
+  it('projiziert gedrehte Flachdachmodule in Editor und PDF auf dieselben Engine-Ecken', () => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const basis: Flaeche = { ...neueFlaeche(1, 'A'), art: 'flachdach', breiteM: 14, hoeheM: 12, neigungDeg: 0,
+      flachdach: { aufstaenderung: 'ostwest', winkelDeg: 10 },
+      foto: { dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', breitePx: 1200, hoehePx: 800, traufePx: null,
+        eckenPx: [[100, 700], [1100, 650], [950, 100], [200, 120]] },
+      felder: [dreheFeld({ xM: 3, yM: 3, breiteM: 6, hoeheM: 4, quer: true }, 15)],
+    };
+    const raster = rasterFuer(basis, modul);
+    expect(raster.positionen.length).toBeGreaterThan(0);
+    const h = homographie(14, 12, basis.foto!.eckenPx!, perspektiveQuelle(basis))!;
+    const clipsVon = (druck: boolean) => {
+      const html = renderToStaticMarkup(<DachSvg flaeche={basis} raster={raster} modul={modul} druck={druck} />);
+      return [...html.matchAll(/<clipPath[^>]*><polygon points="([^"]+)"/g)].map(m => m[1]!.split(' ').map(paar => paar.split(',').map(Number)));
+    };
+    const editor = clipsVon(false), pdf = clipsVon(true);
+    expect(pdf).toEqual(editor);
+    raster.positionen.forEach((pos, i) => {
+      for (const ecke of modulEcken(pos)) {
+        const [x, y] = projiziere(h, ecke);
+        expect([...editor[i * 2]!, ...editor[i * 2 + 1]!].some(p => Math.abs(p[0]! - x) < 1e-8 && Math.abs(p[1]! - y) < 1e-8)).toBe(true);
+      }
+    });
+  });
   it('vergibt bei zwei Ansichten derselben Foto-Fläche eindeutige Clip-IDs', () => {
     const modul = modulById('jw-hd96n-r2-460');
     const basis: Flaeche = {

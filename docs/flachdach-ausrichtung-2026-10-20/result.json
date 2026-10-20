@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-20",
+  "status": "local_qa_and_independent_review_pass",
+  "scope": ["Flachdachfelder frei und genau ausrichten", "manuelle Zellen erhalten", "Montageabstand und Dachrichtung erklären", "bestehende Gaubenbearbeitung gemeinsam veröffentlichen"],
+  "research": "evidence.json",
+  "mainAgentRevisions": [
+    "Flachdach ohne Auswahl: leere Auswahlindizes abfangen",
+    "Mobile Drehknöpfe und Fertig direkt erreichbar, Export während Feldbearbeitung zweitrangig",
+    "Gedrehte Feldmitte bei anisotroper Maßkorrektur erhalten; keine physische Scherung",
+    "Bei überlappenden Griff-Touchzielen nächsten sichtbaren Griff und Feldmitte unterscheiden",
+    "PDF zeigt Grundraster, Feldwinkel und Montage-Neigung getrennt",
+    "Unit-Testisolation wartet auf echte asynchrone Unmountspeicherung; Erwartungen unverändert"
+  ],
+  "unitTests": {"engine": 168, "web": 301, "total": 469, "passed": true},
+  "typecheck": "passed",
+  "builds": {"vps": "passed", "pages": "passed"},
+  "headlessDistinctCases": {"flachdach": 5, "gauben": 5, "aussparungen": 5, "walter_and_layout": 4, "felder": 5, "hybrid_mouse_touch": 6, "vps_smoke": 2, "pages_smoke": 2, "total": 34},
+  "additionalChecks": ["Scroll-/Hitprüfung aller Drehknöpfe Smartphone hoch/quer", "echte PDF-Downloads auf fünf Größen", "gedrehte Editor-/PDF-Ecken exakt gleich im Unit-Test", "PDF gerendert und geöffnet", "Desktop/Tablet/Mobile/Querformat tatsächlich visuell geprüft"],
+  "failuresRepaired": ["Auswahlcrash", "kleines Querformat: e-/se-Griff überlagert", "kleines Querformat: Griffziel überdeckt Feldmitte", "Testisolation: vorherige asynchrone Speicherung schreibt in nächsten Browsermock"],
+  "release": {
+    "id": "20261020-flachdach-gauben",
+    "previous": "/var/www/belegung/releases/20261020-ux-einrichtung",
+    "archiveSha256": "00429977fd81ecd56c4db0e3c52fe8795699c81aa0ea8469ca9b15712db35157",
+    "indexSha256": "0e804c49632316d05178d7ef6e2bdda83dfabba550b8ea8fee38faae51272261",
+    "activation": "authorized_pending_execution"
+  },
+  "limitations": ["Kein beobachteter Bedienversuch mit Walter", "Keine native iPad-Praxisabnahme", "Vertriebliche Belegungsgeometrie, keine Ertrags-/Statik-/Montagefreigabe"],
+  "evidence": [".debug-shots/flachdach-ausrichtung-2026-10-20/", ".release/flachdach-qa-final/", ".release/flachdach-regression/", ".release/flachdach-scroll-hits/", ".release/vps/manifest.json", ".release/pages/manifest.json"]
+}

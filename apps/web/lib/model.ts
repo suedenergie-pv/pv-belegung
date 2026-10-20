@@ -8,6 +8,7 @@ import {
   checkStringPlan,
   leerePositionen,
   schraegGeometrie,
+  skaliereFeldRahmen,
   trapezUmriss,
   vollFeld,
   type BelegungRaster,
@@ -716,7 +717,7 @@ export function patchFlaechenGeometrie(f: Flaeche, patch: Partial<Flaeche>): Fla
     ...neu,
     // `leer` ist feldlokal (row-col) und bleibt deshalb beim proportionalen
     // Verschieben/Skalieren des Feldes erhalten.
-    felder: neu.felder?.map((feld) => ({ ...feld, ...rechteck(feld) })),
+    felder: neu.felder?.map((feld) => skaliereFeldRahmen(feld, sx, sy)),
     umrissM: neu.umrissM?.map((p) => [p[0] * sx, p[1] * sy]),
     hindernisse: neu.hindernisse?.map((h) => ({
       ...rechteck(h),
@@ -1437,6 +1438,10 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
               }
             : null,
         flaeche_m2: Math.round(flaecheM2(f) * 10) / 10,
+        belegungsfelder: (f.felder ?? []).map((feld) => ({
+          x_m: feld.xM, y_m: feld.yM, breite_m: feld.breiteM, hoehe_m: feld.hoeheM,
+          drehung_deg: feld.drehungDeg ?? 0, leere_zellen: feld.leer ?? [],
+        })),
         module: {
           typ: modul.id,
           anzahl: aktiveModule(f, raster),

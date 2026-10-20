@@ -38,6 +38,13 @@ afterEach(() => {
 });
 
 describe('Belegungsbedienung', () => {
+  it('öffnet ein Flachdach auch ohne Feldauswahl und bietet die Montageaufgabe sichtbar an', () => {
+    const start = neuesProjekt();
+    Object.assign(start.flaechen[0]!, { art: 'flachdach', flachdach: { aufstaenderung: 'ostwest', winkelDeg: 10 } });
+    const ui = render(<SchrittBelegung projekt={start} onChange={vi.fn()} />);
+    expect(ui.getByRole('button', { name: 'Dachmaße' })).toBeTruthy();
+    expect(ui.queryByLabelText('Felddrehung in Grad')).toBeNull();
+  });
   const projektMitFoto = (): Projekt => {
     const basis = neuesProjekt();
     const flaeche = basis.flaechen[0]!;
@@ -290,13 +297,13 @@ describe('Belegungsbedienung', () => {
     }
     const ui = render(<TestApp />);
     fireEvent.click(ui.getByRole('button', { name: 'Gauben' }));
-    fireEvent.click(ui.getAllByText('Maß verbessern')[0]!);
+    fireEvent.click(ui.getByRole('button', { name: 'Linke Dachmaße ändern' }));
     const breite = ui.getAllByLabelText(/^Breite/)[0]!;
     fireEvent.change(breite, { target: { value: '' } });
-    fireEvent.click(ui.getAllByRole('button', { name: /m übernehmen/ })[0]!);
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
     expect(letzterStand.flaechen[1]!.massStatus).toBe('offen');
     fireEvent.change(breite, { target: { value: '3' } });
-    fireEvent.click(ui.getAllByRole('button', { name: /m übernehmen/ })[0]!);
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
     expect(letzterStand.flaechen[1]!.massStatus).toBe('bestaetigt');
     expect(letzterStand.flaechen[1]!.gaubenMessung).toEqual({ quelle: 'nachbardach', qualitaet: 'geschaetzt' });
     expect(letzterStand.flaechen[2]).toBe(start.flaechen[2]);
@@ -764,6 +771,7 @@ describe('Belegungsbedienung', () => {
     fireEvent.click(getByRole('button', { name: 'Dachmaße' }));
     fireEvent.click(getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
     const editor = await findByRole('img', { name: 'Gaube im Dachfoto markieren' });
+    fireEvent.click(getByRole('button', { name: 'Form korrigieren' }));
     expect(getAllByRole('button', { name: /Gaubenpunkt/ })).toHaveLength(6);
     vi.spyOn(editor, 'getBoundingClientRect').mockReturnValue({
       x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: 600, width: 1000, height: 600,
@@ -779,20 +787,66 @@ describe('Belegungsbedienung', () => {
     pointer('pointerdown', 200, 520);
     pointer('pointermove', 800, 100);
     pointer('pointerup', 800, 100);
-    expect((getByRole('button', { name: 'Markierung übernehmen' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((getByRole('button', { name: 'Änderungen übernehmen' }) as HTMLButtonElement).disabled).toBe(true);
     expect(editor.querySelector('clipPath polygon')?.getAttribute('points')).toBe(modulPfadVorher);
     pointer('pointerdown', 800, 100);
     pointer('pointermove', 200, 520);
     pointer('pointerup', 200, 520);
-    expect((getByRole('button', { name: 'Markierung übernehmen' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((getByRole('button', { name: 'Änderungen übernehmen' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.keyDown(editor, { key: 'ArrowRight' });
     expect(letzterStand.flaechen[0]!.gaubenAussparungen![0]!.fotoEckenPx![0]).toEqual([200, 520]);
-    fireEvent.click(getByRole('button', { name: 'Markierung übernehmen' }));
+    fireEvent.click(getByRole('button', { name: 'Änderungen übernehmen' }));
     await waitFor(() => expect(letzterStand.flaechen[0]!.gaubenAussparungen![0]!.fotoEckenPx![0]).toEqual([201, 520]));
     expect(letzterStand.flaechen[1]!.felder).toEqual(start.flaechen[1]!.felder);
     expect(letzterStand.flaechen[1]!.inaktiv).toEqual(['0-0']);
     expect(letzterStand.flaechen[1]!.fotoZuordnungen![0]!.perspektiveBestaetigt).toBe(true);
     expect(letzterStand.flaechen[2]!.fotoZuordnungen![0]!.perspektiveBestaetigt).toBe(true);
+  });
+
+  it('sperrt eine Firstverschiebung außerhalb der Gaube und zeigt nur den letzten gültigen Stand', () => {
+    const start = projektMitSatteldachgaube(), onChange = vi.fn();
+    const ui = render(<SchrittBelegung projekt={start} onChange={onChange} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Gauben' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Form korrigieren' }));
+    const svg = ui.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x:0,y:0,left:0,top:0,right:1000,bottom:600,width:1000,height:600,toJSON:()=>({}) });
+    const vorher = ui.getByTestId('gauben-gruppe').getAttribute('points');
+    const first = ui.getByRole('button', { name: 'Firstlinie verschieben' });
+    sendePointer(first, 'pointerdown', 400, 370);
+    sendePointer(first, 'pointermove', 700, 370);
+    sendePointer(first, 'pointerup', 700, 370);
+    expect((ui.getByRole('button', { name: 'Änderungen übernehmen' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(ui.getByRole('alert').textContent).toMatch(/First|Gaubenseiten|überlapp/);
+    expect(ui.getByTestId('gauben-gruppe').getAttribute('points')).toBe(vorher);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('korrigiert Gauben in der gewählten zweiten Fotoansicht und erhält die erste Zuordnung', () => {
+    const start = projektMitSatteldachgaube();
+    start.fotos.push({ ...start.fotos[0]!, id: 'foto-2', name: 'Zweite Perspektive', dataUrl: 'data:image/png;base64,BB==' });
+    for (const f of start.flaechen) {
+      const z = f.fotoZuordnungen![0]!;
+      f.fotoZuordnungen!.push({ ...z, fotoId: 'foto-2', eckenPx: z.eckenPx!.map(([x, y]) => [x * .8 + 20, y * .8 + 10]) as Ecken });
+    }
+    let stand = start;
+    function App() { const [projekt, setProjekt] = useState(start); return <SchrittBelegung projekt={projekt} onChange={p => { stand = p; setProjekt(p); }} />; }
+    const ui = render(<App />);
+    fireEvent.change(ui.getByRole('combobox', { name: 'Ansicht für Dachfläche 1' }), { target: { value: 'foto-2' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Gauben' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Form korrigieren' }));
+    const svg = ui.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
+    expect(svg.querySelector('image')?.getAttribute('href')).toBe(start.fotos[1]!.dataUrl);
+    expect(ui.getByRole('button', { name: 'Gaubenpunkt 1' }).getAttribute('cx')).toBe('180');
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen übernehmen' }));
+    expect(stand.flaechen[0]!.gaubenAussparungen![0]!.fotoId).toBe('foto-2');
+    expect(stand.flaechen[0]!.gaubenAussparungen![0]!.fotoEckenPx![0]).toEqual([181, 426]);
+    for (let i = 1; i < 3; i++) {
+      expect(stand.flaechen[i]!.fotoZuordnungen![0]).toEqual(start.flaechen[i]!.fotoZuordnungen![0]);
+      expect(stand.flaechen[i]!.felder).toEqual(start.flaechen[i]!.felder);
+    }
   });
 
   it('löscht von der zweiten Dachseite die ganze Gaubengruppe und stellt sie per Rückgängig wieder her', async () => {

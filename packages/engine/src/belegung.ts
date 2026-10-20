@@ -1,4 +1,4 @@
-import { rechteckImUmriss, rechteckeUeberlappen, rechteckUeberlapptHindernis, type HindernisM, type PunktM, type RechteckM } from './geometrie';
+import { rechteckImUmriss, rechteckeUeberlappen, rechteckUeberlapptHindernis, polygonImUmriss, polygonRahmen, konvexePolygoneUeberlappen, polygonUeberlapptHindernis, type HindernisM, type PunktM, type RechteckM } from './geometrie';
 import type { ModuleType } from './types';
 
 /**
@@ -68,7 +68,7 @@ export interface BelegungInput {
 export interface ModulPosition {
   row: number;
   col: number;
-  /** linke obere Ecke in Flächenkoordinaten, Meter (Ursprung: links oben) */
+  /** Lokale erste Modulecke im Dachrahmen, Meter; bei 0° links oben. */
   xM: number;
   yM: number;
   /** true = dieses Modul ist quer verlegt (Ausrichtung des Bandes). */
@@ -76,6 +76,8 @@ export interface ModulPosition {
   /** Modulmaße dieses Moduls in Metern — je Band verschieden bei gemischter Ausrichtung. */
   wM: number;
   hM: number;
+  /** Exakte Ecken im Dachrahmen bei freier Felddrehung, geordnet wie das lokale Modul. */
+  eckenM?: [PunktM, PunktM, PunktM, PunktM];
   /**
    * Index des Belegungsfelds (berechneFelderRaster, 16.07.2026), zu dem dieses
    * Modul gehört. row/col sind dann FELD-lokale Zellkoordinaten. Fehlt im
@@ -540,6 +542,8 @@ export interface BelegungsFeldM {
   yM: number;
   breiteM: number;
   hoeheM: number;
+  /** Uhrzeigersinn im Dachrahmen; Ursprung xM/yM, nicht der achsparallele Rahmen. */
+  drehungDeg?: number;
   /** true = Module quer. Wird beim Anlegen aus der Flächen-Ausrichtung gesetzt. */
   quer: boolean;
   /**
@@ -549,6 +553,80 @@ export interface BelegungsFeldM {
    * (absolute Lösch-Fußabdrücke, doppelte Modulschichten) können nicht wiederkehren.
    */
   leer?: readonly string[];
+}
+
+export type FeldGeometrie = Pick<BelegungsFeldM, 'xM' | 'yM' | 'breiteM' | 'hoeheM' | 'drehungDeg'>;
+
+/** Endlicher Winkel im Intervall [0,360); ungültige Altwerte bedeuten 0°. */
+export function normalisiereFeldDrehung(winkel: number | undefined): number {
+  if (!Number.isFinite(winkel)) return 0;
+  const normal = ((winkel! % 360) + 360) % 360;
+  return normal === 0 ? 0 : normal;
+}
+
+function drehSinCos(winkel: number | undefined): { sin: number; cos: number } {
+  const normal = normalisiereFeldDrehung(winkel);
+  // Exakte Kardinalachsen vermeiden numerisch verschobene Ecken nach 90°/180°.
+  if (normal === 0) return { sin: 0, cos: 1 };
+  if (normal === 90) return { sin: 1, cos: 0 };
+  if (normal === 180) return { sin: 0, cos: -1 };
+  if (normal === 270) return { sin: -1, cos: 0 };
+  const rad = normal * Math.PI / 180;
+  return { sin: Math.sin(rad), cos: Math.cos(rad) };
+}
+
+/** Lokaler Feldpunkt → Dachpunkt; Modulmaße selbst werden niemals verändert. */
+export function feldPunkt(feld: FeldGeometrie, punkt: PunktM): PunktM {
+  const { sin, cos } = drehSinCos(feld.drehungDeg);
+  return [feld.xM + punkt[0] * cos - punkt[1] * sin, feld.yM + punkt[0] * sin + punkt[1] * cos];
+}
+
+/** Dachpunkt → lokaler Feldpunkt, etwa für Auswahl und Größenänderungsgriffe. */
+export function feldPunktLokal(feld: FeldGeometrie, punkt: PunktM): PunktM {
+  const { sin, cos } = drehSinCos(feld.drehungDeg);
+  const x = punkt[0] - feld.xM, y = punkt[1] - feld.yM;
+  return [x * cos + y * sin, -x * sin + y * cos];
+}
+
+export function feldEcken(feld: FeldGeometrie): [PunktM, PunktM, PunktM, PunktM] {
+  return [feldPunkt(feld, [0, 0]), feldPunkt(feld, [feld.breiteM, 0]),
+    feldPunkt(feld, [feld.breiteM, feld.hoeheM]), feldPunkt(feld, [0, feld.hoeheM])];
+}
+
+export function modulEcken(modul: Pick<ModulPosition, 'xM' | 'yM' | 'wM' | 'hM' | 'eckenM'>): [PunktM, PunktM, PunktM, PunktM] {
+  return modul.eckenM ?? [[modul.xM, modul.yM], [modul.xM + modul.wM, modul.yM],
+    [modul.xM + modul.wM, modul.yM + modul.hM], [modul.xM, modul.yM + modul.hM]];
+}
+
+/** Feld samt lokaler Lücken um die geometrische Mitte drehen. */
+export function dreheFeld<T extends FeldGeometrie>(feld: T, winkel: number): T {
+  const mitte = feldPunkt(feld, [feld.breiteM / 2, feld.hoeheM / 2]);
+  const neu = { ...feld, drehungDeg: normalisiereFeldDrehung(winkel), xM: 0, yM: 0 };
+  const lokalMitte = feldPunkt(neu, [feld.breiteM / 2, feld.hoeheM / 2]);
+  return { ...neu, xM: mitte[0] - lokalMitte[0], yM: mitte[1] - lokalMitte[1] };
+}
+
+/** Maßkorrektur des Dachs: Feldmitte proportional mitführen, Winkel/rechte Winkel bewahren. */
+export function skaliereFeldRahmen<T extends FeldGeometrie>(feld: T, sx: number, sy: number): T {
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx <= 0 || sy <= 0) return feld;
+  if (normalisiereFeldDrehung(feld.drehungDeg) === 0) {
+    return { ...feld, xM: feld.xM * sx, yM: feld.yM * sy, breiteM: feld.breiteM * sx, hoeheM: feld.hoeheM * sy };
+  }
+  const mitte = feldPunkt(feld, [feld.breiteM / 2, feld.hoeheM / 2]);
+  const { sin, cos } = drehSinCos(feld.drehungDeg);
+  const neu = { ...feld, xM: 0, yM: 0,
+    breiteM: feld.breiteM * Math.hypot(cos * sx, sin * sy),
+    hoeheM: feld.hoeheM * Math.hypot(sin * sx, cos * sy) };
+  const halbeAchsen = feldPunkt(neu, [neu.breiteM / 2, neu.hoeheM / 2]);
+  return { ...neu, xM: mitte[0] * sx - halbeAchsen[0], yM: mitte[1] * sy - halbeAchsen[1] };
+}
+
+/** Winkel einer Drehgeste um die Feldmitte, absolut relativ zur Startlage. */
+export function feldDrehwinkel(feld: FeldGeometrie, start: PunktM, aktuell: PunktM): number {
+  const mitte = feldPunkt(feld, [feld.breiteM / 2, feld.hoeheM / 2]);
+  const winkel = (p: PunktM) => Math.atan2(p[1] - mitte[1], p[0] - mitte[0]);
+  return normalisiereFeldDrehung(normalisiereFeldDrehung(feld.drehungDeg) +
+    (winkel(aktuell) - winkel(start)) * 180 / Math.PI);
 }
 
 /**
@@ -577,6 +655,17 @@ export interface FlachdachMontage {
   firstspaltM?: number;
   /** Wo Süden in der Draufsicht liegt. Default für Altprojekte: unten. */
   richtungSued?: 'unten' | 'links' | 'oben' | 'rechts';
+}
+
+/** Geometrischer Mindestabstand identischer Reihen/Paare, keine Montagefreigabe. */
+export function flachdachMindestPitch(
+  module: ModuleType,
+  montage: Pick<FlachdachMontage, 'aufstaenderung' | 'winkelDeg' | 'firstspaltM'>,
+): number {
+  const tiefe = module.widthMm / 1000 * Math.cos(montage.winkelDeg * Math.PI / 180);
+  return montage.aufstaenderung === 'sued'
+    ? tiefe + 0.01
+    : Math.max(tiefe + 0.01, 2 * tiefe + (montage.firstspaltM ?? 0.05));
 }
 
 /** Rahmenbedingungen der Fläche für die Feld-Belegung (ohne Ausrichtung/Optimierer). */
@@ -643,7 +732,7 @@ function feldZellen(
   // Kipprichtung = Projektion widthMm·cos(winkel); der Pitch kommt vom Gestell.
   const { w: laengsM, h: querM } = dimsVon(module, 'quer'); // 1,762 × 1,134
   const tiefe = querM * Math.cos(montage.winkelDeg * GRAD);
-  const pitch = Math.max(montage.pitchM, tiefe + 0.01);
+  const pitch = Math.max(montage.pitchM, flachdachMindestPitch(module, montage));
   const richtungSued = montage.richtungSued ?? 'unten';
   const kipptVertikal = richtungSued === 'unten' || richtungSued === 'oben';
 
@@ -731,7 +820,7 @@ export function feldSchrittmasse(
   }
   const { w: laengsM, h: querM } = dimsVon(input.module, 'quer');
   const tiefe = querM * Math.cos(input.montage.winkelDeg * GRAD);
-  const pitch = Math.max(input.montage.pitchM, tiefe + 0.01);
+  const pitch = Math.max(input.montage.pitchM, flachdachMindestPitch(input.module, input.montage));
   const kipptVertikal = (input.montage.richtungSued ?? 'unten') === 'unten' ||
     (input.montage.richtungSued ?? 'unten') === 'oben';
   if (input.montage.aufstaenderung === 'sued') {
@@ -764,7 +853,7 @@ export function berechneFelderRaster(
   /*
    * Räumlicher Index statt einer vollständigen Suche über alle bereits gesetzten
    * Module. Die Buckets sind nur eine Kandidaten-Vorauswahl; die endgültige
-   * Entscheidung trifft weiterhin exakt `rechteckeUeberlappen`. Dadurch bleiben
+   * Entscheidung trifft die exakte Rechteck-/Polygonprüfung. Dadurch bleiben
    * Priorität, Reihenfolge und Ergebnis des bisherigen Algorithmus unverändert.
    */
   const ZELLGROESSE_M = 2;
@@ -780,14 +869,20 @@ export function berechneFelderRaster(
     }
     return keys;
   };
-  const kollidiert = (rect: RechteckM): boolean => {
+  const kollidiert = (rect: RechteckM, ecken?: readonly PunktM[]): boolean => {
     const kandidaten = new Set<number>();
     for (const key of bucketKeys(rect)) {
       for (const index of buckets.get(key) ?? []) kandidaten.add(index);
     }
     for (const index of [...kandidaten].sort((a, b) => a - b)) {
       const q = positionen[index]!;
-      if (rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM })) {
+      const ueberlappt = ecken || q.eckenM
+        ? konvexePolygoneUeberlappen(ecken ?? [
+          [rect.xM, rect.yM], [rect.xM + rect.breiteM, rect.yM],
+          [rect.xM + rect.breiteM, rect.yM + rect.hoeheM], [rect.xM, rect.yM + rect.hoeheM],
+        ], modulEcken(q))
+        : rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM });
+      if (ueberlappt) {
         return true;
       }
     }
@@ -802,19 +897,27 @@ export function berechneFelderRaster(
   };
 
   felder.forEach((feld, fi) => {
+    const gedreht = normalisiereFeldDrehung(feld.drehungDeg) !== 0;
     const leer = new Set(feld.leer ?? []);
     for (const z of feldZellen(feld, input.module, fugeM, input.montage)) {
       if (leer.has(`${z.row}-${z.col}`)) continue;
-      const xM = feld.xM + z.xM;
-      const yM = feld.yM + z.yM;
+      const eckenM = gedreht ? [
+        feldPunkt(feld, [z.xM, z.yM]), feldPunkt(feld, [z.xM + z.wM, z.yM]),
+        feldPunkt(feld, [z.xM + z.wM, z.yM + z.hM]), feldPunkt(feld, [z.xM, z.yM + z.hM]),
+      ] as [PunktM, PunktM, PunktM, PunktM] : undefined;
+      const xM = eckenM?.[0][0] ?? feld.xM + z.xM;
+      const yM = eckenM?.[0][1] ?? feld.yM + z.yM;
+      const rect: RechteckM = eckenM ? polygonRahmen(eckenM) : { xM, yM, breiteM: z.wM, hoeheM: z.hM };
       // Randabstand zur Dachkante (das Feld selbst darf überstehen)
-      if (xM < randM - EPS || yM < randM - EPS) continue;
-      if (xM + z.wM > input.breiteM - randM + EPS) continue;
-      if (yM + z.hM > input.hoeheM - randM + EPS) continue;
-      if (!inZone(xM, yM, z.wM, z.hM)) continue;
+      if (rect.xM < randM - EPS || rect.yM < randM - EPS) continue;
+      if (rect.xM + rect.breiteM > input.breiteM - randM + EPS) continue;
+      if (rect.yM + rect.hoeheM > input.hoeheM - randM + EPS) continue;
+      if (eckenM) {
+        if (input.umrissM && !polygonImUmriss(eckenM, input.umrissM, randM)) continue;
+        if (input.hindernisseM?.some((hi) => polygonUeberlapptHindernis(eckenM, hi))) continue;
+      } else if (!inZone(xM, yM, z.wM, z.hM)) continue;
       // Kein Modul auf ein schon platziertes (früheres Feld gewinnt)
-      const rect: RechteckM = { xM, yM, breiteM: z.wM, hoeheM: z.hM };
-      if (kollidiert(rect)) continue;
+      if (kollidiert(rect, eckenM)) continue;
       const pos: ModulPosition = {
         row: z.row,
         col: z.col,
@@ -825,6 +928,7 @@ export function berechneFelderRaster(
         hM: z.hM,
         feld: fi,
       };
+      if (eckenM) pos.eckenM = eckenM;
       if (z.seite) pos.seite = z.seite;
       indiziere(rect, positionen.length);
       positionen.push(pos);
@@ -868,10 +972,13 @@ export function leerePositionen(
     if (belegteKeys.has(posKey(p))) return false; // liegt ja ein Modul
     // Bei überlappenden Feldern kann die Lücke von einem anderen Feld gefüllt sein —
     // dann ist sie nicht frei und darf nicht als Geist erscheinen.
-    const rect: RechteckM = { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM };
-    return !belegt.positionen.some((q) =>
-      rechteckeUeberlappen(rect, { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM }),
-    );
+    return !belegt.positionen.some((q) => {
+      if (p.eckenM || q.eckenM) return konvexePolygoneUeberlappen(modulEcken(p), modulEcken(q));
+      return rechteckeUeberlappen(
+        { xM: p.xM, yM: p.yM, breiteM: p.wM, hoeheM: p.hM },
+        { xM: q.xM, yM: q.yM, breiteM: q.wM, hoeheM: q.hM },
+      );
+    });
   });
 }
 

@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTouchBedienung } from '../lib/touch-bedienung';
 import type { FotoPunktSteuerung } from './EditorViewport';
 import {
   gaubenAussparungAusFoto,
   gaubenMasseAusElternfoto,
   rekonstruiereGaubenPunkte,
+  pruefeGaubenTopologie,
   satteldachMasseAusElternfoto,
   satteldachSeitenEcken,
   wendeGaubenMarkierungAn,
+  verschiebeGaubenPunkte,
   type GaubenMarkierung,
   type GaubenSeitenMass,
 } from '../lib/gauben-geometrie';
@@ -27,8 +29,6 @@ import {
   fotoZuordnungenVon,
   modulById,
   perspektiveQuelle,
-  patchFlaechenGeometrie,
-  rasterFuer,
   type Flaeche,
   type GaubenMessung,
   type GaubenTyp,
@@ -37,6 +37,9 @@ import {
 import { ModulAsset } from './DachSvg';
 import { fotoFlaechenInhalt } from './GesamtSvg';
 import { ToggleButton } from './ui';
+import { EditorAktionen } from './EditorAktionen';
+import { GaubenMassEditor } from './GaubenMassEditor';
+import styles from './GaubenEditor.module.css';
 import { useEntwurfNavigation, type OffenerEntwurf } from '../lib/entwurf-navigation';
 
 export interface NeueGaubeAusFoto {
@@ -44,6 +47,7 @@ export interface NeueGaubeAusFoto {
   aussen: Ecken;
   seiten?: { links: Ecken; rechts: Ecken };
   seitenMasse?: { links: GaubenSeitenMass; rechts: GaubenSeitenMass };
+  seitenMessung?: { links?: GaubenMessung; rechts?: GaubenMessung };
   breiteM: number;
   hoeheM: number;
   messung: GaubenMessung;
@@ -51,104 +55,6 @@ export interface NeueGaubeAusFoto {
 }
 
 export type AktualisierteGaubenMarkierung = GaubenMarkierung;
-
-function GaubenMassEditor({
-  flaeche,
-  modul,
-  onSpeichern,
-}: {
-  flaeche: Flaeche;
-  modul: ReturnType<typeof modulById>;
-  onSpeichern: (breiteM: number, hoeheM: number, messung: GaubenMessung) => void;
-}) {
-  const alt = flaeche.gaubenMessung;
-  const navigation = useEntwurfNavigation();
-  const [bearbeitet, setBearbeitet] = useState(false);
-  const [formularRevision, setFormularRevision] = useState(0);
-  const aktionen = useRef<OffenerEntwurf | null>(null);
-  const abmelden = useRef<(() => void) | null>(null);
-  const formularRef = useRef<HTMLDetailsElement>(null);
-  const [quelle, setQuelle] = useState<GaubenMessung['quelle']>(alt?.quelle ?? 'aufmass');
-  const [breiteM, setBreiteM] = useState(flaeche.breiteM);
-  const [hoeheM, setHoeheM] = useState(flaeche.hoeheM);
-  const [quer, setQuer] = useState(alt?.ziegelQuer ?? 10);
-  const [deck, setDeck] = useState(alt?.deckbreiteCm ?? 30);
-  const [reihen, setReihen] = useState(alt?.ziegelReihen ?? 8);
-  const [abstand, setAbstand] = useState(alt?.reihenabstandCm ?? 34);
-  const b = quelle === 'ziegel' ? (quer * deck) / 100 : breiteM;
-  const h = quelle === 'ziegel' ? (reihen * abstand) / 100 : hoeheM;
-  const verwerfen = () => {
-    abmelden.current?.(); abmelden.current = null;
-    setQuelle(alt?.quelle ?? 'aufmass'); setBreiteM(flaeche.breiteM); setHoeheM(flaeche.hoeheM);
-    setQuer(alt?.ziegelQuer ?? 10); setDeck(alt?.deckbreiteCm ?? 30); setReihen(alt?.ziegelReihen ?? 8); setAbstand(alt?.reihenabstandCm ?? 34);
-    setBearbeitet(false); setFormularRevision((wert) => wert + 1);
-  };
-  const gueltig = () => {
-    const fehler = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    if (fehler) { fehler.focus(); return false; }
-    return Number.isFinite(b) && Number.isFinite(h) && b > 0 && h > 0;
-  };
-  const speichern = () => {
-    if (!gueltig()) return;
-    abmelden.current?.(); abmelden.current = null;
-    onSpeichern(Math.round(b * 100) / 100, Math.round(h * 100) / 100, {
-      quelle,
-      qualitaet: quelle === 'nachbardach' ? 'geschaetzt' : quelle === 'aufmass' ? 'bestaetigt' : 'gemessen',
-      ...(quelle === 'ziegel' ? { ziegelQuer: quer, deckbreiteCm: deck, ziegelReihen: reihen, reihenabstandCm: abstand } : {}),
-    });
-    setBearbeitet(false);
-  };
-  aktionen.current = { name: `${flaeche.name} · Maße`, gueltig, uebernehmen: speichern, verwerfen };
-  useEffect(() => {
-    if (!bearbeitet) return;
-    const ende = navigation.registriere(`gauben-mass-${flaeche.id}`, {
-      name: `${flaeche.name} · Maße`, gueltig: () => aktionen.current!.gueltig(),
-      uebernehmen: () => aktionen.current!.uebernehmen(), verwerfen: () => aktionen.current!.verwerfen(),
-    });
-    abmelden.current = ende;
-    return ende;
-  }, [bearbeitet, flaeche.id, flaeche.name, navigation]);
-  useEffect(() => { if (!bearbeitet) verwerfen(); }, [flaeche.breiteM, flaeche.hoeheM, flaeche.gaubenMessung]);
-  const vorher = rasterFuer(flaeche, modul).positionen.length;
-  const nachher = rasterFuer(patchFlaechenGeometrie(flaeche, { breiteM: b, hoeheM: h }), modul).positionen.length;
-  return (
-    <details ref={formularRef} className="mt-2 border-t border-sky-100 pt-2" onChangeCapture={() => setBearbeitet(true)}>
-      <summary className="cursor-pointer text-xs font-semibold text-sky-800">Maß verbessern</summary>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {alt?.quelle === 'nachbardach' && <ToggleButton aktiv={quelle === 'nachbardach'} onClick={() => { setQuelle('nachbardach'); setBearbeitet(true); }}>Bisherige Schätzung</ToggleButton>}
-        <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => { setQuelle('aufmass'); setBearbeitet(true); }}>Aufmaß</ToggleButton>
-        <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => { setQuelle('ziegel'); setBearbeitet(true); }}>Ziegel zählen</ToggleButton>
-      </div>
-      <div key={formularRevision} className={`mt-2 grid gap-2 ${quelle === 'ziegel' ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
-        {quelle !== 'ziegel' ? (
-          <>
-            <ZahlenEingabe label="Breite" value={breiteM} onChange={setBreiteM} einheit="m" />
-            <ZahlenEingabe label="Traufe bis First" value={hoeheM} onChange={setHoeheM} einheit="m" />
-          </>
-        ) : (
-          <>
-            <ZahlenEingabe label="Ziegel quer" value={quer} onChange={setQuer} einheit="Stk." min={1} />
-            <ZahlenEingabe label="Deckbreite" value={deck} onChange={setDeck} einheit="cm" min={1} />
-            <ZahlenEingabe label="Reihen" value={reihen} onChange={setReihen} einheit="Stk." min={1} />
-            <ZahlenEingabe label="Reihenabstand" value={abstand} onChange={setAbstand} einheit="cm" min={1} />
-          </>
-        )}
-      </div>
-      <p className="mt-3 text-sm text-slate-700">Vorschau: {vorher} → {nachher} Module auf dieser Gaubenseite.</p>
-      <button
-        type="button"
-        className="mt-2 h-10 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white"
-        onClick={speichern}
-      >
-        {fmtDe(b, 2)} × {fmtDe(h, 2)} m übernehmen
-      </button>
-      <button type="button" className={`${sekundar} mt-2 ml-2`} onClick={verwerfen}>Abbrechen</button>
-    </details>
-  );
-}
-
-const sekundar =
-  'h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40';
 
 function ZahlenEingabe({
   label,
@@ -219,14 +125,16 @@ export function GaubenEditor({
   renderArbeitsbereich,
   onBelegungOeffnen,
   initialOffen = false,
+  aktiveFotoId,
 }: {
   eltern: Flaeche;
   gauben: Flaeche[];
   projekt: Projekt;
-  renderArbeitsbereich?: (inhalt: { bild: ReactNode; steuerung: ReactNode; hinweis: ReactNode; bildSeitenverhaeltnis: number; abbrechen: () => void; punktSteuerung?: FotoPunktSteuerung }) => ReactNode;
+  renderArbeitsbereich?: (inhalt: { bild: ReactNode; steuerung: ReactNode; hinweis: ReactNode; bildSeitenverhaeltnis: number; aufgabe?: { titel: string; phase: string }; abbrechen: () => void; punktSteuerung?: FotoPunktSteuerung }) => ReactNode;
   onBelegungOeffnen?: (flaecheId: string) => void;
   /** Erste Gaube direkt anlegen, ohne einen weiteren Aufklappschritt. */
   initialOffen?: boolean;
+  aktiveFotoId?: string;
   /** Startsignal von einer sichtbaren Gaubenkarte. */
   bearbeiteGruppenId?: string | null;
   onBearbeitungGestartet?: () => void;
@@ -243,12 +151,13 @@ export function GaubenEditor({
   onMarkierungAendern: (
     gruppenId: string,
     markierung: AktualisierteGaubenMarkierung,
-  ) => void;
+  ) => boolean | void;
 }) {
   const foto = eltern.foto;
   const navigation = useEntwurfNavigation();
   const entwurfAktionen = useRef<OffenerEntwurf | null>(null);
   const startPunkte = useRef('[]');
+  const formularRef = useRef<HTMLElement>(null);
   const [offen, setOffen] = useState(initialOffen);
   const [typ, setTyp] = useState<GaubenTyp>('flachdach');
   const [quelle, setQuelle] = useState<GaubenMessung['quelle']>('nachbardach');
@@ -263,11 +172,18 @@ export function GaubenEditor({
   const [letzteGueltigePunkte, setLetzteGueltigePunkte] = useState<Punkt[]>([]);
   const [bearbeiteId, setBearbeiteId] = useState<string | null>(null);
   const [ausgewaehlt, setAusgewaehlt] = useState(0);
+  const [werkzeug, setWerkzeug] = useState<'position' | 'form'>('form');
+  const [element, setElement] = useState('punkt:0');
+  const [massId, setMassId] = useState<string | null>(null);
+  const [kopieVon, setKopieVon] = useState<string | null>(null);
+  const [moduleZeigen, setModuleZeigen] = useState(true);
+  const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
+  const [touchStart, setTouchStart] = useState<Punkt | null>(null);
+  const ziehAuswahl = useRef<{ start: Punkt; indizes?: number[] } | null>(null);
   const [fallbackGrund, setFallbackGrund] = useState<string | null>(null);
   const [zieht, setZieht] = useState(false);
   const [touchBedienung, aktiviereTouch, deaktiviereTouch] = useTouchBedienung();
-  const [touchGriffIndex, setTouchGriffIndex] = useState<number | null>(null);
-  const ziehIndex = useRef<number | null>(null);
+  const fensterGeste = useRef<{ ende: () => void; abbrechen: () => void } | null>(null);
   const ziehStart = useRef<{ punkte: Punkt[]; gueltige: Punkt[] } | null>(null);
   const ziehFrame = useRef<number | null>(null);
   const vorgemerkteZiehPunkte = useRef<Punkt[] | null>(null);
@@ -285,11 +201,12 @@ export function GaubenEditor({
     return [...map.entries()];
   }, [gauben]);
 
-  const fotoId = fotoZuordnungenVon(eltern)[0]?.fotoId;
+  const fotoId = aktiveFotoId ?? fotoZuordnungenVon(eltern)[0]?.fotoId;
   const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
 
-  const bearbeitungStarten = (gruppenId: string, flaechen: Flaeche[]) => {
-    setTouchGriffIndex(null);
+  const bearbeitungStarten = (gruppenId: string, flaechen: Flaeche[], aufgabe: 'position' | 'form' = 'position') => {
+    setMassId(null); setKopieVon(null); setSpeicherFehler(null); setTouchStart(null);
+    setWerkzeug(aufgabe); setElement('punkt:0');
     const erster = flaechen[0];
     if (!erster) return;
     setTyp(erster.gaubenTyp ?? 'flachdach');
@@ -298,7 +215,7 @@ export function GaubenEditor({
     setOffen(true);
     setMarkieren(true);
     setAusgewaehlt(0);
-    const rekonstruiert = rekonstruiereGaubenPunkte(eltern, flaechen, gruppenId);
+    const rekonstruiert = rekonstruiereGaubenPunkte(eltern, flaechen, gruppenId, fotoId);
     if (rekonstruiert.ok) {
       const kopie = rekonstruiert.punkte.map(([x, y]) => [x, y] as Punkt);
       startPunkte.current = JSON.stringify(kopie);
@@ -324,6 +241,14 @@ export function GaubenEditor({
 
   useEffect(() => () => {
     if (ziehFrame.current !== null) window.cancelAnimationFrame(ziehFrame.current);
+  }, []);
+  useEffect(() => {
+    const ende = () => fensterGeste.current?.ende();
+    const abbrechen = () => fensterGeste.current?.abbrechen();
+    window.addEventListener('pointerup', ende);
+    window.addEventListener('pointercancel', abbrechen);
+    window.addEventListener('blur', abbrechen);
+    return () => { window.removeEventListener('pointerup', ende); window.removeEventListener('pointercancel', abbrechen); window.removeEventListener('blur', abbrechen); };
   }, []);
 
   const geaendert = markieren && punkte.length > 0 && JSON.stringify(punkte) !== startPunkte.current;
@@ -361,6 +286,8 @@ export function GaubenEditor({
         massstabVerhaeltnis: null,
       };
     }
+    const topologieFehler = pruefeGaubenTopologie(markierung.aussen, markierung.seiten);
+    if (topologieFehler) return { status: 'fehler', meldungen: [topologieFehler], massstabVerhaeltnis: null };
     const gruppe = bearbeiteId
       ? gauben.filter((f) => (f.gaubenGruppeId ?? f.id) === bearbeiteId)
       : [];
@@ -396,6 +323,7 @@ export function GaubenEditor({
   };
 
   const setzePunkteKontrolliert = (neu: Punkt[], normalisiereVierten = false) => {
+    setSpeicherFehler(null);
     let naechste = neu.map(([x, y]) => [x, y] as Punkt);
     if (normalisiereVierten && naechste.length === 4) {
       naechste = [...sortiereEcken(naechste as [Punkt, Punkt, Punkt, Punkt])];
@@ -436,7 +364,7 @@ export function GaubenEditor({
     }
     vorgemerkteZiehPunkte.current = null;
     setZieht(false);
-    ziehIndex.current = null;
+    ziehAuswahl.current = null;
   };
 
   const ziehgesteAbbrechen = () => {
@@ -479,7 +407,8 @@ export function GaubenEditor({
         : null;
 
   const reset = () => {
-    setTouchGriffIndex(null);
+    setModuleZeigen(true);
+    setMassId(null); setKopieVon(null); setSpeicherFehler(null); setTouchStart(null);
     startPunkte.current = '[]';
     verwerfeVorgemerkteZiehPunkte();
     setOffen(false);
@@ -492,15 +421,19 @@ export function GaubenEditor({
   };
 
   const starten = () => {
-    setTouchGriffIndex(null);
+    const fehler = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
+    if (fehler) { fehler.focus(); return; }
+    setMassId(null); setKopieVon(null); setSpeicherFehler(null); setTouchStart(null);
     startPunkte.current = '[]';
     setPunkte([]);
     setLetzteGueltigePunkte([]);
     setFallbackGrund(null);
+    setWerkzeug('form');
     setMarkieren(true);
   };
 
   const markierungKomplettNeu = (gruppenId: string, flaechen: Flaeche[]) => {
+    setWerkzeug('form'); setTouchStart(null);
     startPunkte.current = '[]';
     setTyp(flaechen[0]?.gaubenTyp ?? 'flachdach');
     setQuelle(flaechen[0]?.gaubenMessung?.quelle ?? 'aufmass');
@@ -546,21 +479,22 @@ export function GaubenEditor({
   };
 
   const erstellen = (weitereGleiche = false) => {
-    if (!markierungAktuell || pruefungAktuell.status === 'fehler') return;
+    if (touchStart || !markierungAktuell || pruefungAktuell.status === 'fehler') return;
     const { aussen, aussparung, seiten } = markierungAktuell;
 
     if (bearbeiteId) {
-      onMarkierungAendern(bearbeiteId, {
+      const gespeichert = onMarkierungAendern(bearbeiteId, {
         aussen,
         ...(seiten ? { seiten } : {}),
         aussparung,
       });
+      if (gespeichert === false) { setSpeicherFehler('Die Änderung konnte nicht übernommen werden. Bitte Foto und Dachseiten prüfen.'); return; }
       reset();
       return;
     }
 
     const masse =
-      quelle === 'ziegel'
+      kopieVon ? { breiteM, hoeheM } : quelle === 'ziegel'
         ? {
             breiteM: (ziegelQuer * deckbreiteCm) / 100,
             hoeheM: (ziegelReihen * reihenabstandCm) / 100,
@@ -574,10 +508,11 @@ export function GaubenEditor({
       typ,
       aussen,
       ...(seiten ? { seiten } : {}),
-      ...(quelle === 'nachbardach' && seitenSchaetzung ? { seitenMasse: seitenSchaetzung } : {}),
+      ...(kopieVon && typ === 'satteldach' ? { seitenMasse: Object.fromEntries(gauben.filter(f => (f.gaubenGruppeId ?? f.id) === kopieVon && f.gaubenSeite).map(f => [f.gaubenSeite!, { breiteM: f.breiteM, hoeheM: f.hoeheM }])) as { links: GaubenSeitenMass; rechts: GaubenSeitenMass } } : quelle === 'nachbardach' && seitenSchaetzung ? { seitenMasse: seitenSchaetzung } : {}),
+      ...(kopieVon ? { seitenMessung: Object.fromEntries(gauben.filter(f => (f.gaubenGruppeId ?? f.id) === kopieVon && f.gaubenSeite).map(f => [f.gaubenSeite!, f.gaubenMessung ?? { quelle: 'nachbardach', qualitaet: 'geschaetzt' }])) } : {}),
       breiteM: Math.round(masse.breiteM * 100) / 100,
       hoeheM: Math.round(masse.hoeheM * 100) / 100,
-      messung: {
+      messung: kopieVon ? gauben.find(f => (f.gaubenGruppeId ?? f.id) === kopieVon)?.gaubenMessung ?? { quelle: 'nachbardach', qualitaet: 'geschaetzt' } : {
         quelle,
         qualitaet:
           quelle === 'aufmass' ? 'bestaetigt' : quelle === 'ziegel' ? 'gemessen' : 'geschaetzt',
@@ -590,6 +525,7 @@ export function GaubenEditor({
     if (weitereGleiche) {
       setPunkte([]);
       setBearbeiteId(null);
+      setWerkzeug('form');
       setMarkieren(true);
       setOffen(true);
     } else {
@@ -599,474 +535,258 @@ export function GaubenEditor({
 
   entwurfAktionen.current = {
     name: `${eltern.name} · Gaubenmarkierung`,
-    gueltig: () => !!markierungAktuell && pruefungAktuell.status !== 'fehler' && (!!bearbeiteId || quelle !== 'nachbardach' || !!sichtbareSchaetzung),
+    gueltig: () => !touchStart && !!markierungAktuell && pruefungAktuell.status !== 'fehler' && (!!bearbeiteId || !!kopieVon || quelle !== 'nachbardach' || !!sichtbareSchaetzung),
     uebernehmen: () => erstellen(false),
     verwerfen: reset,
   };
 
-  const griffAmKreuz = punkte.findIndex((p) => Math.hypot(p[0] - tastaturPunkt[0], p[1] - tastaturPunkt[1]) < foto.breitePx * .022);
+  const gruppe = gruppen.find(([id]) => id === bearbeiteId);
+  const gaubenName = gruppe ? `Gaube ${gruppen.findIndex(([id]) => id === bearbeiteId) + 1}` : kopieVon ? 'Gaubenkopie' : 'Neue Gaube';
+  const massFlaeche = gauben.find(f => f.id === massId);
+  const massGruppe = massFlaeche ? gruppen.find(([, fs]) => fs.some(f => f.id === massFlaeche.id)) : undefined;
+  const indizesFuer = (wert = element): number[] | undefined => {
+    if (werkzeug === 'position') return undefined;
+    const [art, nr] = wert.split(':');
+    const i = Number(nr);
+    return art === 'first' ? [4, 5] : art === 'kante' ? [i, (i + 1) % 4] : [i];
+  };
+  const elementName = werkzeug === 'position' ? 'Gaube' : element.startsWith('first') ? 'First' : element.startsWith('kante') ? 'Kante' : 'Ecke';
+  const waehleWerkzeug = (neu: 'position' | 'form') => {
+    ziehgesteAbbrechen(); setTouchStart(null); setWerkzeug(neu);
+  };
+  const waehleElement = (wert: string) => {
+    setElement(wert); setTouchStart(null);
+    if (wert.startsWith('punkt:')) setAusgewaehlt(Number(wert.split(':')[1]));
+  };
+  const verschiebe = (dx: number, dy: number, indizes = indizesFuer()) => {
+    setzePunkteKontrolliert(verschiebeGaubenPunkte(punkte, dx, dy, foto.breitePx, foto.hoehePx, indizes));
+  };
+  const fotoPunkt = (e: { clientX: number; clientY: number }, svg: SVGSVGElement): Punkt => {
+    const r = svg.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width * foto.breitePx, (e.clientY - r.top) / r.height * foto.hoehePx];
+  };
+  const beginneZug = (e: ReactPointerEvent<SVGElement>, indizes?: number[]) => {
+    if (e.button !== 0 || e.pointerType === 'touch') return;
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg || !svg.getBoundingClientRect().width) return;
+    e.preventDefault(); e.stopPropagation();
+    ziehStart.current = { punkte, gueltige: letzteGueltigePunkte };
+    ziehAuswahl.current = { start: fotoPunkt(e, svg), indizes };
+    setTouchStart(null); setZieht(true); svg.focus({ preventScroll: true });
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* Fensterabbruch bleibt verfügbar. */ }
+  };
+  const bewegeZug = (e: ReactPointerEvent<SVGElement>) => {
+    const drag = ziehAuswahl.current, basis = ziehStart.current, svg = e.currentTarget.ownerSVGElement;
+    if (!drag || !basis || !svg) return;
+    const p = fotoPunkt(e, svg);
+    planeZiehPunkte(verschiebeGaubenPunkte(basis.punkte, p[0] - drag.start[0], p[1] - drag.start[1], foto.breitePx, foto.hoehePx, drag.indizes));
+  };
+  const endeZug = (e: ReactPointerEvent<SVGElement>) => {
+    if (!ziehAuswahl.current) return;
+    bewegeZug(e); uebernehmeVorgemerkteZiehPunkte();
+    ziehAuswahl.current = null; ziehStart.current = null; setZieht(false);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+  const zugAbbrechen = () => { ziehAuswahl.current = null; ziehgesteAbbrechen(); };
+  fensterGeste.current = { abbrechen: zugAbbrechen, ende: () => {
+    if (!ziehAuswahl.current) return;
+    uebernehmeVorgemerkteZiehPunkte(); ziehAuswahl.current = null; ziehStart.current = null; setZieht(false);
+  } };
+  const griffAmKreuz = punkte.findIndex(p => Math.hypot(p[0] - tastaturPunkt[0], p[1] - tastaturPunkt[1]) < foto.breitePx * .022);
   const punktBestaetigen = () => {
-    if (touchGriffIndex !== null) {
-      setzePunkteKontrolliert(punkte.map((p, i) => i === touchGriffIndex ? [...tastaturPunkt] as Punkt : p));
-      setTouchGriffIndex(null);
-    } else if (griffAmKreuz >= 0) {
-      setAusgewaehlt(griffAmKreuz);
-      setTouchGriffIndex(griffAmKreuz);
-    } else if (punkte.length < erwartet) {
+    if (punkte.length < erwartet) {
       setzePunkteKontrolliert([...punkte, [...tastaturPunkt]], punkte.length === 3);
+      setAusgewaehlt(punkte.length); setElement(`punkt:${punkte.length}`);
+    } else if (touchStart) {
+      verschiebe(tastaturPunkt[0] - touchStart[0], tastaturPunkt[1] - touchStart[1]);
+      setTouchStart(null);
+    } else {
+      if (werkzeug === 'form' && element.startsWith('punkt:') && griffAmKreuz >= 0) {
+        setAusgewaehlt(griffAmKreuz); setElement(`punkt:${griffAmKreuz}`);
+      }
+      setTouchStart([...tastaturPunkt]);
     }
   };
-
-  const bild = markieren ? (
-              <svg
-                viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
-                className="block w-full cursor-crosshair rounded-xl border border-slate-200 bg-slate-100 focus:outline-none focus:ring-4 focus:ring-akzent/40"
-                style={{ aspectRatio: `${foto.breitePx} / ${foto.hoehePx}` }}
-                tabIndex={0}
-                aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
-                onFocus={() => {
-                  if (!Number.isFinite(tastaturPunkt[0]) || !Number.isFinite(tastaturPunkt[1])) {
-                    setTastaturPunkt([foto.breitePx / 2, foto.hoehePx / 2]);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  const richtung: Record<string, Punkt> = {
-                    ArrowLeft: [-1, 0],
-                    ArrowRight: [1, 0],
-                    ArrowUp: [0, -1],
-                    ArrowDown: [0, 1],
-                  };
-                  const v = richtung[e.key];
-                  if (v) {
-                    e.preventDefault();
-                    const schritt = e.shiftKey ? 10 : 1;
-                    if (punkte.length >= erwartet) {
-                      const neu = punkte.map(([x, y]) => [x, y] as Punkt);
-                      const p = neu[ausgewaehlt]!;
-                      neu[ausgewaehlt] = [
-                        Math.max(0, Math.min(foto.breitePx, p[0] + v[0] * schritt)),
-                        Math.max(0, Math.min(foto.hoehePx, p[1] + v[1] * schritt)),
-                      ];
-                      setzePunkteKontrolliert(neu);
-                    } else {
-                      setTastaturPunkt(([x, y]) => [
-                        Math.max(0, Math.min(foto.breitePx, x + v[0] * schritt)),
-                        Math.max(0, Math.min(foto.hoehePx, y + v[1] * schritt)),
-                      ]);
-                    }
-                  } else if (e.key === 'Enter' && punkte.length < erwartet) {
-                    e.preventDefault();
-                    setzePunkteKontrolliert([...punkte, tastaturPunkt], punkte.length === 3);
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    if (bearbeiteId) reset();
-                    else {
-                      setPunkte([]);
-                      setLetzteGueltigePunkte([]);
-                      setMarkieren(false);
-                    }
-                  }
-                }}
-                onClick={(e) => {
-                  if (punkte.length >= erwartet) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  if (!rect.width || !rect.height) return;
-                  setzePunkteKontrolliert([
-                    ...punkte,
-                    [
-                      ((e.clientX - rect.left) / rect.width) * foto.breitePx,
-                      ((e.clientY - rect.top) / rect.height) * foto.hoehePx,
-                    ],
-                  ], punkte.length === 3);
-                }}
-                role="img"
-                aria-label="Gaube im Dachfoto markieren"
-              >
-                <defs>
-                  <ModulAsset id={`gauben-modul-${svgInstanzId}`} modul={modul} />
-                </defs>
-                <image href={foto.dataUrl} x="0" y="0" width={foto.breitePx} height={foto.hoehePx} />
-                {projektFoto && fotoFlaechenInhalt({
-                  projekt: vorschauProjekt,
-                  foto: projektFoto,
-                  beschriftung: false,
-                  assetId: `gauben-modul-${svgInstanzId}`,
-                  clipIdPrefix: `${svgInstanzId}-gauben-vorschau`,
-                  modulDarstellung: zieht ? 'kontur' : 'vorschau',
-                })}
-                {(!renderArbeitsbereich || !touchBedienung) && <g aria-hidden="true" pointerEvents="none" data-testid="foto-fadenkreuz" data-x={tastaturPunkt[0]} data-y={tastaturPunkt[1]}>
-                  <path d={`M${tastaturPunkt[0]},0 V${foto.hoehePx} M0,${tastaturPunkt[1]} H${foto.breitePx}`} fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-                  <path d={`M${tastaturPunkt[0]},0 V${foto.hoehePx} M0,${tastaturPunkt[1]} H${foto.breitePx}`} fill="none" stroke="#0284c7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                  <circle cx={tastaturPunkt[0]} cy={tastaturPunkt[1]} r={foto.breitePx * .006} fill="none" stroke="#0284c7" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-                </g>}
-                {punkte.length >= 2 && (
-                  <polyline
-                    points={punkte.slice(0, 4).map((p) => p.join(',')).join(' ')}
-                    fill="none"
-                    stroke={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : '#e8603a'}
-                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
-                  />
-                )}
-                {punkte.length >= 4 && (
-                  <line
-                    x1={punkte[3]![0]}
-                    y1={punkte[3]![1]}
-                    x2={punkte[0]![0]}
-                    y2={punkte[0]![1]}
-                    stroke={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : '#e8603a'}
-                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
-                  />
-                )}
-                {punkte.length >= 5 && (
-                  <line
-                    x1={punkte[4]![0]}
-                    y1={punkte[4]![1]}
-                    x2={punkte[5]?.[0] ?? punkte[4]![0]}
-                    y2={punkte[5]?.[1] ?? punkte[4]![1]}
-                    stroke="#0ea5e9"
-                    strokeWidth={Math.max(3, foto.breitePx * 0.004)}
-                    strokeDasharray="10 7"
-                  />
-                )}
-                {punkte.map((p, i) => (
-                  <g key={i}>
-                    <circle
-                      cx={p[0]}
-                      cy={p[1]}
-                      r={Math.max(5, foto.breitePx * 0.006)}
-                      fill="transparent"
-                      stroke="transparent"
-                      strokeWidth={44}
-                      vectorEffect="non-scaling-stroke"
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Gaubenpunkt ${i + 1}`}
-                      aria-pressed={ausgewaehlt === i}
-                      style={{ cursor: 'grab', touchAction: 'none' }}
-                      onFocus={() => setAusgewaehlt(i)}
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => {
-                        if (e.button !== 0) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setAusgewaehlt(i);
-                        ziehIndex.current = i;
-                        ziehStart.current = { punkte, gueltige: letzteGueltigePunkte };
-                        setZieht(true);
-                        e.currentTarget.ownerSVGElement?.focus();
-                        try {
-                          e.currentTarget.setPointerCapture(e.pointerId);
-                        } catch {
-                          // Tastatur bleibt als gleichwertige Alternative verfügbar.
-                        }
-                      }}
-                      onPointerMove={(e) => {
-                        if (ziehIndex.current !== i) return;
-                        const svg = e.currentTarget.ownerSVGElement;
-                        const rect = svg?.getBoundingClientRect();
-                        if (!rect?.width || !rect.height) return;
-                        const basis = vorgemerkteZiehPunkte.current ?? punkte;
-                        const neu = basis.map(([x, y]) => [x, y] as Punkt);
-                        neu[i] = [
-                          Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
-                          Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
-                        ];
-                        planeZiehPunkte(neu);
-                      }}
-                      onPointerUp={(e) => {
-                        if (ziehIndex.current !== i) return;
-                        const svg = e.currentTarget.ownerSVGElement;
-                        const rect = svg?.getBoundingClientRect();
-                        if (rect?.width && rect.height) {
-                          const basis = vorgemerkteZiehPunkte.current ?? punkte;
-                          const neu = basis.map(([x, y]) => [x, y] as Punkt);
-                          neu[i] = [
-                            Math.max(0, Math.min(foto.breitePx, ((e.clientX - rect.left) / rect.width) * foto.breitePx)),
-                            Math.max(0, Math.min(foto.hoehePx, ((e.clientY - rect.top) / rect.height) * foto.hoehePx)),
-                          ];
-                          vorgemerkteZiehPunkte.current = neu;
-                        }
-                        uebernehmeVorgemerkteZiehPunkte();
-                        ziehIndex.current = null;
-                        ziehStart.current = null;
-                        setZieht(false);
-                        if (typeof e.currentTarget.hasPointerCapture === 'function' && e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
-                      }}
-                      onPointerCancel={ziehgesteAbbrechen}
-                    />
-                    <circle
-                      cx={p[0]}
-                      cy={p[1]}
-                      r={Math.max(6, foto.breitePx * 0.008)}
-                      fill={punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? '#dc2626' : i >= 4 ? '#0ea5e9' : ausgewaehlt === i ? '#0f172a' : '#e8603a'}
-                      stroke="white"
-                      strokeWidth="3"
-                      style={{ pointerEvents: 'none' }}
-                    />
-                    <text x={p[0]} y={p[1]} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.max(10, foto.breitePx * 0.012)} fontWeight="700" style={{ pointerEvents: 'none' }}>{i + 1}</text>
-                  </g>
-                ))}
-              </svg>
-  ) : <svg viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`} role="img" aria-label="Gauben im Dachfoto">
+  const kopiereGaube = (id: string, fs: Flaeche[]) => {
+    gleicheGaubeMarkieren(fs); setMassId(null); setKopieVon(id); setTouchStart(null); setSpeicherFehler(null);
+    const rekonstruiert = rekonstruiereGaubenPunkte(eltern, fs, id, fotoId);
+    if (rekonstruiert.ok) {
+      const neu = verschiebeGaubenPunkte(rekonstruiert.punkte, foto.breitePx * .04, foto.hoehePx * .04, foto.breitePx, foto.hoehePx);
+      setPunkte(neu); setLetzteGueltigePunkte(neu); setWerkzeug('position');
+    } else {
+      setWerkzeug('form'); setFallbackGrund('Maße übernommen. In dieser Fotoansicht fehlen passende Gaubenecken: bitte die Kopie neu markieren.');
+    }
+  };
+  const oeffneMasse = (id: string) => navigation.weiter(() => { reset(); setMassId(id); });
+  const kontur = markierungVorschau ? gaubenFotoUmriss(markierungVorschau.aussen, markierungVorschau.seiten) : punkte.slice(0, 4);
+  const modulProjekt = moduleZeigen ? vorschauProjekt : { ...vorschauProjekt, flaechen: vorschauProjekt.flaechen.map(f => ({ ...f, felder: [] })) };
+  const hintergrund = <>
     <defs><ModulAsset id={`gauben-modul-${svgInstanzId}`} modul={modul} /></defs>
     <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
-    {projektFoto && fotoFlaechenInhalt({ projekt, foto: projektFoto, beschriftung: false, assetId: `gauben-modul-${svgInstanzId}`, clipIdPrefix: `${svgInstanzId}-gauben-ansicht` })}
+    {projektFoto && <g pointerEvents="none">{fotoFlaechenInhalt({ projekt: modulProjekt, foto: projektFoto, beschriftung: false, assetId: `gauben-modul-${svgInstanzId}`, clipIdPrefix: `${svgInstanzId}-gauben`, modulDarstellung: zieht ? 'kontur' : 'vorschau' })}</g>}
+  </>;
+  const bild = <svg viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`} role="img"
+    aria-label={markieren ? 'Gaube im Dachfoto markieren' : 'Gauben im Dachfoto'} tabIndex={0}
+    className={styles.bild} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape"
+    onKeyDown={e => {
+      const v: Record<string, Punkt> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      if (!markieren) return;
+      if (v[e.key]) {
+        e.preventDefault(); const schritt = e.shiftKey ? 10 : 1;
+        if (punkte.length >= erwartet) verschiebe(v[e.key]![0] * schritt, v[e.key]![1] * schritt);
+        else setTastaturPunkt(([x, y]) => [Math.max(0, Math.min(foto.breitePx, x + v[e.key]![0] * schritt)), Math.max(0, Math.min(foto.hoehePx, y + v[e.key]![1] * schritt))]);
+      } else if (e.key === 'Enter' && punkte.length < erwartet) { e.preventDefault(); punktBestaetigen(); }
+      else if (e.key === 'Escape') { e.preventDefault(); if (zieht) zugAbbrechen(); else if (touchStart) setTouchStart(null); else if (bearbeiteId || kopieVon) reset(); else { setPunkte([]); setLetzteGueltigePunkte([]); setMarkieren(false); } }
+    }}
+    onClick={e => {
+      if (!markieren || punkte.length >= erwartet || touchBedienung) return;
+      setzePunkteKontrolliert([...punkte, fotoPunkt(e, e.currentTarget)], punkte.length === 3);
+      setAusgewaehlt(punkte.length); setElement(`punkt:${punkte.length}`);
+    }}>
+    {hintergrund}
+    {massFlaeche && (() => {
+      const ecken = fotoZuordnungenVon(massFlaeche).find(z => z.fotoId === fotoId)?.eckenPx;
+      return ecken ? <polygon data-testid="gauben-mass-seite" points={ecken.map(p => p.join(',')).join(' ')} fill="rgba(184,61,30,.1)" stroke="#e8603a" strokeWidth="3" strokeDasharray="8 5" vectorEffect="non-scaling-stroke" pointerEvents="none" /> : null;
+    })()}
+    {!markieren && gruppen.map(([id, fs], index) => {
+      const r = rekonstruiereGaubenPunkte(eltern, fs, id, fotoId);
+      if (!r.ok) return null;
+      const m = fs[0]!.gaubenTyp === 'satteldach' ? satteldachSeitenEcken(r.punkte.slice(0, 4) as Ecken, [r.punkte[4]!, r.punkte[5]!], eltern) : undefined;
+      const ps = gaubenFotoUmriss(r.punkte.slice(0, 4) as Ecken, m ?? undefined);
+      return <polygon key={id} points={ps.map(p => p.join(',')).join(' ')} role="button" tabIndex={0}
+        aria-label={`Gaube ${index + 1} im Foto bearbeiten`} className={styles.auswahlKontur}
+        onClick={e => { e.stopPropagation(); navigation.weiter(() => bearbeitungStarten(id, fs)); }}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); navigation.weiter(() => bearbeitungStarten(id, fs)); } }} />;
+    })}
+    {markieren && <>
+      {kontur.length >= 3 && <polygon data-testid="gauben-gruppe" points={kontur.map(p => p.join(',')).join(' ')}
+        fill="rgba(184,61,30,.08)" stroke={pruefungAktuell.status === 'fehler' && punkte.length >= erwartet ? '#dc2626' : '#e8603a'} strokeWidth={2} vectorEffect="non-scaling-stroke"
+        role={punkte.length >= erwartet && werkzeug === 'position' ? 'button' : undefined}
+        aria-label={punkte.length >= erwartet && werkzeug === 'position' ? 'Gaube verschieben' : undefined}
+        tabIndex={punkte.length >= erwartet && werkzeug === 'position' ? 0 : undefined}
+        style={{ cursor: werkzeug === 'position' ? 'grab' : undefined }}
+        onPointerDown={e => { if (punkte.length >= erwartet && werkzeug === 'position') beginneZug(e); }} onPointerMove={bewegeZug} onPointerUp={endeZug} onPointerCancel={zugAbbrechen} />}
+      {punkte.length >= 2 && punkte.length < 4 && <polyline points={punkte.map(p => p.join(',')).join(' ')} fill="none" stroke="#e8603a" strokeWidth="3" vectorEffect="non-scaling-stroke" />}
+      {punkte.length >= 5 && <line x1={punkte[4]![0]} y1={punkte[4]![1]} x2={punkte[5]?.[0] ?? punkte[4]![0]} y2={punkte[5]?.[1] ?? punkte[4]![1]} stroke="#0284c7" strokeWidth="2" strokeDasharray="8 5" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
+      {punkte.length >= erwartet && werkzeug === 'form' && [...[0, 1, 2, 3].map(i => ({ ps: [i, (i + 1) % 4], name: `Gaubenkante ${i + 1}`, wert: `kante:${i}` })), ...(typ === 'satteldach' ? [{ ps: [4, 5], name: 'Firstlinie', wert: 'first:0' }] : [])].map(({ ps, name, wert }) => {
+        const p = punkte[ps[0]!]!, q = punkte[ps[1]!]!;
+        return <g key={wert}>
+          <line x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke="transparent" strokeWidth="22" vectorEffect="non-scaling-stroke"
+            role="button" tabIndex={0} aria-label={`${name} verschieben`} aria-pressed={element === wert} style={{ cursor: 'grab' }}
+            onFocus={() => waehleElement(wert)} onClick={e => e.stopPropagation()}
+            onPointerDown={e => { waehleElement(wert); beginneZug(e, ps); }} onPointerMove={bewegeZug} onPointerUp={endeZug} onPointerCancel={zugAbbrechen} />
+          <rect x={(p[0] + q[0]) / 2 - foto.breitePx * .004} y={(p[1] + q[1]) / 2 - foto.breitePx * .004} width={foto.breitePx * .008} height={foto.breitePx * .008} fill={element === wert ? '#263238' : 'white'} stroke={wert.startsWith('first') ? '#0284c7' : '#b83d1e'} strokeWidth="1.5" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        </g>;
+      })}
+      {punkte.map((p, i) => <g key={i}>
+        <circle cx={p[0]} cy={p[1]} r={Math.max(5, foto.breitePx * .006)} fill="transparent" stroke="transparent" strokeWidth="44" vectorEffect="non-scaling-stroke"
+          role="button" tabIndex={0} aria-label={`Gaubenpunkt ${i + 1}`} aria-pressed={werkzeug === 'form' && element === `punkt:${i}`} style={{ cursor: 'grab', touchAction: 'none' }}
+          onFocus={() => { if (werkzeug === 'form') waehleElement(`punkt:${i}`); }} onClick={e => e.stopPropagation()}
+          onPointerDown={e => { if (werkzeug === 'form') { setAusgewaehlt(i); setElement(`punkt:${i}`); } beginneZug(e, werkzeug === 'position' ? undefined : [i]); }}
+          onPointerMove={bewegeZug} onPointerUp={endeZug} onPointerCancel={zugAbbrechen} />
+        <circle cx={p[0]} cy={p[1]} r={Math.max(5, foto.breitePx * .008)} fill={i >= 4 ? '#0284c7' : werkzeug === 'form' && element === `punkt:${i}` ? '#263238' : '#b83d1e'} stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        <text x={p[0]} y={p[1]} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.max(10, foto.breitePx * .012)} fontWeight="700" pointerEvents="none">{i + 1}</text>
+      </g>)}
+      {(!renderArbeitsbereich || !touchBedienung) && <g aria-hidden="true" pointerEvents="none" data-testid="foto-fadenkreuz" data-x={tastaturPunkt[0]} data-y={tastaturPunkt[1]}>
+        <path d={`M${tastaturPunkt[0]},0 V${foto.hoehePx} M0,${tastaturPunkt[1]} H${foto.breitePx}`} fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+        <path d={`M${tastaturPunkt[0]},0 V${foto.hoehePx} M0,${tastaturPunkt[1]} H${foto.breitePx}`} fill="none" stroke="#0284c7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      </g>}
+    </>}
   </svg>;
 
-  const steuerung = (
-    <section data-gauben-steuerung id={`gauben-editor-${eltern.id}`} className="mb-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div>
-          <strong className="block text-sm text-sky-950">Gauben auf dieser Dachfläche</strong>
-          <span className="text-xs text-sky-700">
-            {gruppen.length > 0
-              ? `${gruppen.length} ${gruppen.length === 1 ? 'Gaube' : 'Gauben'} angelegt · `
-              : ''}
-            Im selben Foto markieren – Zuordnung und Aussparung passieren automatisch.
-          </span>
-        </div>
-        {!offen && (
-          <button
-            type="button"
-            className="ml-auto h-11 rounded-lg bg-akzent px-4 text-sm font-semibold text-white hover:bg-orange-700"
-            onClick={() => setOffen(true)}
-          >
-            + Gaube
-          </button>
-        )}
+  const fehler = speicherFehler ?? (punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? pruefungAktuell.meldungen.join(' ') : null);
+  const gueltig = punkte.length >= erwartet && !fehler && (!!bearbeiteId || !!kopieVon || quelle !== 'nachbardach' || !!sichtbareSchaetzung);
+  const korrektur = <>
+    <div className={styles.aufgaben} role="group" aria-label="Gaube bearbeiten">
+      <button type="button" aria-pressed={werkzeug === 'position'} onClick={() => waehleWerkzeug('position')} disabled={punkte.length < erwartet}>Position ändern</button>
+      <button type="button" aria-pressed={werkzeug === 'form'} onClick={() => waehleWerkzeug('form')}>Form korrigieren</button>
+    </div>
+    <p>{punkte.length < 4 ? `Gaubenumriss: noch ${4 - punkte.length} Ecke(n) setzen.` : typ === 'satteldach' && punkte.length < 6 ? `Jetzt die Firstlinie: noch ${6 - punkte.length} Punkt(e) setzen.` : werkzeug === 'position' ? touchBedienung ? 'Gaube greifen, Fadenkreuz zum Ziel bewegen und dort ablegen.' : 'Innerhalb der Gaube ziehen. Alle Ecken und die Aussparung bewegen sich mit.' : touchBedienung ? `${elementName} wählen, greifen und am Ziel ablegen.` : 'Ecken einzeln ziehen. Kanten und Firstlinie lassen sich gemeinsam verschieben.'}</p>
+    {punkte.length >= erwartet && <>
+      {werkzeug === 'form' && <label className={styles.feld}>Was möchtest du korrigieren?<select value={element} onChange={e => waehleElement(e.target.value)} aria-label="Gaubenelement">
+        {punkte.map((_, i) => <option key={`p${i}`} value={`punkt:${i}`}>{i >= 4 ? `Firstende ${i - 3}` : `Ecke ${i + 1}`}</option>)}
+        {[0, 1, 2, 3].map(i => <option key={`k${i}`} value={`kante:${i}`}>Kante {i + 1}</option>)}
+        {typ === 'satteldach' && <option value="first:0">Ganze Firstlinie</option>}
+      </select></label>}
+      <div className={styles.feinkorrektur} role="group" aria-label={`${elementName} fein verschieben`}>
+        <span>Fein verschieben</span>
+        {([[-1, 0, '←', 'links'], [0, -1, '↑', 'oben'], [0, 1, '↓', 'unten'], [1, 0, '→', 'rechts']] as const).map(([x, y, zeichen, name]) => <button key={name} type="button" aria-label={`${elementName} nach ${name}`} disabled={!!touchStart} onClick={() => verschiebe(x, y)}>{zeichen}</button>)}
       </div>
+      {werkzeug === 'form' && <p className={styles.nebenhinweis}>Die Dachmaße bleiben unverändert.</p>}
+    </>}
+    <label className={styles.check}><input type="checkbox" checked={moduleZeigen} onChange={e => setModuleZeigen(e.target.checked)} />Module im Foto anzeigen</label>
+    {fallbackGrund && <p className={styles.warnung} role="status">{fallbackGrund}</p>}
+    {punkte.length >= erwartet && pruefungAktuell.status === 'warnung' && <p className={styles.warnung} role="status">{pruefungAktuell.meldungen.join(' ')}</p>}
+    {quelle === 'nachbardach' && !bearbeiteId && !kopieVon && sichtbareSchaetzung && <p className={styles.warnung}>Maße geschätzt: {fmtDe(sichtbareSchaetzung.breiteM, 2)} × {fmtDe(sichtbareSchaetzung.hoeheM, 2)} m je Dachseite. Später mit Aufmaß prüfen.</p>}
+    {kopieVon && <p className={styles.nebenhinweis}>Kopie übernimmt Typ, Seitenmaße und Messquelle. Die Modulbelegung wird neu erzeugt. Vor dem Anlegen im Foto platzieren und prüfen.</p>}
+    {bearbeiteId ? <details className={styles.zusatz}><summary>Markierung neu beginnen</summary><p>Alle Fotoecken neu setzen. Maße und Belegung bleiben erhalten.</p><button type="button" onClick={() => markierungKomplettNeu(bearbeiteId, gruppe?.[1] ?? [])}>Komplett neu markieren</button></details> : <div className={styles.nebenAktionen}>
+      <button type="button" disabled={!punkte.length} onClick={() => { setWerkzeug('form'); setzePunkteKontrolliert(punkte.slice(0, -1)); }}>Punkt zurück</button>
+      {!kopieVon && <button type="button" disabled={!gueltig} onClick={() => erstellen(true)}>Anlegen & nächste gleiche markieren</button>}
+    </div>}
+    <EditorAktionen><div data-gauben-abschluss>
+      <span role={fehler ? 'alert' : 'status'}>{fehler ?? (touchStart ? `${elementName} gegriffen – zuerst ablegen oder die Bewegung abbrechen.` : punkte.length < erwartet ? `${punkte.length} von ${erwartet} Punkten gesetzt` : `${gaubenName} · ${bearbeiteId ? 'Änderung prüfen' : 'Bereit zum Anlegen'}`)}</span>
+      <button type="button" disabled={!gueltig || !!touchStart} onClick={() => erstellen(false)}>{bearbeiteId ? 'Änderungen übernehmen' : kopieVon ? 'Gaubenkopie anlegen' : 'Gaube anlegen & fertig'}</button>
+      {touchStart ? <button type="button" onClick={() => setTouchStart(null)}>Bewegung abbrechen</button> : <button type="button" onClick={reset}>Abbrechen</button>}
+    </div></EditorAktionen>
+  </>;
 
-      {gruppen.length > 0 && (
-        <div className="mt-3 grid gap-2">
-          {gruppen.map(([id, flaechen], index) => {
-            const erste = flaechen[0]!;
-            const q = erste.gaubenMessung?.qualitaet;
-            return (
-              <div key={id} className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <strong>Gaube {index + 1}</strong>
-                  <span className="text-slate-600">
-                    {erste.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach · Stehfalz'} ·{' '}
-                    {fmtDe(erste.breiteM, 2)} × {fmtDe(erste.hoeheM, 2)} m
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      q === 'bestaetigt'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : q === 'gemessen'
-                          ? 'bg-sky-100 text-sky-800'
-                          : 'bg-amber-100 text-amber-900'
-                    }`}
-                  >
-                    {q === 'bestaetigt' ? 'Aufmaß bestätigt' : q === 'gemessen' ? 'Ziegel gemessen' : q === 'geschaetzt' ? 'geschätzt' : 'Maße aus Altprojekt'}
-                  </span>
-                  <button
-                    type="button"
-                    className="ml-auto h-9 rounded-lg border border-sky-300 bg-sky-50 px-3 text-xs font-semibold text-sky-900 hover:bg-sky-100"
-                    onClick={() => belegungOeffnen(id)}
-                  >
-                    Belegung bearbeiten
-                  </button>
-                  <button
-                    type="button"
-                    className="h-9 rounded-lg border border-akzent/40 bg-akzent/5 px-3 text-xs font-semibold text-akzent hover:bg-akzent/10"
-                    onClick={() => gleicheGaubeMarkieren(flaechen)}
-                  >
-                    + Gleiche markieren
-                  </button>
-                  <button
-                    type="button"
-                    className="h-9 rounded-lg border border-sky-300 px-3 text-xs font-medium text-sky-800 hover:bg-sky-50"
-                    onClick={() => bearbeitungStarten(id, flaechen)}
-                  >
-                    Perspektive bearbeiten
-                  </button>
-                  <button
-                    type="button"
-                    className="h-9 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
-                    onClick={() => onLoeschen(id)}
-                  >
-                    Entfernen
-                  </button>
-                </div>
-                {!flaechen.every((f) => fotoZuordnungenVon(f)[0]?.eckenPx) && (
-                  <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
-                    Die Gaube ist dem Foto noch zugeordnet, muss nach dem Fotoaustausch aber neu
-                    markiert werden. Maße und bisherige Belegung bleiben erhalten.
-                  </p>
-                )}
-                {flaechen.map((gaubenFlaeche) => (
-                  <div key={gaubenFlaeche.id}>
-                    {flaechen.length > 1 && (
-                      <p className="mt-2 text-xs font-semibold text-slate-600">
-                        Dachseite {gaubenFlaeche.gaubenSeite === 'links' ? 'links' : 'rechts'}
-                      </p>
-                    )}
-                    <GaubenMassEditor
-                      flaeche={gaubenFlaeche}
-                      modul={modul}
-                      onSpeichern={(b, h, messung) =>
-                        onMasseAendern(id, gaubenFlaeche.id, b, h, messung)
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+  const steuerung = <section ref={formularRef} data-gauben-steuerung className={styles.editor}>
+    {massFlaeche ? <>
+      <div className={styles.kurzKopf}><strong>{`Gaube ${gruppen.findIndex(([id]) => id === massGruppe?.[0]) + 1}`}</strong><span>{massFlaeche.gaubenTyp === 'satteldach' ? massFlaeche.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite' : 'Gaubendach'}</span></div>
+      <GaubenMassEditor key={massFlaeche.id} flaeche={massFlaeche} modul={modul} onSpeichern={(b, h, messung) => { onMasseAendern(massFlaeche.gaubenGruppeId ?? massFlaeche.id, massFlaeche.id, b, h, messung); setMassId(null); }} onAbbrechen={() => setMassId(null)} />
+      {massGruppe && massGruppe[1].length > 1 && <div className={styles.nebenAktionen}>{massGruppe[1].filter(f => f.id !== massFlaeche.id).map(f => <button type="button" key={f.id} onClick={() => oeffneMasse(f.id)}>{f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachseite bearbeiten</button>)}</div>}
+    </> : markieren ? <>
+      <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{typ === 'satteldach' ? 'Satteldachgaube' : 'Flachdachgaube · Stehfalz'}</span></div>
+      {korrektur}
+    </> : offen ? <>
+      <div className={styles.aufgaben} role="group" aria-label="Gaubentyp">
+        <ToggleButton aktiv={typ === 'flachdach'} onClick={() => setTyp('flachdach')}>Flachdachgaube · Stehfalz</ToggleButton>
+        <ToggleButton aktiv={typ === 'satteldach'} onClick={() => setTyp('satteldach')}>Satteldachgaube</ToggleButton>
+      </div>
+      <p>Wie kommen die Maße zustande?</p>
+      <div className={styles.aufgaben} role="group" aria-label="Messquelle">
+        <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => setQuelle('aufmass')}>Aufmaß vorhanden</ToggleButton>
+        <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => setQuelle('ziegel')}>Ziegel zählen</ToggleButton>
+        <ToggleButton aktiv={quelle === 'nachbardach'} onClick={() => setQuelle('nachbardach')}>Aus Nachbardach schätzen</ToggleButton>
+      </div>
+      {quelle === 'aufmass' ? <div className={styles.zweiSpalten}><ZahlenEingabe label="Breite der belegbaren Fläche" value={breiteM} onChange={setBreiteM} einheit="m" /><ZahlenEingabe label="Länge Traufe bis First" value={hoeheM} onChange={setHoeheM} einheit="m" /></div> : quelle === 'ziegel' ? <div className={styles.zweiSpalten}>
+        <ZahlenEingabe label="Ziegel quer" value={ziegelQuer} onChange={setZiegelQuer} einheit="Stk." min={1} /><ZahlenEingabe label="Deckbreite" value={deckbreiteCm} onChange={setDeckbreiteCm} einheit="cm" min={1} />
+        <ZahlenEingabe label="Ziegelreihen" value={ziegelReihen} onChange={setZiegelReihen} einheit="Stk." min={1} /><ZahlenEingabe label="Reihenabstand" value={reihenabstandCm} onChange={setReihenabstandCm} einheit="cm" min={1} />
+      </div> : <p className={styles.warnung}>Das Hauptdach liefert einen Schätzwert. Die Gaube liegt auf einer anderen Ebene; für genaue Maße später Aufmaß oder Ziegelwerte verwenden.</p>}
+      {typ === 'satteldach' && quelle !== 'nachbardach' && <p className={styles.nebenhinweis}>Diese Maße gelten zunächst für beide Dachseiten. Unterschiede kannst du danach je Seite ändern.</p>}
+      <EditorAktionen><div data-gauben-abschluss><button type="button" onClick={starten}>Im Foto markieren →</button><button type="button" onClick={reset}>Abbrechen</button></div></EditorAktionen>
+    </> : <>
+      <p>{gruppen.length ? `${gruppen.length} ${gruppen.length === 1 ? 'Gaube angelegt' : 'Gauben angelegt'}. Im Foto oder hier auswählen.` : 'Gaube im selben Foto anlegen. Die Aussparung im Hauptdach wird automatisch mitgeführt.'}</p>
+      <div className={styles.gruppenListe}>{gruppen.map(([id, fs], index) => <div key={id} className={styles.gruppe} data-gaubengruppe={id}>
+        <div className={styles.gruppenKopf}><strong>Gaube {index + 1}</strong><span>{fs[0]!.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach · Stehfalz'}</span></div>
+        <div className={styles.aufgaben}>
+          <button type="button" onClick={() => navigation.weiter(() => bearbeitungStarten(id, fs, 'position'))}>Position ändern</button>
+          <button type="button" onClick={() => navigation.weiter(() => bearbeitungStarten(id, fs, 'form'))}>Form korrigieren</button>
         </div>
-      )}
-
-      {offen && (
-        <div className="mt-3 rounded-xl border border-sky-200 bg-white p-3">
-          <div className="flex flex-wrap gap-2">
-            <ToggleButton aktiv={typ === 'flachdach'} onClick={() => setTyp('flachdach')}>
-              Flachdachgaube · Stehfalz
-            </ToggleButton>
-            <ToggleButton aktiv={typ === 'satteldach'} onClick={() => setTyp('satteldach')}>
-              Satteldachgaube
-            </ToggleButton>
-          </div>
-
-          {!markieren && (
-            <>
-              <p className="mb-2 mt-4 text-sm font-medium text-slate-700">Wie kommen die Maße zustande?</p>
-              <div className="flex flex-wrap gap-2">
-                <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => setQuelle('aufmass')}>
-                  Aufmaß vorhanden
-                </ToggleButton>
-                <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => setQuelle('ziegel')}>
-                  Ziegel zählen
-                </ToggleButton>
-                <ToggleButton aktiv={quelle === 'nachbardach'} onClick={() => setQuelle('nachbardach')}>
-                  Aus Nachbardach schätzen
-                </ToggleButton>
-              </div>
-
-              {quelle === 'aufmass' && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <ZahlenEingabe label="Breite der belegbaren Fläche" value={breiteM} onChange={setBreiteM} einheit="m" />
-                  <ZahlenEingabe label="Länge Traufe bis First" value={hoeheM} onChange={setHoeheM} einheit="m" />
-                </div>
-              )}
-              {quelle === 'ziegel' && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                  <ZahlenEingabe label="Ziegel quer" value={ziegelQuer} onChange={setZiegelQuer} einheit="Stk." min={1} />
-                  <ZahlenEingabe label="Deckbreite" value={deckbreiteCm} onChange={setDeckbreiteCm} einheit="cm" min={1} />
-                  <ZahlenEingabe label="Ziegelreihen" value={ziegelReihen} onChange={setZiegelReihen} einheit="Stk." min={1} />
-                  <ZahlenEingabe label="Reihenabstand" value={reihenabstandCm} onChange={setReihenabstandCm} einheit="cm" min={1} />
-                  <p className="sm:col-span-4 text-sm text-sky-800">
-                    Ergibt {fmtDe((ziegelQuer * deckbreiteCm) / 100, 2)} ×{' '}
-                    {fmtDe((ziegelReihen * reihenabstandCm) / 100, 2)} m. Quer und längs werden bewusst getrennt gezählt.
-                  </p>
-                </div>
-              )}
-              {quelle === 'nachbardach' && (
-                <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Für Stehfalz ohne sicheres Aufmaß: Das Programm überträgt den lokalen Maßstab des Hauptdachs. Das Ergebnis bleibt sichtbar als <strong>geschätzt</strong> markiert.
-                </p>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" className="h-11 rounded-lg bg-akzent px-4 text-sm font-semibold text-white" onClick={starten}>
-                  Im Foto markieren →
-                </button>
-                <button type="button" className={sekundar} onClick={reset}>Abbrechen</button>
-              </div>
-            </>
-          )}
-
-          {markieren && (
-            <>
-              <p className="mb-2 mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">
-                <strong>{punkte.length < 4 ? `Gaubenumriss: noch ${4 - punkte.length} Ecke(n) setzen.` : typ === 'satteldach' && punkte.length < 6 ? `Jetzt die Firstlinie: noch ${6 - punkte.length} Punkt(e) setzen.` : 'Markierung vollständig.'}</strong>{' '}
-                {touchBedienung && renderArbeitsbereich ? punkte.length < erwartet ? 'Mit einem Finger das Fadenkreuz verschieben und unten „Punkt setzen“ drücken.' : 'Zum Korrigieren eine Ecke anvisieren, „Ecke greifen“ drücken und am Ziel ablegen.' : bearbeiteId ? 'Alle vorhandenen Punkte können direkt nachgezogen werden.' : 'Jeder gesetzte Punkt kann vor dem Anlegen noch nachgezogen werden.'}
-              </p>
-              {fallbackGrund && (
-                <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
-                  {fallbackGrund} Bitte die Gaube kontrolliert komplett neu markieren.
-                </p>
-              )}
-              {punkte.length >= erwartet && pruefungAktuell.status !== 'ok' && (
-                <p className={`mb-2 rounded-lg px-3 py-2 text-sm ${pruefungAktuell.status === 'fehler' ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-900'}`} role="status">
-                  {pruefungAktuell.meldungen.join(' ')}
-                  {pruefungAktuell.status === 'fehler' && ' Die Module bleiben auf dem letzten gültigen Stand.'}
-                </p>
-              )}
-              {!renderArbeitsbereich && bild}
-
-              {quelle === 'nachbardach' && sichtbareSchaetzung && (
-                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Geschätztes Maß je Dachseite: <strong>{fmtDe(sichtbareSchaetzung.breiteM, 2)} × {fmtDe(sichtbareSchaetzung.hoeheM, 2)} m</strong>. Für eine genauere Belegung später Aufmaß oder Ziegelwerte verwenden.
-                </p>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="h-11 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-40"
-                  disabled={
-                    punkte.length < erwartet ||
-                    pruefungAktuell.status === 'fehler' ||
-                    (!bearbeiteId && quelle === 'nachbardach' && !sichtbareSchaetzung)
-                  }
-                  onClick={() => erstellen(false)}
-                >
-                  {bearbeiteId ? 'Markierung übernehmen' : 'Gaube anlegen & fertig'}
-                </button>
-                {!bearbeiteId && (
-                  <button
-                    type="button"
-                    className="h-11 rounded-lg bg-akzent px-4 text-sm font-semibold text-white disabled:opacity-40"
-                    disabled={
-                      punkte.length < erwartet ||
-                      pruefungAktuell.status === 'fehler' ||
-                      (quelle === 'nachbardach' && !sichtbareSchaetzung)
-                    }
-                    onClick={() => erstellen(true)}
-                  >
-                    Anlegen & nächste gleiche markieren
-                  </button>
-                )}
-                {!bearbeiteId && <button type="button" className={sekundar} disabled={punkte.length === 0} onClick={() => setzePunkteKontrolliert(punkte.slice(0, -1))}>Punkt zurück</button>}
-                {bearbeiteId && (
-                  <button type="button" className={sekundar} onClick={() => markierungKomplettNeu(bearbeiteId, gauben.filter((f) => (f.gaubenGruppeId ?? f.id) === bearbeiteId))}>
-                    Komplett neu markieren
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className={sekundar}
-                  onClick={() => {
-                    if (bearbeiteId) reset();
-                    else {
-                      setMarkieren(false);
-                      setPunkte([]);
-                    }
-                  }}
-                >
-                  {bearbeiteId ? 'Abbrechen' : 'Maße ändern'}
-                </button>
-                {!bearbeiteId && <button type="button" className={sekundar} onClick={reset}>Abbrechen</button>}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </section>
-  );
+        <div className={styles.seiten}>{fs.map(f => <div key={f.id}>
+          <strong>{fs.length > 1 ? f.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite' : 'Gaubendach'}</strong>
+          <span>{fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m · {f.gaubenMessung?.qualitaet === 'bestaetigt' ? 'Aufmaß bestätigt' : f.gaubenMessung?.qualitaet === 'gemessen' ? 'Ziegel gemessen' : f.gaubenMessung?.qualitaet === 'geschaetzt' ? 'geschätzt' : 'Maße aus Altprojekt'}</span>
+          <div className={styles.aufgaben}><button type="button" onClick={() => oeffneMasse(f.id)} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachmaße ändern` : 'Dachmaße ändern'}>Dachmaße ändern</button>
+          <button type="button" onClick={() => navigation.weiter(() => onBelegungOeffnen ? onBelegungOeffnen(f.id) : belegungOeffnen(id))} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Module bearbeiten` : 'Module bearbeiten'}>Module bearbeiten</button></div>
+        </div>)}</div>
+        <div className={styles.nebenAktionen}><button type="button" onClick={() => navigation.weiter(() => kopiereGaube(id, fs))}>Gaube kopieren</button><button type="button" onClick={() => navigation.weiter(() => onLoeschen(id))}>Entfernen …</button></div>
+      </div>)}</div>
+      <EditorAktionen><div data-gauben-abschluss><button type="button" onClick={() => { reset(); setOffen(true); }}>+ Gaube</button></div></EditorAktionen>
+    </>}
+    {!renderArbeitsbereich && bild}
+  </section>;
+  const aktuelleAufgabe = massFlaeche ? 'Dachmaße ändern' : markieren ? punkte.length < erwartet ? 'Gaube im Foto markieren' : werkzeug === 'position' ? 'Gaube verschieben' : 'Gaubenform korrigieren' : offen ? 'Gaube anlegen' : 'Gauben bearbeiten';
+  const hinweis = massFlaeche ? `${massFlaeche.gaubenSeite === 'links' ? 'Linke Dachseite' : massFlaeche.gaubenSeite === 'rechts' ? 'Rechte Dachseite' : 'Gaubendach'}: tatsächliche Maße eingeben.` : markieren ? punkte.length < erwartet ? `${punkte.length} von ${erwartet} Punkten · ${punkte.length < 4 ? 'Dachecken' : 'Firstenden'} ${touchBedienung ? 'mit dem Fadenkreuz setzen' : 'anklicken'}.` : werkzeug === 'position' ? `${gaubenName}: ${touchBedienung ? 'greifen und am Ziel ablegen' : 'innerhalb der Gaube ziehen'}. Dachmaße bleiben unverändert.` : `${gaubenName}: Ecken, Kanten oder First korrigieren.` : 'Gaube im Foto oder in der Liste auswählen.';
   return renderArbeitsbereich ? renderArbeitsbereich({
-    bild, steuerung, hinweis: markieren ? `${punkte.length} von ${erwartet} Gaubenpunkten${touchBedienung ? ' · Mit einem Finger das Fadenkreuz verschieben, unten bestätigen.' : ''}` : 'Gaube auswählen oder hinzufügen',
+    bild, steuerung, hinweis, aufgabe: { titel: aktuelleAufgabe, phase: massFlaeche ? `Gaube ${gruppen.findIndex(([id]) => id === massGruppe?.[0]) + 1}` : markieren ? gaubenName : eltern.name },
     bildSeitenverhaeltnis: foto.breitePx / foto.hoehePx,
-    abbrechen: ziehgesteAbbrechen,
+    abbrechen: zugAbbrechen,
     punktSteuerung: markieren ? {
       aktiv: touchBedienung, aktivieren: aktiviereTouch,
-      deaktivieren: () => { deaktiviereTouch(); setTouchGriffIndex(null); },
+      deaktivieren: () => { deaktiviereTouch(); setTouchStart(null); },
       punkt: tastaturPunkt, breitePx: foto.breitePx, hoehePx: foto.hoehePx,
       onBewegen: setTastaturPunkt, onBestaetigen: punktBestaetigen,
-      aktion: touchGriffIndex !== null ? 'Ecke hier ablegen' : griffAmKreuz >= 0 ? 'Ecke greifen' : 'Punkt setzen',
-      deaktiviert: punkte.length >= erwartet && touchGriffIndex === null && griffAmKreuz < 0,
+      aktion: punkte.length < erwartet ? 'Punkt setzen' : `${elementName} ${touchStart ? 'hier ablegen' : 'greifen'}`,
     } : undefined,
   }) : steuerung;
 }

@@ -1,6 +1,8 @@
 import {
   inverseHomographie,
+  eckenPlausibel,
   projiziere,
+  pruefePerspektive,
   sortiereEcken,
   type Ecken,
   type Punkt,
@@ -34,6 +36,42 @@ export type RekonstruierteGaubenPunkte =
 export type GaubenMarkierungAngewendet =
   | { ok: true; projekt: Projekt }
   | { ok: false; grund: string };
+
+/** Eine Gaube, Kante oder Firstlinie bewegen, ohne ihre Form am Fotorand zu stauchen. */
+export function verschiebeGaubenPunkte(
+  punkte: readonly Punkt[],
+  dx: number,
+  dy: number,
+  breitePx: number,
+  hoehePx: number,
+  indizes?: readonly number[],
+): Punkt[] {
+  const kopie = punkte.map(([x, y]) => [x, y] as Punkt);
+  if (
+    ![dx, dy, breitePx, hoehePx].every(Number.isFinite) ||
+    breitePx <= 0 || hoehePx <= 0 ||
+    !punkte.every((p) => p.every(Number.isFinite))
+  ) return kopie;
+  const auswahl = [...new Set(indizes ?? punkte.map((_, i) => i))];
+  if (
+    auswahl.length === 0 ||
+    auswahl.some((i) => !Number.isInteger(i) || i < 0 || i >= punkte.length)
+  ) return kopie;
+  const xs = auswahl.map((i) => punkte[i]![0]);
+  const ys = auswahl.map((i) => punkte[i]![1]);
+  const minDx = -Math.min(...xs);
+  const maxDx = breitePx - Math.max(...xs);
+  const minDy = -Math.min(...ys);
+  const maxDy = hoehePx - Math.max(...ys);
+  // Eine größere Auswahl passt auch mit gemeinsamer Verschiebung nicht ins Foto.
+  if (minDx > maxDx || minDy > maxDy) return kopie;
+  const deltaX = Math.max(minDx, Math.min(maxDx, dx));
+  const deltaY = Math.max(minDy, Math.min(maxDy, dy));
+  for (const i of auswahl) {
+    kopie[i] = [punkte[i]![0] + deltaX, punkte[i]![1] + deltaY];
+  }
+  return kopie;
+}
 
 /** Foto-Punkte lokal und deterministisch in die Ebene des Hauptdachs zurückrechnen. */
 export function gaubenPunkteAufElternflaeche(
@@ -125,6 +163,57 @@ const eindeutigePunkte = (punkte: readonly Punkt[], toleranzPx = 1) => {
 };
 
 /**
+ * Zwei konvexe Gaubenseiten müssen dieselbe Firstkante von gegenüberliegenden
+ * Seiten begrenzen. Gültige sechsseitige, auch konkave Außenkonturen bleiben
+ * erlaubt; ein Firstende darf außerhalb des Vierpunkt-Hilfsrahmens liegen.
+ */
+export function pruefeGaubenTopologie(
+  aussen: Ecken,
+  seiten?: { links: Ecken; rechts: Ecken },
+): string | null {
+  const endlich = (punkte: readonly Punkt[]) => punkte.every((p) => p.every(Number.isFinite));
+  if (!endlich(aussen)) return 'Die Gaubenpunkte enthalten ungültige Koordinaten.';
+  if (!seiten) {
+    return eckenPlausibel(aussen) ? null : 'Die Gaubenecken bilden keine gültige Dachfläche.';
+  }
+  const { links, rechts } = seiten;
+  if (!endlich(links) || !endlich(rechts) || !eckenPlausibel(links) || !eckenPlausibel(rechts)) {
+    return 'Die Gaubenseiten müssen kreuzungsfreie, gültige Dachflächen bilden.';
+  }
+  // Dieselbe Toleranz wie beim Zusammenführen der Kontur in gaubenFotoUmriss.
+  const gleich = (a: Punkt, b: Punkt) => gleicherPunkt(a, b, 1e-4);
+  const gemeinsam = links.filter((p) => rechts.some((q) => gleich(p, q)));
+  if (gemeinsam.length !== 2) return 'Beide Gaubenseiten müssen genau eine gemeinsame Firstlinie haben.';
+  const [r0, r1] = gemeinsam as [Punkt, Punkt];
+  const istFirstkante = (ecken: Ecken) => ecken.some((p, i) => {
+    const q = ecken[(i + 1) % 4]!;
+    return (gleich(p, r0) && gleich(q, r1)) || (gleich(p, r1) && gleich(q, r0));
+  });
+  if (!istFirstkante(links) || !istFirstkante(rechts)) {
+    return 'Die Firstlinie muss beide Gaubenseiten an ihrer Kante verbinden.';
+  }
+  const ohneFirst = (ecken: Ecken) => ecken.filter((p) => !gleich(p, r0) && !gleich(p, r1));
+  const linksAussen = ohneFirst(links);
+  const rechtsAussen = ohneFirst(rechts);
+  const alleAussen = [...linksAussen, ...rechtsAussen];
+  if (
+    eindeutigePunkte(aussen, 1e-4).length !== 4 ||
+    alleAussen.length !== 4 ||
+    aussen.some((p) => !alleAussen.some((q) => gleich(p, q)))
+  ) return 'Die Gaubenseiten passen nicht zu den vier äußeren Gaubenecken.';
+  const firstLaenge = distanz(r0, r1);
+  const abstandZurFirstlinie = (p: Punkt) =>
+    ((r1[0] - r0[0]) * (p[1] - r0[1]) - (r1[1] - r0[1]) * (p[0] - r0[0])) / firstLaenge;
+  const linksAbstand = linksAussen.map(abstandZurFirstlinie);
+  const rechtsAbstand = rechtsAussen.map(abstandZurFirstlinie);
+  if (
+    !linksAbstand.every((d) => Math.abs(d) > 1e-4 && Math.sign(d) === Math.sign(linksAbstand[0]!)) ||
+    !rechtsAbstand.every((d) => Math.abs(d) > 1e-4 && Math.sign(d) === -Math.sign(linksAbstand[0]!))
+  ) return 'Die Gaubenseiten überlappen. Die Firstlinie muss zwischen beiden Dachseiten liegen.';
+  return null;
+}
+
+/**
  * Gespeicherte Flachdach-/Satteldach-Markierungen wieder in ihre gemeinsamen
  * vier bzw. sechs Kontrollpunkte zerlegen. Die beiden Firstpunkte einer
  * Satteldachgaube werden als Schnittmenge beider Seiten rekonstruiert.
@@ -133,16 +222,23 @@ export function rekonstruiereGaubenPunkte(
   eltern: Flaeche,
   flaechen: readonly Flaeche[],
   gruppenId: string,
+  fotoId?: string,
 ): RekonstruierteGaubenPunkte {
   const gruppe = flaechen.filter((f) => (f.gaubenGruppeId ?? f.id) === gruppenId && !!f.gaubenTyp);
   const erste = gruppe[0];
   if (!erste) return { ok: false, grund: 'Die Gaubengruppe enthält keine Dachfläche.' };
-  const fotoId = fotoZuordnungenVon(eltern)[0]?.fotoId;
+  const ersteFotoId = fotoZuordnungenVon(eltern)[0]?.fotoId;
+  const quellFotoId = fotoId ?? ersteFotoId;
+  if (fotoId && !fotoZuordnungenVon(eltern).some((z) => z.fotoId === fotoId)) {
+    return { ok: false, grund: 'Die gewählte Fotoperspektive gehört nicht zum Hauptdach.' };
+  }
   const aussparung = eltern.gaubenAussparungen?.find((a) => a.gaubenGruppeId === gruppenId);
-  const gespeichertesAussen = aussparung?.fotoEckenPx;
+  const gespeichertesAussen = (aussparung?.fotoId ?? ersteFotoId) === quellFotoId
+    ? aussparung?.fotoEckenPx
+    : undefined;
 
   if (erste.gaubenTyp === 'flachdach') {
-    const ecken = gespeichertesAussen ?? fotoZuordnungenVon(erste).find((z) => !fotoId || z.fotoId === fotoId)?.eckenPx;
+    const ecken = gespeichertesAussen ?? fotoZuordnungenVon(erste).find((z) => !quellFotoId || z.fotoId === quellFotoId)?.eckenPx;
     return ecken
       ? { ok: true, punkte: ecken.map(([x, y]) => [x, y]) }
       : { ok: false, grund: 'Die vier gespeicherten Gaubenecken fehlen.' };
@@ -150,8 +246,8 @@ export function rekonstruiereGaubenPunkte(
 
   const links = gruppe.find((f) => f.gaubenSeite === 'links');
   const rechts = gruppe.find((f) => f.gaubenSeite === 'rechts');
-  const linksEcken = links && fotoZuordnungenVon(links).find((z) => !fotoId || z.fotoId === fotoId)?.eckenPx;
-  const rechtsEcken = rechts && fotoZuordnungenVon(rechts).find((z) => !fotoId || z.fotoId === fotoId)?.eckenPx;
+  const linksEcken = links && fotoZuordnungenVon(links).find((z) => !quellFotoId || z.fotoId === quellFotoId)?.eckenPx;
+  const rechtsEcken = rechts && fotoZuordnungenVon(rechts).find((z) => !quellFotoId || z.fotoId === quellFotoId)?.eckenPx;
   if (!linksEcken || !rechtsEcken) {
     return { ok: false, grund: 'Mindestens eine gespeicherte Gaubenseite ist unvollständig.' };
   }
@@ -204,8 +300,32 @@ export function wendeGaubenMarkierungAn(
   );
   if (!eltern) return { ok: false, grund: 'Das Hauptdach der Gaube fehlt.' };
   if (gruppe.length === 0) return { ok: false, grund: 'Die Gaubengruppe fehlt.' };
+  if (!fotoZuordnungenVon(eltern).some((z) => z.fotoId === fotoId)) {
+    return { ok: false, grund: 'Die gewählte Fotoperspektive gehört nicht zum Hauptdach.' };
+  }
+  if (gruppe.some((f) => f.elternFlaecheId !== elternId || f.gaubenTyp !== gruppe[0]!.gaubenTyp)) {
+    return { ok: false, grund: 'Die Gaubengruppe gehört nicht vollständig zu diesem Hauptdach.' };
+  }
   if (gruppe.some((f) => f.gaubenTyp === 'satteldach') && !markierung.seiten) {
     return { ok: false, grund: 'Die gemeinsame Firstlinie der Satteldachgaube ist ungültig.' };
+  }
+  if (gruppe[0]!.gaubenTyp === 'satteldach' && (
+    gruppe.length !== 2 || !gruppe.some((f) => f.gaubenSeite === 'links') || !gruppe.some((f) => f.gaubenSeite === 'rechts')
+  )) {
+    return { ok: false, grund: 'Die Satteldachgaube benötigt eine linke und eine rechte Dachseite.' };
+  }
+  if (gruppe[0]!.gaubenTyp === 'flachdach' && (gruppe.length !== 1 || markierung.seiten)) {
+    return { ok: false, grund: 'Eine Flachdachgaube hat genau eine Dachfläche.' };
+  }
+  const topologieFehler = pruefeGaubenTopologie(markierung.aussen, markierung.seiten);
+  if (topologieFehler) return { ok: false, grund: topologieFehler };
+  for (const f of gruppe) {
+    const ecken = f.gaubenTyp === 'satteldach' && f.gaubenSeite
+      ? markierung.seiten?.[f.gaubenSeite]
+      : markierung.aussen;
+    if (!ecken || pruefePerspektive(rahmenBreiteVon(f), f.hoeheM, ecken, perspektiveQuelle(f)).status === 'fehler') {
+      return { ok: false, grund: 'Die Gaubenpunkte bilden keine gültige Dachperspektive.' };
+    }
   }
 
   return {

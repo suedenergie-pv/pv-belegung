@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+import { flachdachMindestPitch } from '@pv-belegung/engine';
 
 import {
   AZIMUT_PRESETS,
   massFreigabe,
+  modulById,
   artVon,
   farbenFuer,
   flachdachPitchDefault,
@@ -410,21 +412,20 @@ export function SchrittFlaechen({
                 </select>
               </label>
               <KompaktZahl
-                label={f.flachdach.aufstaenderung === 'ostwest' ? 'Paar-Pitch' : 'Reihen-Pitch'}
+                label={f.flachdach.aufstaenderung === 'ostwest' ? 'Abstand der Modulpaare' : 'Abstand der Reihen'}
                 einheit="m"
                 value={f.flachdach.pitchM ?? flachdachPitchDefault(f.flachdach.aufstaenderung, f.flachdach.winkelDeg)}
-                min={1}
+                min={Math.ceil(flachdachMindestPitch(modulById(projekt.modulId), f.flachdach) * 100) / 100}
                 step={0.01}
                 onChange={(pitchM) => setFlaeche(f.id, { flachdach: { ...f.flachdach!, pitchM } })}
               />
               <label>
-                <span className="mb-1 block text-xs font-medium text-slate-600">Süden im Foto</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">Süden im Dachplan</span>
                 <select
-                  aria-label="Südrichtung im Foto"
+                  aria-label="Südrichtung im Dachplan"
                   value={flachdachSuedRichtung(f)}
                   onChange={(e) => setFlaeche(f.id, {
                     flachdach: { ...f.flachdach!, richtungSued: e.target.value as FlachdachSuedRichtung },
-                    felder: f.felder?.map((feld) => ({ ...feld, leer: undefined })),
                   })}
                   className={`${kompaktInput} w-32 font-medium`}
                 >
@@ -436,6 +437,13 @@ export function SchrittFlaechen({
               </label>
               <span className="pb-2 text-sm font-semibold text-slate-700">{flachdachRichtungsLabel(f)}</span>
               <span className="pb-2 text-xs text-slate-600">Rand-Default {Math.round(randDefaultVon(f) * 100)} cm</span>
+              <div className="w-full text-sm text-slate-600">
+                <svg viewBox="0 0 240 55" width="240" height="55" role="img" aria-label={f.flachdach.aufstaenderung === 'ostwest' ? 'Paarabstand von First zu First' : 'Reihenabstand von Anfang zu Anfang'}>
+                  <path d={f.flachdach.aufstaenderung === 'ostwest' ? 'M10 30 L45 10 L80 30 M130 30 L165 10 L200 30' : 'M10 30 L65 10 M130 30 L185 10'} fill="none" stroke="#344e64" strokeWidth="3" />
+                  <path d={f.flachdach.aufstaenderung === 'ostwest' ? 'M45 35 V52 M165 35 V52 M45 45 H165 m-115 -4 l-5 4 5 4 m105 -8 l5 4 -5 4' : 'M10 35 V52 M130 35 V52 M10 45 H130 m-115 -4 l-5 4 5 4 m105 -8 l5 4 -5 4'} fill="none" stroke="#526475" strokeWidth="1.5" />
+                </svg>
+                <p>{f.flachdach.aufstaenderung === 'ostwest' ? 'Von First zu First messen, nicht die freie Gasse.' : 'Von Reihenanfang zu Reihenanfang messen, nicht die freie Gasse.'} Der Dachplan richtet das Grundraster aus. Einzelne Felder danach direkt in der Belegung drehen.</p>
+              </div>
             </div>
           )}
 

@@ -179,6 +179,8 @@ Kanten ohne deklarierten Nachbarn werden im Kompositor mit dezenter Linie gerend
 
 ### 4.3 Gaube — im Elternfoto angelegt, intern eigene Dachflächen (19.07.2026)
 
+Bedienergänzung 20.10.2026, vom Nutzer nach konkreter Recherche freigegeben: Bestehende Gauben als zusammenhängende Gruppe auswählen und verschieben; Formkorrektur über freie Ecken, Kanten und gemeinsame Firstlinie. Aufgaben Position, Form, Dachmaße und Module sind ausdrücklich erreichbar. Foto-Markierungen ändern keine bestätigten Metermaße oder vorhandenen Belegungsfelder; Aussparung und beide Seiten werden atomar nachgeführt. Übernehmen/Abbrechen bleiben im festen Abschluss erreichbar, Entwürfe und Historie bleiben geschützt. Gaubentyp während der Korrektur fest, statt einer scheinbaren verlustbehafteten Konvertierung. Kopieren übernimmt Typ und Seitenmaße als ausdrücklich zu platzierenden Entwurf. Linke/rechte Dachseite bleiben innerhalb der Gaubenbearbeitung erkennbar. Gaubenpfad verwendet die gewählte Fotoansicht. Bestehende Workbench, unabhängige Ebenen, sofortige Modulvorschau und sonstige UI bleiben Grundlage. Kein Push/Deploy Teil dieses Änderungsauftrags.
+
 Gauben werden vom Nutzer im Foto einer Hauptdachfläche deklariert, niemals automatisch
 erkannt. Der Vertriebsflow zeigt **eine verschachtelte Gaube**; intern bleiben ihre
 belegbaren Seiten eigene Ebenen mit eigener Neigung, Ausrichtung, Perspektive,
@@ -444,6 +446,11 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
   die Perspektive, die wahren Maße bestimmen den metrischen Maßstab und damit die
   sichtbare Modulgröße. Belegungsfelder, manuelle Umrisse und Hindernisse werden beim
   Ändern proportional mitgeführt, damit ihre Lage im Foto nicht springt.
+  Bei gedrehten Feldern bleibt die normalisierte Feldmitte im Foto erhalten;
+  der ausdrücklich gesetzte Feldwinkel bleibt bestehen. Lokale Feldabmessungen
+  skalieren entlang ihrer jeweiligen Achsen. Bei ungleichen Maßfaktoren bleibt
+  das Feld rechtwinklig, statt eine physisch falsche Scherung der Module zu erzeugen;
+  seine komplette Bildform kann deshalb nicht exakt unverändert bleiben.
 - **„Am Foto anpassen"** scrollt das belegte Foto direkt unter die angeheftete
   Maßzeile. Form und Maße bleiben dort bedienbar, damit die Wirkung ohne
   Hin-und-her-Scrollen unmittelbar am Ziegelbild geprüft werden kann.
@@ -459,6 +466,10 @@ Button **„Komplexes Dach → an PL"**: legt Ticket mit Rohdaten an, markiert P
 ---
 
 ## 9. Belegungslogik
+
+Bedienergänzung 20.10.2026: Flachdachfelder sind einzeln um ihre geometrische Mitte frei drehbar (`BelegungsFeldM.drehungDeg`, Uhrzeigersinn in Dachkoordinaten, fehlend = 0°). Sichtbarer runder Drehgriff, Gradangabe und antippbare Dreh-/Rückstellknöpfe sind gleichwertige Zugänge. Montage-Neigung, Reihen-/Paarabstand und Feld-Drehung bleiben getrennte Aufgaben. Die gewählte Südrichtung beschreibt das Grundraster im Dachplan, keine Foto-Pixelachse; ein projektiv korrekt dargestellter Kompass macht sie sichtbar. Gedrehte Felder sind als Abweichung zu diesem Grundraster erkennbar und werden nicht unqualifiziert als exakt Ost/West bzw. Süd bezeichnet. Das Grundraster bleibt aus Bestandsdaten erhalten. Richtungs- und Winkeländerung löschen keine feldlokalen Leerzellen. Der Paarabstand wird First-zu-First, der Reihenabstand Anfang-zu-Anfang erklärt; kleiner als der physische Gestellfußabdruck ist nicht als gültige Eingabe übernehmbar.
+
+Die Engine liefert für gedrehte Module exakte vier Eckpunkte (`eckenM`), prüft Dachrand einschließlich konkaver Einbuchtungen, Randabstände, polygonale Hindernisse und frühere Felder exakt. Foto, PDF, Leerzellen und Auswahl verwenden dieselben Punkte. Gedrehte Größenänderungen arbeiten in lokalen Feldachsen und erhalten die bestehende Rasterphase. Modulmaße bleiben Katalog-mm; es entsteht keine 3D-, Ertrags- oder Statikberechnung. JSON ergänzt `belegungsfelder` mit ASCII-snake-case-Maßen, `drehung_deg` und `leere_zellen`. Nutzerauftrag umfasst nach Funktions-/UI-/UX-Revision und unabhängiger Prüfung auch den produktiven VPS-Deploy einschließlich zuvor lokal geprüfter Gaubenbearbeitung, ohne weitere Freigabe.
 
 - Raster pro `RoofPlane`: Modulmaß (aus Katalog, mm) + Ausrichtung hoch/quer (Button) + Reihen-/Spaltenabstand (Default 20 mm Klemmfuge, Admin-konfigurierbar)
 - Randabstände: pauschaler Default **0 m** für Dach, Gaube, Fassade und Flachdach (Genrih 01.10.2026). Dies ersetzt den bisherigen 5-cm-Standard und die flachdachspezifischen Standardwerte. Der Rand bleibt je Fläche einstellbar; explizit gespeicherte individuelle Werte werden nicht überschrieben. Der Default gilt auch für Bestandsflächen ohne gespeicherten Rand. Hinweis auf Wind-Randzonen bleibt v2-Thema, v1 = pauschaler Rand.

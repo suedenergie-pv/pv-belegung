@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-20",
+  "baseline": "93fa958 + lokal geprüfte Gaubenbearbeitung",
+  "sources": [
+    {
+      "url": "https://help.aurorasolar.com/hc/en-us/articles/24253418353555-Multi-Object-Selection-in-Design-Mode",
+      "opened": "2026-10-20",
+      "supports": "Auswahlbezogener Inspector und gemeinsames Bewegen/Drehen von Systemobjekten; keine Aussage zur Verwendbarkeit für Walter."
+    },
+    {
+      "url": "https://help.aurorasolar.com/hc/en-us/articles/4406930393875-Design-settings-Account-configuration",
+      "opened": "2026-10-20",
+      "supports": "Flachdachneigung, Modulorientierung und Abstände sind getrennte Einstellungen."
+    },
+    {
+      "url": "https://knowledge-center.solaredge.com/sites/kc/files/application-note-dxf-import-in-designer.pdf",
+      "opened": "2026-10-20",
+      "scope": "Version1.0 Juni2021, Importfunktion",
+      "supports": "Drehgriff für Azimut und physische Modulmaße; übernommenes Interaktionsprinzip, keine Nachbildung des Produkts."
+    },
+    {
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements",
+      "opened": "2026-10-20",
+      "supports": "Ziehaktionen brauchen eine Alternative ohne Ziehen; Zahlenfeld und antippbare Knöpfe geeignet."
+    }
+  ],
+  "observed": [
+    "Ost-West und Süd vorhanden, nur vier Dachachsenrichtungen.",
+    "Südrichtung unten→oben löscht feld.leer und holt manuell entfernte Module zurück.",
+    "Keine freie Feldrotation, keine unabhängigen Winkel, Pitch-Begriff verborgen in Dachmaßen."
+  ],
+  "decisions": [
+    "Bestehende Workbench und mobile Aufteilung bewahren.",
+    "Freie Drehung pro Flachdachfeld um seine Mitte, Winkel-Eingabe und Drehknöpfe sowie sichtbarer Drehgriff.",
+    "Himmelsrichtung des Dachs von Feldrotation unterscheiden; gedrehte Aufständerung als Abweichung kennzeichnen.",
+    "Feldlokale Löcher, genaue physische Modulkanten, exakte Polygon-Kollision/Umrissfilterung, Foto/PDF unverändert konsistent.",
+    "Bestandsprojekte ohne Winkel bleiben geometrisch identisch; keine Elektro-/Ertrags-/Statikberechnung.",
+    "Hauptagent revidiert selbst; unabhängiger Reviewer prüft Funktion und gerenderte UI, danach explizit autorisierter VPS-Deploy."
+  ],
+  "nonGoals": [
+    "Keine neue globale Navigation/Marketinggestaltung.",
+    "Keine Behauptung eines echten Walter-Bedienversuchs oder Montagefreigabe."
+  ]
+}

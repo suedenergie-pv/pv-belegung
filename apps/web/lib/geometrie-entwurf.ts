@@ -17,8 +17,5 @@ export function geometrieEntwurfAufStand(basis: Flaeche, entwurf: Flaeche, aktue
       fotoZuordnungen: fotoZuordnungenVon(aktuell).map((z) => ({ ...z, perspektiveBestaetigt: false, markierungFertig: false })),
     };
   }
-  if ((basis.flachdach?.richtungSued ?? 'unten') !== (entwurf.flachdach?.richtungSued ?? 'unten')) {
-    return { ...neu, felder: neu.felder?.map((feld) => ({ ...feld, leer: undefined })) };
-  }
   return neu;
 }

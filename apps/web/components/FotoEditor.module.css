@@ -57,12 +57,16 @@
 /* Bestehende Messlogik wird im Inspektor als Formular statt verschachtelter Karten gezeigt. */
 @media(max-width:600px),(max-height:500px) and (orientation:landscape){.werkzeugZeile .zusatzWerkzeug{display:none}.nurKompakt{display:inline-flex;align-items:center;justify-content:center}}
 .kontextInhalt :global([data-gauben-steuerung]){border:0;background:transparent;padding:0;margin:0}
-.kontextInhalt :global([data-gauben-steuerung])>div:first-child strong{display:none}
-.kontextInhalt :global([data-gauben-steuerung])>div:first-child span{color:#53616a;font-size:12px}
-.kontextInhalt :global([data-gauben-steuerung])>div:last-child{border:0;border-radius:0;background:transparent;padding:0}
-.kontextInhalt :global([data-gauben-steuerung]) :global(.grid){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-.kontextInhalt :global([data-gauben-steuerung]) :global(.grid)>p{grid-column:1/-1}
+.kontextInhalt :global([data-gauben-steuerung]) :global([data-gauben-mass-editor]) { min-width:0; }
 .kontextInhalt button[aria-pressed=true]{background:#e8ebed;border-color:#7c898f;color:#263238;box-shadow:inset 2px 0 #b83d1e}
+.gaubenSeitenNavigation{display:flex;flex-wrap:wrap;gap:6px}.gaubenSeitenNavigation button{flex:1 1 100px;min-height:44px;border:1px solid #c7ced3;padding:8px;border-radius:4px;text-align:left}
+.exportAbschluss :global([data-gauben-abschluss]){display:flex;flex-wrap:wrap;gap:6px}
+.exportAbschluss :global([data-gauben-abschluss])>span{flex-basis:100%;font-size:13px;line-height:1.35;color:#53616a}
+.exportAbschluss :global([data-gauben-abschluss])>span[role=alert]{color:#9f2d1b}
+.exportAbschluss :global([data-gauben-abschluss])>button{flex:1 1 120px;width:auto;min-height:44px;justify-content:center;text-align:center;line-height:1.3;padding:8px}
+.exportAbschluss :global([data-gauben-abschluss])>button:disabled{opacity:.45}
+.exportAbschluss :global([data-gauben-abschluss])>button+button{flex:0 1 auto;background:transparent;color:#263238;border:1px solid #c7ced3}
+@media(max-width:900px) and (min-height:501px){.arbeitsbereich[data-gauben-aktiv=true][data-einrichtung-aktiv=true]{grid-template-rows:minmax(180px,55%) minmax(0,1fr)}}
 
 @media(max-width:900px) and (min-height:501px),(max-height:500px) and (orientation:landscape){
  .inspektor{overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
@@ -126,6 +130,9 @@
 .exportAbschluss :global([data-foto-abschluss])>button:disabled { background:#e3e7e9; color:#53616a; cursor:not-allowed; opacity:1; }
 .exportAbschluss :global([data-foto-abschluss])>button[data-sekundaer] { background:#fff; border:1px solid #aeb9bf; color:#263238; }
 .exportAbschluss :global([data-foto-abschluss])>span[data-fehler=true] { color:#a32920; font-weight:600; }
+.exportAbschluss :global([data-gauben-mass-abschluss]) { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
+.exportAbschluss :global([data-gauben-mass-abschluss])>span { grid-column:1/-1; }
+.exportAbschluss :global([data-gauben-mass-abschluss])>button { width:auto; min-height:44px; padding:8px 10px; font-size:14px; line-height:1.3; }
 .exportAbschluss :global([data-foto-fehleraktionen]) { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .exportAbschluss :global([data-foto-fehleraktionen])>button { justify-content:center; min-width:0; padding:6px; font-size:13px; }
 .exportAbschluss :global([data-foto-fehleraktionen])>button:disabled { background:#e3e7e9; color:#53616a; opacity:1; cursor:not-allowed; }
@@ -166,6 +173,12 @@
 }
 
 @media(max-width:360px){.werkzeugZeile button{font-size:10px}}
+@media(max-width:600px) and (min-height:501px){
+ .arbeitsbereich[data-flachdach-drehung=true]{grid-template-rows:minmax(110px,1fr) minmax(275px,54%)}
+ .arbeitsbereich[data-flachdach-drehung=true] .kontextKopf,.arbeitsbereich[data-flachdach-drehung=true] .auswahlZaehler{display:none}
+}
+.arbeitsbereich[data-flachdach-drehung=true] .exportAbschluss>button{background:transparent;border:1px solid #aeb9bf;color:#344e64;min-height:44px;padding:8px 10px}
+.arbeitsbereich[data-flachdach-drehung=true] .exportAbschluss>[data-export-hinweis]{display:none}
 
 @media(max-height:700px){
  .canvasLeer{padding:8px;gap:8px}

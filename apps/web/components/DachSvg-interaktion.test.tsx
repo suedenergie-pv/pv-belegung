@@ -35,6 +35,22 @@ it('adressiert einen Feldgriff ausdrücklich statt die Fotopixel als Meter-Toler
   expect(down).not.toHaveBeenCalled();
 });
 
+it('löst überlappende Touchziele nach sichtbarer Nähe auf und erhält die Feldmitte als Auswahlziel', () => {
+  const f = flaeche(), griff = vi.fn(), down = vi.fn();
+  const ui = render(<DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul}
+    felderAnzeige={[{ rect: { xM: 1, yM: 1, breiteM: 4, hoeheM: 3 }, ausgewaehlt: true }]}
+    pointer={{ onDownM: down, onGriffDownM: griff, onMoveM: vi.fn(), onUpM: vi.fn() }} />);
+  box(ui.container.querySelector('svg')!);
+  const rechteck = (x: number, y: number, width: number, height: number) => ({ x, y, width, height, left: x, top: y, right: x + width, bottom: y + height, toJSON: () => ({}) });
+  const e = ui.container.querySelector('[data-feld-griff="e"]')!, se = ui.container.querySelector('[data-feld-griff="se"]')!;
+  vi.spyOn(e, 'getBoundingClientRect').mockReturnValue(rechteck(480, 330, 40, 40));
+  vi.spyOn(se, 'getBoundingClientRect').mockReturnValue(rechteck(480, 360, 40, 40));
+  vi.spyOn(ui.container.querySelector('[data-feld-ebene="flaeche"]')!, 'getBoundingClientRect').mockReturnValue(rechteck(100, 200, 400, 300));
+  pointer(se, 'pointerdown', 500, 350); expect(griff.mock.calls[0]!.slice(0, 2)).toEqual([0, 'e']);
+  pointer(se, 'pointerup', 500, 350);
+  pointer(e, 'pointerdown', 300, 350); expect(down).toHaveBeenCalledTimes(1); expect(griff).toHaveBeenCalledTimes(1);
+});
+
 it('verwirft nur die laufende Perspektivgeste bei einem zweiten Finger und erhält frühere Entwurfsänderungen', () => {
   const f = flaeche();
   const start = [[30, 580], [1000, 600], [1000, 0], [0, 0]] as Ecken;

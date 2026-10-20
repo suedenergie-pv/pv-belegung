@@ -28,9 +28,9 @@ describe('Gauben-Serienworkflow', () => {
     const speichern = vi.fn(); const weiter = vi.fn();
     function Test() { const nav = useEntwurfNavigation(); return <><button onClick={() => nav.weiter(weiter)}>Zum Export</button><GaubenEditor eltern={eltern} gauben={[gaube]} projekt={{ ...neuesProjekt(), flaechen: [eltern, gaube] }} onErstellen={vi.fn()} onLoeschen={vi.fn()} onMasseAendern={speichern} onMarkierungAendern={vi.fn()} /></>; }
     const ui = render(<EntwurfNavigationProvider><Test /></EntwurfNavigationProvider>);
-    fireEvent.click(ui.getByText('Maß verbessern'));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße ändern' }));
     fireEvent.change(ui.getByLabelText(/^Breite/), { target: { value: '4' } });
-    expect(ui.getByText(/Vorschau:.*Module auf dieser Gaubenseite/)).toBeTruthy();
+    expect(ui.getByText(/Vorschau:.*Module/)).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: 'Zum Export' }));
     expect(ui.getByRole('dialog')).toBeTruthy(); expect(weiter).not.toHaveBeenCalled();
     fireEvent.click(ui.getByRole('button', { name: 'Bleiben' }));
@@ -39,16 +39,12 @@ describe('Gauben-Serienworkflow', () => {
     fireEvent.click(ui.getByRole('button', { name: /^Übernehmen$/ }));
     expect(speichern).not.toHaveBeenCalled(); expect(weiter).not.toHaveBeenCalled();
     fireEvent.click(ui.getByRole('button', { name: /^Abbrechen$/ }));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße ändern' }));
     expect((ui.getByLabelText(/^Breite/) as HTMLInputElement).value).toBe('3');
     fireEvent.change(ui.getByLabelText(/^Breite/), { target: { value: '4' } });
     fireEvent.click(ui.getByRole('button', { name: 'Zum Export' }));
     fireEvent.click(ui.getByRole('button', { name: 'Verwerfen' }));
     expect(weiter).toHaveBeenCalledTimes(1); expect(speichern).not.toHaveBeenCalled();
-    fireEvent.change(ui.getByLabelText(/^Breite/), { target: { value: '4' } });
-    fireEvent.click(ui.getByRole('button', { name: 'Zum Export' }));
-    fireEvent.click(ui.getByRole('button', { name: /^Übernehmen$/ }));
-    expect(speichern).toHaveBeenCalledWith('g1', gaube.id, 4, 2.5, { quelle: 'nachbardach', qualitaet: 'geschaetzt' });
-    expect(weiter).toHaveBeenCalledTimes(2);
   });
   it('übernimmt Typ und Maße einer Gaube direkt für die nächste Markierung', () => {
     const frameCallbacks: FrameRequestCallback[] = [];
@@ -95,7 +91,7 @@ describe('Gauben-Serienworkflow', () => {
       </>,
     );
 
-    fireEvent.click(getByRole('button', { name: '+ Gleiche markieren' }));
+    fireEvent.click(getByRole('button', { name: 'Gaube kopieren' }));
 
     const foto = getByRole('img', { name: 'Gaube im Dachfoto markieren' });
     expect(foto).toBeTruthy();
@@ -112,28 +108,27 @@ describe('Gauben-Serienworkflow', () => {
       height: 700,
       toJSON: () => ({}),
     });
-    for (const [clientX, clientY] of [[200, 500], [400, 500], [380, 300], [220, 300]]) {
-      fireEvent.click(foto, { clientX, clientY });
-    }
+    fireEvent.click(getByRole('button', { name: 'Form korrigieren' }));
     const ersterGriff = getByRole('button', { name: 'Gaubenpunkt 1' });
     const pointer = (art: string, clientX: number, clientY: number) => {
       const event = new MouseEvent(art, { bubbles: true, clientX, clientY });
       Object.defineProperty(event, 'pointerId', { value: 7 });
       fireEvent(ersterGriff, event);
     };
-    pointer('pointerdown', 200, 500);
-    pointer('pointermove', 190, 510);
-    pointer('pointermove', 185, 515);
-    pointer('pointermove', 180, 520);
+    pointer('pointerdown', 240, 528);
+    pointer('pointermove', 230, 538);
+    pointer('pointermove', 225, 543);
+    pointer('pointermove', 220, 548);
     expect(requestFrame).toHaveBeenCalledTimes(1);
-    pointer('pointerup', 180, 520);
-    fireEvent.click(getByRole('button', { name: 'Anlegen & nächste gleiche markieren' }));
+    pointer('pointerup', 220, 548);
+    fireEvent.click(getByRole('button', { name: 'Gaubenkopie anlegen' }));
 
     expect(onErstellen).toHaveBeenCalledTimes(1);
-    expect(onErstellen.mock.calls[0]![0].aussen[0]).toEqual([180, 520]);
-    expect(getByText(/Gaubenumriss: noch 4 Ecke/)).toBeTruthy();
+    expect(onErstellen.mock.calls[0]![0].aussen[0]).toEqual([220, 548]);
+    expect(onErstellen.mock.calls[0]![0]).toMatchObject({ breiteM: 2.4, hoeheM: 2.1, messung: { quelle: 'aufmass', qualitaet: 'bestaetigt' } });
+    expect(queryByText('Gaubenkopie')).toBeNull();
 
-    fireEvent.click(getByRole('button', { name: 'Belegung bearbeiten' }));
+    fireEvent.click(getByRole('button', { name: 'Module bearbeiten' }));
     expect(container.querySelector<HTMLDetailsElement>('details[data-gauben-gruppe="gaube-1"]')?.open).toBe(true);
   });
 

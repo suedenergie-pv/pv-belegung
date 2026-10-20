@@ -5,9 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { neuerEintrag } from '../lib/model';
 import { speichereProjekte } from '../lib/speicher';
+import * as projektSpeicher from '../lib/speicher';
 import Home from './page';
 
+const speichernEcht = speichereProjekte;
+const ausstehendeSpeicherungen = new Set<ReturnType<typeof speichereProjekte>>();
+let speichernSpy: { mockRestore: () => void };
+
 beforeEach(() => {
+  speichernSpy = vi.spyOn(projektSpeicher, 'speichereProjekte').mockImplementation(db => {
+    const laufend = speichernEcht(db);
+    ausstehendeSpeicherungen.add(laufend);
+    void laufend.finally(() => ausstehendeSpeicherungen.delete(laufend));
+    return laufend;
+  });
   window.history.replaceState(null, '', '/');
   window.scrollTo = vi.fn();
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() });
@@ -32,8 +43,12 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Unmount sichert asynchron. Erst abschließen, bevor der nächste Test einen
+  // anderen Browser-Speicher einsetzt; echte Speicherprüfungen bleiben aktiv.
+  await Promise.all([...ausstehendeSpeicherungen]);
+  speichernSpy.mockRestore();
   vi.unstubAllGlobals();
 });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dreheFeld, feldPunkt } from '@pv-belegung/engine';
 import { neueFlaeche, neueGaubenFlaeche } from '../lib/model';
 import {
   feldMitGriff,
@@ -47,5 +48,18 @@ describe('Belegungsfeld-Griffe', () => {
     expect(punktInRechteck([2, 1], { xM: 2, yM: 1, breiteM: 3, hoeheM: 3 })).toBe(true);
     expect(punktInRechteck([5.01, 4], { xM: 2, yM: 1, breiteM: 3, hoeheM: 3 })).toBe(false);
     expect(feldMitGriff(feld, 'e', -4, 0, 1, 1).rect.breiteM).toBe(0.2);
+  });
+  it('trifft ein gedrehtes Feld und ändert seine Größe in lokalen Achsen', () => {
+    const gedreht = dreheFeld(feld, 90);
+    expect(punktInRechteck(feldPunkt(gedreht, [2, 2]), gedreht)).toBe(true);
+    expect(punktInRechteck(feldPunkt(gedreht, [-.1, 2]), gedreht)).toBe(false);
+    const rechts = feldMitGriff(gedreht, 'e', 0, 1, 1, 1);
+    expect(rechts.rect.breiteM).toBe(5);
+    expect(rechts.rect.hoeheM).toBe(5);
+    expect([rechts.rect.xM, rechts.rect.yM]).toEqual([gedreht.xM, gedreht.yM]);
+    const links = feldMitGriff(gedreht, 'w', 0, -1, 1, 1);
+    expect(links.rect.breiteM).toBe(5);
+    expect([links.rect.xM, links.rect.yM]).toEqual(feldPunkt(gedreht, [-1, 0]));
+    expect(leerVerschoben(gedreht.leer, links.zellVersatz.col, links.zellVersatz.row)).toEqual(['0-1', '1-3']);
   });
 });

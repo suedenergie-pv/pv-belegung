@@ -237,6 +237,15 @@ describe('Export-Geometrie und Modulausrichtung', () => {
       anzahl_west: 2,
     });
   });
+  it('speichert und exportiert unabhängige Feldwinkel mit lokalen Lücken ohne Dachazimutänderung', () => {
+    const p = neuesProjekt();
+    p.flaechen[0]!.felder = [{ xM: 1, yM: 1, breiteM: 4, hoeheM: 4, quer: true, drehungDeg: 15, leer: ['0-0'] }, { xM: 6, yM: 1, breiteM: 3, hoeheM: 4, quer: true, drehungDeg: 35 }];
+    const neu = migriereProjekt(JSON.parse(JSON.stringify(p)));
+    expect(neu.flaechen[0]!.felder).toEqual(p.flaechen[0]!.felder);
+    expect(neu.flaechen[0]!.azimutDeg).toBe(p.flaechen[0]!.azimutDeg);
+    const payload = bauePayload(neu, null) as { flaechen: Array<{ belegungsfelder: Array<Record<string, unknown>> }> };
+    expect(payload.flaechen[0]!.belegungsfelder).toMatchObject([{ drehung_deg: 15, leere_zellen: ['0-0'] }, { drehung_deg: 35 }]);
+  });
 });
 
 describe('Maßbestätigung unabhängig von der Oberfläche', () => {

@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-20",
+  "baseline": "93fa958",
+  "approval": "Nutzer bestätigt im Chat die unmittelbar zuvor recherchierte konkrete Gaubenbearbeitung.",
+  "sources": [
+    {
+      "url": "https://www.nngroup.com/articles/direct-manipulation/",
+      "opened": "2026-10-20",
+      "consequence": "Sichtbare Gruppenauswahl, unmittelbare Vorschau, reversible Bearbeitung."
+    },
+    {
+      "url": "https://www.nngroup.com/articles/drag-drop/",
+      "opened": "2026-10-20",
+      "consequence": "Verschieben und Verformen unterscheidbar, Griffzustand und Feinkorrektur sichtbar."
+    },
+    {
+      "url": "https://helpx.adobe.com/illustrator/desktop/manage-objects/reshape-transform-objects/scale-objects.html",
+      "opened": "2026-10-20",
+      "consequence": "Objekt-/Punktgriffe und Maßeingabe mit klar getrennter Wirkung."
+    },
+    {
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html",
+      "opened": "2026-10-20",
+      "consequence": "Pfeilknöpfe und Greifen/Ablegen als Alternative zum Ziehen."
+    },
+    {
+      "url": "https://help.aurorasolar.com/hc/en-us/articles/360034501014-SmartRoof-Best-Practices-and-Tips",
+      "opened": "2026-10-20",
+      "consequence": "Gaube als zusammenhängend auswählbares Objekt; kein 3D-Solver übernommen."
+    }
+  ],
+  "baselineEvidence": ".debug-shots/gauben-analyse-2026-10-20/evidence.json",
+  "findings": [
+    "Gesamtziehen ohne Wirkung; Punktkorrektur vorhanden.",
+    "Gaubenkarte durch breite .grid-Regel in halber Spalte.",
+    "Markierung übernehmen nicht fest erreichbar; mobil Touch y1125 bei812px.",
+    "Typwechsel wird scheinbar angenommen, Modell bleibt satteldach.",
+    "Erste Fotozuordnung statt explizit aktiver Perspektive im Gaubenpfad."
+  ],
+  "scope": [
+    "Gruppenverschieben; freie Ecken/Kanten/First; Foto-Korrektur verändert keine Metermaße.",
+    "Maß-/Modulaufgaben und Dachseiten ausdrücklich; feste Bestätigung; Kopie mit übernommenen Maßen.",
+    "Typsperre mit Erklärung während Bearbeitung, statt verlustbehafteter Konvertierung.",
+    "Fotoansicht, exakte Gaubenaussparung, Felder und Historie konsistent halten."
+  ],
+  "nonGoals": [
+    "Keine neue Workbench, keine 3D-Rekonstruktion, keine elektrischen Änderungen.",
+    "Keine Behauptung einer echten Walter-/iPad-Abnahme.",
+    "Kein Push oder Deploy in diesem Auftrag."
+  ]
+}

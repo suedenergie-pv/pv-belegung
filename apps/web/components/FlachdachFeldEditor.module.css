@@ -1,0 +1,16 @@
+.editor { padding: 0 0 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--line, #d5dcdf); }
+.editor h4 { font-size: 1rem; font-weight: 600; margin: 0 0 .65rem; }
+.kopf { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.editor .fertig { display: none; }
+.winkel { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .5rem; }
+.winkel label { display: grid; gap: .3rem; flex: 1; font-size: .875rem; }
+.winkel label span { display: flex; align-items: center; gap: .35rem; }
+.winkel input { width: 100%; min-width: 0; border: 1px solid #acbac4; background: white; padding: .6rem; border-radius: 4px; }
+.editor button { border: 1px solid #b6c5d0; background: white; border-radius: 4px; padding: .55rem .65rem; min-height: 44px; font-size: .875rem; }
+.editor button:hover { background: #e9eff3; }
+.aktionen { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .65rem; }
+.editor p { font-size: .875rem; line-height: 1.45; margin: .65rem 0; color: #526475; }
+.editor [role=alert] { color: #a62b20; }
+.editor input[aria-invalid=true] { border-color: #a62b20; }
+.editor output { display: block; font-size: .875rem; font-weight: 600; margin-top: .6rem; }
+@media(max-width:600px){.editor .fertig{display:block}.editor h4{margin:0}.kopf{margin-bottom:.5rem}}

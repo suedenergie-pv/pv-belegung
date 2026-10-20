@@ -1,0 +1,173 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "source_package": "orchestrate-agent-work",
+  "loop_type": "build-repair",
+  "objective": "Gauben als Gruppe verschieben, Form und Maße korrigieren, Seitenbelegung und Kopie zugänglich machen; übrige Workbench unverändert.",
+  "authorization": "20.10.2026 Nutzer bestätigt konkrete Rechercheempfehlung zur lokalen Umsetzung. Kein neuer Push/Deploy beauftragt.",
+  "budget": {
+    "max_parallel_agents": 3,
+    "max_total_agent_tasks": 8,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": true,
+    "reason_codes": [
+      "professional_practice",
+      "design_decision"
+    ],
+    "freshness": "current",
+    "route": "research-phase",
+    "artifact": "docs/gauben-bearbeitung-2026-10-20/evidence.json"
+  },
+  "tasks": [
+    {
+      "task_id": "research",
+      "kind": "professional_practice_research",
+      "agent": "primary",
+      "depends_on": [],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Vorige Recherche im selben Chat; direkt geöffnete NN/g Adobe W3C Aurora Quellen, Baseline-Browserprüfung"
+      ],
+      "outputs": [
+        "docs/gauben-bearbeitung-2026-10-20/evidence.json"
+      ],
+      "checks": [
+        "Quellen und Geltungsbereich schon geprüft; konkrete Empfehlung vom Nutzer bestätigt"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder fehlende Evidence"
+    },
+    {
+      "task_id": "contract",
+      "kind": "evidence_compaction",
+      "agent": "primary",
+      "depends_on": [
+        "research"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "HEAD 93fa958, Nutzerfreigabe, aktuelle abgegrenzte Arbeitsdateien und Evidence"
+      ],
+      "outputs": [
+        "SPEC Änderungsvertrag",
+        "docs/gauben-bearbeitung-2026-10-20/evidence.json"
+      ],
+      "checks": [
+        "Vorige recherchierte Empfehlung freigegeben; unabhängige Ebenen, exakte gekoppelte Aussparung und mm-Modulmaß bleiben"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder dokumentierter Scope-/Evidence-Verstoß bzw. wiederholter Fingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "geometry",
+      "kind": "implementation",
+      "agent": "gauben_geometrie_20261020",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "HEAD 93fa958, Nutzerfreigabe, aktuelle abgegrenzte Arbeitsdateien und Evidence"
+      ],
+      "outputs": [
+        "Verschiebehelper und Fotorekonstruktion"
+      ],
+      "checks": [
+        "Gemeinsames Delta, Fotozuordnung und unveränderte Maße/Felder"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder dokumentierter Scope-/Evidence-Verstoß bzw. wiederholter Fingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "mass",
+      "kind": "implementation",
+      "agent": "gauben_massformular_20261020",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "HEAD 93fa958, Nutzerfreigabe, aktuelle abgegrenzte Arbeitsdateien und Evidence"
+      ],
+      "outputs": [
+        "GaubenMassEditor und Tests"
+      ],
+      "checks": [
+        "Explizite Seite, Entwurfsschutz, feste Bestätigung"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder dokumentierter Scope-/Evidence-Verstoß bzw. wiederholter Fingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "editor",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "HEAD 93fa958, Nutzerfreigabe, aktuelle abgegrenzte Arbeitsdateien und Evidence"
+      ],
+      "outputs": [
+        "GaubenEditor + Integration + scoped CSS"
+      ],
+      "checks": [
+        "Gruppe/Punkte/Kante/First, Kopie, feste Aktionen, kein falscher Typwechsel"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder dokumentierter Scope-/Evidence-Verstoß bzw. wiederholter Fingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "geometry",
+        "mass",
+        "editor"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "HEAD 93fa958, Nutzerfreigabe, aktuelle abgegrenzte Arbeitsdateien und Evidence"
+      ],
+      "outputs": [
+        "Tests/Typen/Build",
+        "Desktop/Tablet/Mobile/Touch Capture"
+      ],
+      "checks": [
+        "Gauben und bestehende Einrichtung/Aussparungen/Felder/Projekt/Export Regression"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder dokumentierter Scope-/Evidence-Verstoß bzw. wiederholter Fingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "independent_gauben_review",
+      "depends_on": [
+        "qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "HEAD 93fa958, Nutzerfreigabe, aktuelle abgegrenzte Arbeitsdateien und Evidence"
+      ],
+      "outputs": [
+        "Unabhängiger Review"
+      ],
+      "checks": [
+        "Keine offenen Blocker/Majors und keine UI-Scopeausweitung"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder dokumentierter Scope-/Evidence-Verstoß bzw. wiederholter Fingerprint ohne Fortschritt"
+    }
+  ]
+}

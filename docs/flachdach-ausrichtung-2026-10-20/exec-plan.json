@@ -1,0 +1,200 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "source_package": "orchestrate-agent-work",
+  "loop_type": "build-repair",
+  "objective": "Flachdach/Ost-West frei und präzise ausrichten, feldlokale Korrekturen bewahren und verständlich bearbeiten; geprüfte Gaubenbearbeitung zusammen veröffentlichen.",
+  "authorization": "Nutzer20.10.2026: recherchieren,1–2Agents, Hauptagent revidiert Funktion/UI/UX, wenn alles passt ohne weitere Freigabe produktiv deployen.",
+  "budget": {
+    "max_parallel_agents": 3,
+    "max_total_agent_tasks": 10,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": true,
+    "reason_codes": [
+      "professional_practice",
+      "design_decision"
+    ],
+    "freshness": "current",
+    "route": "research-phase",
+    "artifact": "docs/flachdach-ausrichtung-2026-10-20/evidence.json"
+  },
+  "tasks": [
+    {
+      "task_id": "research",
+      "kind": "professional_practice_research",
+      "agent": "primary",
+      "depends_on": [],
+      "outputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "contract",
+      "kind": "evidence_compaction",
+      "agent": "primary",
+      "depends_on": [
+        "research"
+      ],
+      "outputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "SPEC Ergänzung"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "engine",
+      "kind": "implementation",
+      "agent": "flachdach_engine",
+      "depends_on": [
+        "contract"
+      ],
+      "outputs": [
+        "Gedrehte Feldgeometrie und Engine-Tests"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "editor",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "outputs": [
+        "Modell/Renderer/Inspector/Werkzeuge"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "engine",
+        "editor"
+      ],
+      "outputs": [
+        "Tests/Typen/Builds/Browser/Desktop/Mobile/PDF"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "revision",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "qa"
+      ],
+      "outputs": [
+        "Hauptagent Funktions-/UI-/UX-Revision"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "flachdach_review",
+      "depends_on": [
+        "revision"
+      ],
+      "outputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/review.md"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "checks": [
+        "Scope bewahren; keine offenen Blocker/Majors; konkrete Evidence"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    },
+    {
+      "task_id": "release",
+      "kind": "release",
+      "agent": "primary",
+      "depends_on": [
+        "review"
+      ],
+      "outputs": [
+        "VPS Release und Live-Verifikation"
+      ],
+      "inputs": [
+        "docs/flachdach-ausrichtung-2026-10-20/evidence.json",
+        "Aktuelle Implementierung, SPEC, Screenshotbaseline"
+      ],
+      "risk": "external_write",
+      "gate": "human",
+      "checks": [
+        "Unabhängig geprüft; konkrete Nutzerautorisierung20.10.; VPS-Manifest/Hashes/Rollback/Live-Smoke"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt bzw. ausgeschöpftes Repair-Limit"
+    }
+  ]
+}

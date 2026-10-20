@@ -1,0 +1,117 @@
+{
+  "status": "complete_local",
+  "date": "2026-10-20",
+  "baseline": "93fa958",
+  "authorization": "Lokale Umsetzung der im Chat konkret freigegebenen Gaubenbearbeitung; kein neuer Push/Deploy.",
+  "implemented": [
+    "Gruppenauswahl im Foto und in der Liste; gemeinsames Verschieben aller Punkte mit kohärenter Begrenzung.",
+    "Freie Ecken, Kanten und gemeinsame Firstlinie; Maus, Tastatur, Pfeilknöpfe und Touch-Greifen/Ablegen.",
+    "Gekoppelte Aussparung und beide Seiten atomar nachführen, Metermaße und Belegungsfelder bei Fotokorrektur erhalten.",
+    "Gewählte Fotoansicht bis zur Rekonstruktion, Vorschau, Anlage und Speicherung durchreichen.",
+    "Getrennte Maß-/Modulaktionen je Gaubenseite, Maßentwurf mit festem Abschluss und Entwurfsschutz.",
+    "Platzierbare Kopie mit asymmetrischen Seitenmaßen und Messqualität; neue Modulbelegung ausdrücklich benannt.",
+    "Gaubentyp bei Korrektur fest statt scheinbarem Speichern einer nicht unterstützten Umwandlung.",
+    "Topologieprüfung vor Vorschau-/Speicherfreigabe; ungültiger First/überlappende Seiten bleiben ungespeichert.",
+    "Gaubenkarten in voller Panelbreite und begrenzte kompakte Foto-/Formularanordnung innerhalb bestehender Workbench."
+  ],
+  "checks": {
+    "exec_plan": "valid",
+    "unit": {
+      "engine": 141,
+      "web": 287,
+      "total": 428,
+      "result": "pass; abschließender vollständiger Lauf nach letzter Produktänderung"
+    },
+    "types": "npm run typecheck PASS; nach letzter Fokuskorrektur Web-Typen und beide isolierten Build-Typprüfungen PASS",
+    "builds": {
+      "vps": "pass, 33 Exportdateien",
+      "pages": "pass, 33 Exportdateien"
+    },
+    "source_manifest": "Alle sechs geänderten produktiven TSX/CSS/Geometriequellen stimmen mit finalem VPS-Manifest überein.",
+    "browser_cases": [
+      {
+        "suite": "playwright.gauben.config.ts",
+        "targets": [
+          "desktop",
+          "tablet-quer",
+          "tablet-hoch",
+          "mobil-hoch",
+          "mobil-quer"
+        ],
+        "cases": 5,
+        "result": "pass",
+        "coverage": "Verschieben, Ecken/Kante/First, beide Seiten, Maße, Kopie, Historie, Reload; finale Fokuskorrektur zusätzlich in drei kompakten Ansichten nachgeprüft."
+      },
+      {
+        "suite": "playwright.walter.config.ts",
+        "targets": [
+          "desktop",
+          "tablet-quer",
+          "mobil-hoch",
+          "mobil-quer"
+        ],
+        "cases": 8,
+        "result": "pass",
+        "coverage": "Bestehender Projekt-/Dach-/Belegungs-/Exportablauf und Workbench-Layout."
+      },
+      {
+        "suite": "playwright.aussparungen.config.ts",
+        "targets": [
+          "desktop",
+          "tablet-quer",
+          "mobil-hoch"
+        ],
+        "cases": 3,
+        "result": "pass"
+      },
+      {
+        "suite": "playwright.input.config.ts",
+        "targets": [
+          "chromium-hybrid-desktop",
+          "webkit-hybrid-tablet",
+          "chromium-hybrid-mobil"
+        ],
+        "cases": 6,
+        "result": "pass"
+      },
+      {
+        "suite": "npm run test:vps + npm run test:pages",
+        "cases": 4,
+        "result": "pass",
+        "coverage": "Statische Pfade/Assets, Foto-Belegung, PDF und Reload auf Desktop/Mobil."
+      },
+      {
+        "suite": "Gaubenablauf gegen finalen lokalen VPS-Export",
+        "targets": [
+          "desktop",
+          "mobil-hoch"
+        ],
+        "cases": 2,
+        "result": "pass",
+        "coverage": "Finale Quellen; Desktop zusätzlich ungültige Firstverschiebung im echten Browser."
+      }
+    ],
+    "browser_cases_distinct_total": 28,
+    "screenshots": ".debug-shots/gauben-bearbeitung-2026-10-20",
+    "final_export_screenshots": ".debug-shots/gauben-bearbeitung-2026-10-20/release",
+    "independent_review": {
+      "path": "docs/gauben-bearbeitung-2026-10-20/review.md",
+      "result": "PASS",
+      "open_findings": 0,
+      "own_focused_tests": 53
+    },
+    "diff_check": "pass"
+  },
+  "repair_evidence": [
+    "F01: Individuell gültige aber überlappende Gaubenseiten – gleiche Invariante sperrt UI und Projekttransaktion; beide Reviewer-Repros plus gültige schräge/konkave Fälle nachgeprüft.",
+    "F02: Kompakte Maßfelder teilweise abgeschnitten – horizontale feste Aktionen und reiner, begrenzter Inspector-Scroll beim Fokus; unveränderte volle Sichtbarkeitsassertion auf drei Größen und finalem Export bestanden.",
+    "Veraltete Tests auf neue Aufgabenbezeichnungen angepasst; bestehende Assertions zur Datenhaltung und Ungültigkeit erhalten.",
+    "Ein initialer app/page-Test hatte einen einmaligen Zeitablauffehler; unverändert gezielt und in mehreren vollständigen Folgeläufen bestanden, keine Schwellen gelockert."
+  ],
+  "boundaries": [
+    "Keine native iPad-Abnahme; WebKit-/Touch-Emulation ist separat ausgewiesen.",
+    "Kein echter Bedienversuch mit Walter; Funktionsprüfungen beweisen keine Verständlichkeit.",
+    "Keine Veröffentlichung und kein Git-Push in diesem Auftrag.",
+    "Vorhandene lokale next-env.d.ts-/Claude-/generierte AGENTS-Dateien unverändert erhalten."
+  ]
+}

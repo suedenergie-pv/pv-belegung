@@ -105,7 +105,7 @@ export function FlaechenInlineEditor({
     <p hidden={kompakt && !!entwurf} className="mt-2 text-xs text-slate-600">Maße: {freigabe.status === 'bestaetigt' ? 'von dir bestätigt' : freigabe.status === 'bestand' ? 'aus bestehender Belegung übernommen' : 'Entwurf · noch nicht bestätigt'}</p>
     {entwurf && <div ref={formularRef} className="mt-4 border-t border-slate-200 pt-4" data-geometrie-entwurf onChange={() => setGeaendert(true)}>
       <p hidden={kompakt} className="mb-3 text-sm font-medium text-slate-700">{kompakt ? 'Wahre Maße eingeben und Vorschau prüfen.' : 'Maßentwurf – der bisherige Plan bleibt bis zur Übernahme erhalten.'}</p>
-      {artVon(flaeche) === 'dach' && <DachSkizze />}
+      {artVon(vorschau ?? flaeche) === 'dach' && <DachSkizze />}
       <SchrittFlaechen projekt={{ ...projekt, flaechen: projekt.flaechen.map((f) => f.id === vorschau!.id ? vorschau! : f) }} onChange={(p) => {
         setEntwurf(p.flaechen.find((f) => f.id === flaeche.id) ?? null);
         setGeaendert(true); setFehler(null);
