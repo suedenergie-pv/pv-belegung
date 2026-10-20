@@ -2,6 +2,18 @@
 
 Kanonische Live-Adresse: **https://belegung.suedenergie-pv.de/**. GitHub Pages ist eine separate Ausgabe und kein Nachweis für einen produktiven VPS-Deploy. Nutzerkorrektur und Deploy-Freigabe: 01.10.2026.
 
+## Projektstart, geführte Dachflächen und bearbeitbare Aussparungen · 20.10.2026
+
+- Ausdrücklicher Nutzerauftrag: „deploy alles“. Aktiv: `/var/www/belegung/releases/20261020-ux-einrichtung`; Rollback erhalten unter `/var/www/belegung/releases/20261012-feld-vorrang`. Produktcommit `6650ef4792cb1c69e2aa8b4a4bbaf792a973f12e`, auf `main` gepusht.
+- Veröffentlicht: bewusste Projektübersicht/Neuanlage und geschützte Hashnavigation; geführte Fotoeinrichtung; bestehende Aussparungen verschieben, frei verziehen und metrisch ändern; direkte Dachmaße-/Umrisszugänge; zusätzliche Dachfläche beginnt mit Maßeingabe; ausdrückliches „Keine Aussparungen – weiter“; Exportabschluss erst bei belegter aktiver Fläche außerhalb der Fotoeinrichtung.
+- 386 Unit-/Engine-Tests (141 Engine, 245 Web), Typprüfung und beide isolierten Builds bestanden. Auf dem exakten lokalen VPS-Artefakt: 10 Mehrflächen-/Einrichtungs-/PDF-/Layoutfälle, 10 Projektnavigationsfälle, 5 Aussparungsfälle und 2 Touchfälle bestanden. Zusätzlich 2 VPS- und 2 Pages-Smokes. Eigene gerenderte Desktop-/Mobile-Sichtprüfung und unabhängiger Release-Review PASS; kein offener Blocker/Major.
+- Unabhängig 70 aktuelle und isolierte Quellstände, 33 Export- und 33 Archivdateien per SHA-256 identisch bestätigt. Archiv `8693543c9dc502a1107bb6981fd97f021f0335b202285a32c39331899a8138f3`, Index `1cb674accb6a1916f94106405cbefdbb73a8805a05c65b9dc80ee7319ff89dab`. Keine privaten Fotos, Debugroute oder lokalen Agent-/Claude-Einstellungen veröffentlicht.
+- Archiv und unverändertes, nur auf LF normalisiertes Aktivierungsskript in neue Remote-Pfade übertragen. Remotehashes, Shell-Syntax und unveränderten Vorgänger vor Aktivierung geprüft. Atomare Umschaltung und anschließende serverseitige HTTPS-/Indexprüfung erfolgreich; Vorgänger bleibt erhalten. Alle 33 Dateien auf der öffentlichen VPS-Domain gegen Manifest ohne Hashabweichung geprüft.
+- Direkte öffentliche VPS-Nachprüfung: 2 PDF-/Reload-Smokes, 10 Einrichtungs-/Mehrflächen-/Layoutfälle, 4 Navigationsfälle auf Desktop/Smartphone und 5 Aussparungsfälle auf fünf Größen bestanden. Beim ersten Aufruf eines mobilen Navigationsfalls trat ein Transport-Timeout auf; vollständiger unveränderter Wiederholungslauf 4/4 bestanden. Keine Produktkorrektur oder gelockerte Assertion dafür.
+- Öffentliche Touchprüfung: Chromium-Smartphone und WebKit-Tablet quer bestanden, einschließlich Fadenkreuz, Aussparungsverschiebung und Pinch. Auch WebKit hatte beim ersten Seitenaufruf einen Transport-Timeout; der gezielte unveränderte Wiederholungslauf bestand. Insgesamt 23 öffentliche Funktions-/Smoke-Fälle erfolgreich, die beiden ersten Transportfehlschläge werden nicht als bestandene Versuche gezählt.
+- GitHub-Pages-Ausgabe separat durch den Push aktualisiert: [Workflow 39426535270](https://github.com/suedenergie-pv/pv-belegung/actions/runs/39426535270) mit Build, Tests und Deploy erfolgreich. Dieser Nachweis wird nicht mit dem VPS-Deploy gleichgesetzt.
+- Evidence: `.release/ux-20261020-independent-review.md`, `.release/vps/manifest.json`, `.release/ux-20261020-live-hashes.json`, `.release/ux-20261020-local/`, `.release/ux-20261020-live/` sowie vorhandene Feature-Reviews unter `docs/*-2026-10-19/`. Desktop-/Mobile-Livebilder tatsächlich geöffnet. Native iPad-Praxisabnahme und beobachteter Nutzertest mit Walter bleiben separat offen.
+
 ## Verifizierter Bestand
 
 - Domain zeigt auf 82.165.71.190; bestehender SSH-Hostschlüssel lokal bekannt, Anmeldung über vorhandenen Schlüssel möglich.
