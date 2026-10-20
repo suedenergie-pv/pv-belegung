@@ -247,7 +247,7 @@ export interface Flaeche {
    */
   umrissM?: PunktM[];
   /** Hindernisse (Kamin, Fenster, SAT): schneidende Module entfallen automatisch. */
-  hindernisse?: RechteckM[];
+  hindernisse?: HindernisM[];
   /** Vom Parent-Gaubenflow verwaltete Aussparungen; nicht als manuelle Hindernisse editieren. */
   gaubenAussparungen?: GaubenAussparung[];
   /**
@@ -718,7 +718,10 @@ export function patchFlaechenGeometrie(f: Flaeche, patch: Partial<Flaeche>): Fla
     // Verschieben/Skalieren des Feldes erhalten.
     felder: neu.felder?.map((feld) => ({ ...feld, ...rechteck(feld) })),
     umrissM: neu.umrissM?.map((p) => [p[0] * sx, p[1] * sy]),
-    hindernisse: neu.hindernisse?.map(rechteck),
+    hindernisse: neu.hindernisse?.map((h) => ({
+      ...rechteck(h),
+      ...(h.umrissM ? { umrissM: h.umrissM.map((p) => [p[0] * sx, p[1] * sy] as PunktM) } : {}),
+    })),
     gaubenAussparungen: neu.gaubenAussparungen?.map((a) => ({
       ...a,
       rechteck: { ...rechteck(a.rechteck), ...(a.rechteck.umrissM ? { umrissM: a.rechteck.umrissM.map((p) => [p[0] * sx, p[1] * sy] as PunktM) } : {}) },

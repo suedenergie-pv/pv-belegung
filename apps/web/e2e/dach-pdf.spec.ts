@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -23,6 +24,7 @@ async function lade(page: Page, projekt: Projekt, schritt: number) {
     localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
   }, { projekt, schritt });
   await page.goto('./');
+  await oeffneStartprojekt(page);
 }
 async function stand(page: Page): Promise<Projekt> {
   return page.evaluate(() => {
@@ -67,7 +69,7 @@ test('Dach direkt entfernen: Abbruch, Gauben, Fotos, Strings und Rückgängig', 
   const b = (await entfernen.boundingBox())!;
   expect(b.width).toBeGreaterThanOrEqual(44); expect(b.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({ path: resolve(shots, `${info.project.name}-entfernen.png`) });
-  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('19');
   await oeffneListe(page);
   await entfernen.click();

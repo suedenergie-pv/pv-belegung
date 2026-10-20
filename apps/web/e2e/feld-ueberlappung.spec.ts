@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -37,6 +38,7 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt: 1, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
   }, projekt);
   await page.goto('./');
+  await oeffneStartprojekt(page);
 
 });
 test('Ausgewähltes überlapptes Feld behält beim Ziehen Vorrang und Originalindex', async ({ page }, info) => {

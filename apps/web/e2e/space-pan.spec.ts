@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -21,6 +22,7 @@ test('Leertaste schiebt nur die Fotoansicht und erhält Werkzeug, Daten und Touc
     localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt: 1, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
   }, projekt);
   await page.goto('./');
+  await oeffneStartprojekt(page);
   const viewport = page.getByTestId('editor-viewport'), transform = page.getByTestId('editor-bild-transform');
   await expect(viewport).toBeVisible();
   await page.getByRole('button', { name: 'Vergrößern', exact: true }).click();

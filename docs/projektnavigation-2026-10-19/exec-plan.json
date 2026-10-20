@@ -1,0 +1,128 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "source_package": "orchestrate-agent-work",
+  "loop_type": "build-repair",
+  "objective": "Freigegebene Projektübersicht und eindeutige Projektzugänge in die interne Workbench integrieren.",
+  "authorization": "19.10.2026: Nutzer bestätigt den beschriebenen Vorschlag mit 'Bau das mal'. Lokale Umsetzung und Prüfung; kein Push oder produktiver Deploy beauftragt.",
+  "budget": {
+    "max_parallel_agents": 2,
+    "max_total_agent_tasks": 6,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": true,
+    "reason_codes": [
+      "professional_practice",
+      "design_decision"
+    ],
+    "freshness": "current",
+    "route": "research-phase",
+    "artifact": "docs/projektnavigation-2026-10-19/evidence.json"
+  },
+  "tasks": [
+    {
+      "task_id": "research",
+      "kind": "professional_practice_research",
+      "agent": "primary",
+      "depends_on": [],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Vorangegangener Analyseturn, direkt geöffnete Primärquelle und Render"
+      ],
+      "outputs": [
+        "docs/projektnavigation-2026-10-19/evidence.json"
+      ],
+      "checks": [
+        "Quelle trägt Projektübersicht und bewusstes Fortsetzen"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder fehlende Evidence"
+    },
+    {
+      "task_id": "contract",
+      "kind": "evidence_compaction",
+      "agent": "primary",
+      "depends_on": [
+        "research"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Nutzerfreigabe; SPEC; vorhandene Ansichten; evidence.json"
+      ],
+      "outputs": [
+        "Umsetzungsvertrag in SPEC",
+        "docs/projektnavigation-2026-10-19/evidence.json"
+      ],
+      "checks": [
+        "Freigegebene Richtung, keine Engine- oder Speicherformatänderung"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder konkrete Scope-/Evidence-Verletzung"
+    },
+    {
+      "task_id": "implementation",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Vertrag; bestehende Projektverwaltung und Entwurfsschutz"
+      ],
+      "outputs": [
+        "Projektübersicht, Navigation, angepasste Ablaufprüfungen"
+      ],
+      "checks": [
+        "Start, Fortsetzen, Reload, Browsernavigation, neuer Kunde, Entwurfsschutz"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder derselbe Fehler zweimal ohne Fortschritt"
+    },
+    {
+      "task_id": "qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "implementation"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "inputs": [
+        "Aktueller Arbeitsstand"
+      ],
+      "outputs": [
+        "Tests, Typprüfung, statischer Build, Desktop-/Tablet-/Mobile-Captures"
+      ],
+      "checks": [
+        "Unit-Regression, neue Navigation headless, PDF-Smoke, tatsächliche Sichtprüfung"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder drei Reparaturrunden je Defektklasse"
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "navigation_review",
+      "depends_on": [
+        "qa"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "inputs": [
+        "Diff, Vertrag, Testergebnisse und Screenshots"
+      ],
+      "outputs": [
+        "Unabhängige Befunde"
+      ],
+      "checks": [
+        "Keine offenen Blocker oder Majors; vorhandene Nutzeränderungen bewahrt"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder konkrete verbleibende Grenze"
+    }
+  ]
+}

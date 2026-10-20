@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -14,12 +15,13 @@ test('Maßentwurf, Navigation und Sitzungshistorie bleiben auf allen Zielgröße
     page.on('pageerror', (e) => fehler.push(e.message));
     try {
       await page.goto(process.env.PV_QA_URL ?? 'http://localhost:3100/');
+      await oeffneStartprojekt(page);
       await expect(page.getByRole('status').filter({ hasText: 'In diesem Browser gespeichert' })).toBeVisible();
       await page.screenshot({ path: resolve(ordner, `${width}-projekt.png`), fullPage: true });
-      const erstes = await page.getByLabel('Aktuelles Projekt').inputValue();
+      const erstes = page.url();
       await page.getByLabel('Kunde').fill('Sitzungstest');
       await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
-      if (await page.getByRole('button', { name: 'Dachdetails', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+      if (await page.getByRole('button', { name: 'Dachmaße', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
       await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('');
       await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('12');
       await page.getByRole('button', { name: '3. Export', exact: true }).click();
@@ -33,21 +35,22 @@ test('Maßentwurf, Navigation und Sitzungshistorie bleiben auf allen Zielgröße
       await page.getByRole('button', { name: '3. Export', exact: true }).click();
       await page.getByRole('button', { name: /Rückgängig \(2\)/ }).click();
       await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
-      if (await page.getByRole('button', { name: 'Dachdetails', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+      if (await page.getByRole('button', { name: 'Dachmaße', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
       await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('');
       await page.getByRole('button', { name: /Wiederherstellen/ }).click();
       // Der neu montierte, unberührte Maßentwurf folgt dem wiederhergestellten Stand.
       await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('12');
       await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
-      await page.getByRole('button', { name: '+ Neu', exact: true }).click();
+      await page.getByRole('button', { name: '+ Neues Projekt', exact: true }).click();
       await page.getByLabel('Kunde').fill('Zweites Projekt');
       await page.getByLabel('Adresse').focus();
-      await page.getByLabel('Aktuelles Projekt').selectOption(erstes);
+      await page.getByRole('button', { name: '← Alle Projekte', exact: true }).click();
+      await page.locator(`a[href="${new URL(erstes).hash}"]`).click();
       await expect(page.getByText('Maße: bestätigt', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: /Rückgängig \(2\)/ }).click();
       await expect(page.getByText('Maße: offen', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: /Wiederherstellen/ }).click();
-      if (await page.getByRole('button', { name: 'Dachdetails', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+      if (await page.getByRole('button', { name: 'Dachmaße', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
       await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('');
       await page.getByRole('button', { name: '3. Export', exact: true }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Übernehmen', exact: true }).click();

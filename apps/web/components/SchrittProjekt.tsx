@@ -16,7 +16,7 @@ export function SchrittProjekt({
   return (
     <div className="space-y-4">
       <Karte>
-        <KartenTitel>Projekt</KartenTitel>
+        <KartenTitel>Projektdaten</KartenTitel>
         <div className="grid gap-4 sm:grid-cols-2">
           <Feld label="Kunde">
             <input

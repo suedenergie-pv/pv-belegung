@@ -10,6 +10,13 @@
 2. `kalibrierung.md` — Testmatrix fürs Kalibrierungs-Gate (SPEC §14).
 3. `docs/datenblaetter/` — einzige zulässige Quelle für elektrische Modulwerte.
 
+### UX-Zielperson Walter (Nutzerauftrag 19.10.2026)
+
+- Für UI-Entscheidungen immer Walter, den älteren Vertriebler, als Zielperson berücksichtigen. Editorwissen nicht voraussetzen; keine Fähigkeiten oder Einschränkungen allein aus dem Alter ableiten.
+- Aufgaben benennen: Dachmaße eingeben, Dachrand korrigieren, Fenster/Kamin freihalten, Module platzieren, PDF mitnehmen. Häufige Aufgaben sichtbar und direkt erreichbar, Spezialwerkzeuge nachgeordnet.
+- Jeden Ablauf darauf prüfen: Erkennt Walter sein Ziel, findet er die Aktion, versteht er deren Wirkung und sieht er danach Fortschritt? Modus, aktive Dachfläche, nächster Schritt und Rückweg müssen erkennbar sein.
+- Funktions-/Browserprüfungen niemals als Nachweis für Verständlichkeit ausgeben. Ein echter Bedienversuch mit Walter oder vergleichbaren Vertriebsnutzern bleibt davon getrennt.
+
 ## Nicht verhandelbar (Kurzfassung, Details in SPEC §3)
 
 - Keine 3D-Rekonstruktion. Dachflächen = unabhängige Ebenen. Renderer = Kompositor, nie Solver.

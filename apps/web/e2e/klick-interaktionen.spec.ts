@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -37,6 +38,7 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt: 1, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
   }, projekt);
   await page.goto('./');
+  await oeffneStartprojekt(page);
 
 });
 test('Freies Foto und grauer Bildrand heben Auswahl auf, auch nach Pfeilaktion und Zoom', async ({ page }, info) => {
@@ -58,7 +60,7 @@ test('Freies Foto und grauer Bildrand heben Auswahl auf, auch nach Pfeilaktion u
   if(!p) throw new Error('Kein freier grauer Bildrand für den Rausklicktest');
   if(touch) await page.touchscreen.tap(p.x,p.y); else await page.mouse.click(p.x,p.y);
   await expect(auswahl(page)).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Dachdetails',exact:true})).toHaveAttribute('aria-expanded','false');
+  await expect(page.getByRole('button',{name:'Dachmaße',exact:true})).toHaveAttribute('aria-expanded','false');
   await page.screenshot({path:resolve(dir,`${info.project.name}-nach-rausklick.png`)});
   await page.getByRole('button',{name:'Vergrößern',exact:true}).click();
   await tippe(page,3.5,4,touch); await tippe(page,9,4,touch);
@@ -140,7 +142,7 @@ test('Escape verwirft keine Texteingabe und kein halbfertiger Zug bleibt nach Ab
   await page.mouse.move(p.x,p.y); await page.mouse.down();
   await page.mouse.move(q.x,q.y,{steps:4}); await page.keyboard.press('Escape'); await page.mouse.up();
   expect(await felder(page)).toEqual(original);
-  await page.getByRole('button',{name:'Dachdetails',exact:true}).click();
+  await page.getByRole('button',{name:'Dachmaße',exact:true}).click();
   const input=page.getByRole('spinbutton',{name:/^Traufe/}); await input.fill('19');
   await page.keyboard.press('Escape'); await expect(input).toHaveValue('19');
   expect(await felder(page)).toEqual(original);

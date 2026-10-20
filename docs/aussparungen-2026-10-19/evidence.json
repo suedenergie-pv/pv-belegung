@@ -1,0 +1,19 @@
+{
+  "uncertainties": [
+    "Native iPad-Abnahme separat; Headless-Touch ist Emulation."
+  ],
+  "recommended_direction": "Ganzes Objekt direkt bewegen, sichtbare Eckgriffe frei verziehen; genaue Maße im Inspektor; Änderungen atomar übernehmen oder verwerfen.",
+  "schema_version": "orchestrate-agent-work.evidence.v1",
+  "project_fit": [
+    "Vorhandene Homographie, HindernisM und exakte Engine-Polygonprüfung wiederverwenden."
+  ],
+  "problem_frame": "Bestehende manuelle Aussparungen direkt verschieben, Ecken frei verziehen und metrisch bearbeiten, mit Entwurfsschutz und Undo.",
+  "sources": [
+    {
+      "supports": "Objektauswahl und separate Ankerpunkte als etabliertes Bearbeitungsmuster",
+      "url": "https://helpx.adobe.com/illustrator/desktop/manage-objects/select-objects/object-selection-methods-and-preferences.html",
+      "title": "Adobe Illustrator Object selection",
+      "retrieved_at": "2026-10-19"
+    }
+  ]
+}

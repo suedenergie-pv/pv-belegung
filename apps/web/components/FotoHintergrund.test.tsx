@@ -23,6 +23,32 @@ afterEach(() => {
 });
 
 describe('Foto-Markierung auf Tablet und PC', () => {
+  it('führt mit aktueller Aufgabe und echtem Punktfortschritt bis zur ausdrücklichen Übernahme', async () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const flaeche = { ...neueFlaeche(1, 'A'), breiteM: 10, hoeheM: 6, massStatus: 'bestaetigt' as const,
+      foto: { dataUrl: 'data:image/png;base64,eA==', breitePx: 1000, hoehePx: 600, traufePx: null } };
+    const ui = render(<FotoHintergrund flaeche={flaeche} onPatch={onPatch} fotoVerwalten={false} kompakt />);
+    fireEvent.click(await ui.findByRole('button', { name: /Überspringen/ }));
+    expect(ui.getByRole('heading', { name: 'Dachecken markieren' })).toBeTruthy();
+    const bestaetigen = ui.getByRole('button', { name: '4 Ecken übernehmen' }) as HTMLButtonElement;
+    expect(bestaetigen.disabled).toBe(true);
+    expect(ui.getByText('Noch 4 Eckpunkte im Foto setzen.')).toBeTruthy();
+    expect(ui.queryByRole('list', { name: 'Einrichtungsschritte' })).toBeNull();
+    const svg = ui.container.querySelector('svg')!;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
+    const ecken = [[50, 550], [950, 550], [950, 50], [50, 50]];
+    for (let i = 0; i < 4; i++) {
+      fireEvent.click(svg, { clientX: ecken[i]![0], clientY: ecken[i]![1] });
+      expect(ui.getByTestId('markierungs-fortschritt').textContent).toContain(`${i + 1} von 4 Eckpunkten gesetzt`);
+      expect(bestaetigen.disabled).toBe(i < 3);
+      expect(onPatch).not.toHaveBeenCalled();
+    }
+    fireEvent.click(bestaetigen);
+    expect(onPatch).toHaveBeenCalledOnce();
+    expect(onPatch.mock.calls[0]![0].foto.perspektiveBestaetigt).toBe(true);
+  });
+
   const flaeche: Flaeche = {
     ...neueFlaeche(1, 'A'),
     breiteM: 10,
@@ -37,6 +63,65 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     },
     markierungFertig: false,
   };
+
+  it('bearbeitet bestehende Aussparungen als atomaren Entwurf und verwirft ihn ohne Modelländerung', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const hindernis = { xM: 2, yM: 2, breiteM: 2, hoeheM: 1 };
+    const ui = render(<FotoHintergrund flaeche={{ ...flaeche, massStatus: 'bestaetigt', hindernisse: [hindernis] }} onPatch={onPatch} fotoVerwalten={false} kompakt />);
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    fireEvent.change(ui.getByLabelText('Breite (m)'), { target: { value: '3' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    expect((ui.getByLabelText('Breite (m)') as HTMLInputElement).value).toBe('3');
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 cm nach rechts' }));
+    expect(onPatch).not.toHaveBeenCalled();
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen verwerfen' }));
+    expect(onPatch).not.toHaveBeenCalled();
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    fireEvent.change(ui.getByLabelText('Breite (m)'), { target: { value: '3' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen übernehmen' }));
+    expect(onPatch).toHaveBeenCalledExactlyOnceWith({ hindernisse: [{ ...hindernis, breiteM: 3 }], inaktiv: [] });
+  });
+
+  it('zeigt ungültige Konturen im Entwurf und sperrt die Übernahme', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const ui = render(<FotoHintergrund flaeche={{ ...flaeche, massStatus: 'bestaetigt', hindernisse: [{ xM: 2, yM: 2, breiteM: 2, hoeheM: 1 }] }} onPatch={onPatch} fotoVerwalten={false} kompakt />);
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    fireEvent.change(ui.getByLabelText('Breite (m)'), { target: { value: '.01' } });
+    expect((ui.getByRole('button', { name: 'Änderungen übernehmen' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(ui.getAllByRole('alert')[0]!.textContent).toContain('5 cm');
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('führt eine unveränderte Auswahl beim externen Undo mit dem bestätigten Stand mit', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const f = { ...flaeche, massStatus: 'bestaetigt' as const, hindernisse: [{ xM: 2, yM: 2, breiteM: 3, hoeheM: 1 }] };
+    const onPatch = vi.fn();
+    const ui = render(<FotoHintergrund flaeche={f} onPatch={onPatch} fotoVerwalten={false} kompakt />);
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    ui.rerender(<FotoHintergrund flaeche={{ ...f, hindernisse: [{ ...f.hindernisse[0]!, breiteM: 2 }] }} onPatch={onPatch} fotoVerwalten={false} kompakt />);
+    expect((ui.getByLabelText('Breite (m)') as HTMLInputElement).value).toBe('2');
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 cm nach rechts' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen übernehmen' }));
+    expect(onPatch.mock.calls[0]![0].hindernisse[0].breiteM).toBe(2);
+  });
+
+  it('erhält übernommene Änderungen beim anschließenden Entfernen einer anderen Aussparung', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    function Editor() {
+      const [f, setF] = React.useState<Flaeche>({ ...flaeche, massStatus: 'bestaetigt', hindernisse: [{ xM: 2, yM: 2, breiteM: 2, hoeheM: 1 }, { xM: 6, yM: 2, breiteM: 1, hoeheM: 1 }] });
+      return <FotoHintergrund flaeche={f} onPatch={patch => setF(alt => ({ ...alt, ...patch }))} fotoVerwalten={false} kompakt />;
+    }
+    const ui = render(<EntwurfNavigationProvider><Editor /></EntwurfNavigationProvider>);
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    fireEvent.change(ui.getByLabelText('Breite (m)'), { target: { value: '3' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 2 entfernen' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Übernehmen', hidden: true }));
+    expect(ui.queryByRole('button', { name: 'Aussparung 2 bearbeiten' })).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: 'Aussparung 1 bearbeiten' }));
+    expect((ui.getByLabelText('Breite (m)') as HTMLInputElement).value).toBe('3');
+  });
 
   it('gibt ein kalibriertes Foto erst nach Maßbestätigung zum Belegen frei', () => {
     vi.stubGlobal('matchMedia', matchMedia(false));
@@ -235,7 +320,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
       renderArbeitsbereich={({ bild, steuerung, hinweis, bildSeitenverhaeltnis }) => <div data-testid="arbeitsbereich" data-seitenverhaeltnis={bildSeitenverhaeltnis}><main>{bild}</main><aside>{steuerung}{hinweis}</aside></div>} />);
     expect(ui.container.querySelectorAll('svg image')).toHaveLength(1);
     expect(ui.getByTestId('arbeitsbereich').dataset.seitenverhaeltnis).toBe(String(1000 / 600));
-    fireEvent.click(ui.getByRole('button', { name: 'Weiter zur Modulplatzierung' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Keine Aussparungen – weiter' }));
     expect(onPatch).toHaveBeenCalledExactlyOnceWith({ markierungFertig: true });
   });
 
@@ -252,6 +337,21 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     fireEvent.click(svg, { clientX: 100, clientY: 100 });
     fireEvent.click(svg, { clientX: 300, clientY: 300 });
     expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('überspringt Aussparungen ausdrücklich auch nach einem versehentlichen ersten Punkt', () => {
+    vi.stubGlobal('matchMedia', matchMedia(false));
+    const onPatch = vi.fn();
+    const ui = render(<FotoHintergrund flaeche={{ ...flaeche, massStatus: 'bestaetigt' }} onPatch={onPatch} fotoVerwalten={false} kompakt />);
+    const svg = ui.container.querySelector('svg')!;
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
+    fireEvent.click(svg, { clientX: 200, clientY: 200 });
+    expect(onPatch).not.toHaveBeenCalled();
+    const weiter = ui.getByRole('button', { name: 'Keine Aussparungen – weiter' }) as HTMLButtonElement;
+    expect(weiter.disabled).toBe(false);
+    fireEvent.click(weiter);
+    expect(onPatch).toHaveBeenCalledExactlyOnceWith({ markierungFertig: true });
+    expect(ui.queryByRole('button', { name: 'Entwurf verwerfen' })).toBeNull();
   });
 
   it('verwirft bei einer Zweifingergeste nur die laufende Eckbewegung', () => {

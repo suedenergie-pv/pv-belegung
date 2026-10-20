@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -59,8 +60,9 @@ test('Fadenkreuz: Finger bewegt nur den Cursor, fester Button setzt Punkte, Pinc
   const fehler: string[] = [];
   page.on('pageerror', (e) => fehler.push(e.message));
   await page.goto('./', { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await oeffneStartprojekt(page);
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
-  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByLabel(/^Traufe/).fill('10');
   await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
@@ -96,6 +98,17 @@ test('Fadenkreuz: Finger bewegt nur den Cursor, fester Button setzt Punkte, Pinc
   await bestaetigen(page);
   await expect(page.getByText(/^Aussparung 1 ·/)).toBeVisible();
   await page.screenshot({ path: resolve(ordner, `${info.project.name}-aussparung.png`) });
+  await page.getByRole('button', { name: 'Aussparung 1 bearbeiten', exact: true }).click();
+  const alteKontur = await page.getByTestId('aussparung-kontur').getAttribute('points');
+  const mitte = await page.getByTestId('aussparung-mitte').locator('circle').first().evaluate(e => [Number(e.getAttribute('cx')), Number(e.getAttribute('cy'))]);
+  const fotoMasse = await bildMasse(page);
+  await schiebeKreuz(page, mitte[0]! / fotoMasse.w, mitte[1]! / fotoMasse.h, browserName === 'chromium');
+  await bestaetigen(page, 'Aussparung greifen');
+  await schiebeKreuz(page, mitte[0]! / fotoMasse.w + .04, mitte[1]! / fotoMasse.h - .03, browserName === 'chromium');
+  await bestaetigen(page, 'Aussparung hier ablegen');
+  await expect(page.getByTestId('aussparung-kontur')).not.toHaveAttribute('points', alteKontur!);
+  await page.getByRole('button', { name: 'Änderungen übernehmen', exact: true }).click();
+  await expect(page.getByTestId('aussparung-kontur')).toHaveCount(1);
   const vorPinch = await page.getByTestId('editor-bild-transform').getAttribute('style');
   await fenster.evaluate((el) => {
     const b = el.getBoundingClientRect();

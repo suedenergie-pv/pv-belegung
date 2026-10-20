@@ -206,7 +206,7 @@ describe('Belegungsbedienung', () => {
     start.flaechen[0]!.massStatus = 'offen';
     const { queryByRole, getAllByText } = render(<SchrittBelegung projekt={start} onChange={vi.fn()} />);
     expect(queryByRole('button', { name: 'Automatisch belegen' })).toBeNull();
-    expect(getAllByText(/Maße.*bestätig/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/Dachmaße festlegen/i).length).toBeGreaterThan(0);
   });
 
   it('öffnet vorhandene Umrisse und die erste Gaube direkt, ohne gespeicherte Geometrie zu ändern', () => {
@@ -222,7 +222,7 @@ describe('Belegungsbedienung', () => {
     expect(ui.getAllByTestId('umriss-griff')).toHaveLength(4);
     fireEvent.click(dach.getByRole('button', { name: 'Aussparungen' }));
     expect(ui.queryAllByTestId('umriss-griff')).toHaveLength(0);
-    expect(ui.getByRole('button', { name: 'Weiter zur Modulplatzierung' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Keine Aussparungen – weiter' })).toBeTruthy();
     fireEvent.click(dach.getByRole('button', { name: 'Gauben' }));
     expect(ui.getByRole('button', { name: 'Satteldachgaube' })).toBeTruthy();
     expect(ui.getByRole('button', { name: 'Im Foto markieren →' })).toBeTruthy();
@@ -236,7 +236,7 @@ describe('Belegungsbedienung', () => {
     const start = projektMitFoto();
     const onChange = vi.fn();
     const ui = render(<EntwurfNavigationProvider><SchrittBelegung projekt={start} onChange={onChange} /></EntwurfNavigationProvider>);
-    fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '20' } });
     const umriss = within(ui.getByRole('group', { name: 'Dach bearbeiten' })).getByRole('button', { name: 'Umriss' });
     fireEvent.click(umriss);
@@ -246,6 +246,37 @@ describe('Belegungsbedienung', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Verwerfen', hidden: true }));
     expect(ui.getByRole('button', { name: 'Umriss übernehmen' })).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('führt aus dem Fotopanel direkt zu Dachmaßen oder Dachumriss', () => {
+    const start = projektMitFoto();
+    const onChange = vi.fn();
+    const ui = render(<SchrittBelegung projekt={start} onChange={onChange} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Fotos' }));
+    expect(ui.queryByRole('button', { name: 'Markierung & Ziegelmaß' })).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße & Dachform' }));
+    expect(ui.getByRole('heading', { name: 'Dachmaße & Dachform' })).toBeTruthy();
+    expect(ui.getByLabelText(/^Traufe/)).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Fotos' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachumriss bearbeiten' }));
+    expect(ui.getByRole('heading', { name: 'Dachumriss nachzeichnen' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Umriss übernehmen' })).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('öffnet bei zusätzlicher leerer Dachfläche sofort Maße und zeigt keinen Exportabschluss', () => {
+    const start = projektMitFoto();
+    function Editor() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={setProjekt} onExport={vi.fn()} />;
+    }
+    const ui = render(<Editor />);
+    expect(ui.getByRole('button', { name: 'Weiter zum Export' })).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
+    expect((ui.getByLabelText(/^Sparrenlänge/) as HTMLInputElement).value).toBe('');
+    expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
+    expect(ui.queryByRole('button', { name: 'Weiter zum Export' })).toBeNull();
   });
 
   it('bestätigt eine alte unbelegte Gaube, ohne Schätzungen zu Messungen umzubenennen', () => {
@@ -605,7 +636,7 @@ describe('Belegungsbedienung', () => {
     const onChange = vi.fn();
     const ui = render(<EntwurfNavigationProvider><SchrittBelegung projekt={start} onChange={onChange} /></EntwurfNavigationProvider>);
     fireEvent.click(ui.getByRole('button', { name: 'Alle auswählen' }));
-    fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '20' } });
     const svg = ui.getByRole('img', { name: /^Belegungsfläche/ });
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
@@ -730,7 +761,7 @@ describe('Belegungsbedienung', () => {
     }
     const { getByRole, getAllByRole, findByRole } = render(<TestApp />);
     fireEvent.change(getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
-    fireEvent.click(getByRole('button', { name: 'Dachdetails' }));
+    fireEvent.click(getByRole('button', { name: 'Dachmaße' }));
     fireEvent.click(getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
     const editor = await findByRole('img', { name: 'Gaube im Dachfoto markieren' });
     expect(getAllByRole('button', { name: /Gaubenpunkt/ })).toHaveLength(6);
@@ -774,7 +805,7 @@ describe('Belegungsbedienung', () => {
     }
     const { getByRole } = render(<TestApp />);
     fireEvent.change(getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
-    fireEvent.click(getByRole('button', { name: 'Dachdetails' }));
+    fireEvent.click(getByRole('button', { name: 'Dachmaße' }));
     const loeschen = getByRole('button', { name: 'Gaube löschen' });
     fireEvent.click(loeschen);
     expect(letzterStand.flaechen).toHaveLength(3);

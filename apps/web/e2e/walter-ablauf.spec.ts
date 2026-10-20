@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -11,10 +12,12 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   page.on('pageerror', error => errors.push(error.message));
   const screenshot = async (name: string) => {
     await page.screenshot({ path: resolve(shots, `${info.project.name}-${name}.png`) });
+    if (name === '02b-zwei-ecken' && info.project.name === 'desktop') await page.getByRole('complementary', { name: 'Dachflächen und Eigenschaften', exact: true }).screenshot({ path: resolve(shots, 'desktop-inspektor-zwei-ecken.png') });
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   };
   const button = (name: string) => page.getByRole('button', { name, exact: true });
   await page.goto('./');
+  await oeffneStartprojekt(page);
   await button('2. Dach & Belegung').click();
   const input = process.env.PV_QA_PHOTO ? readFileSync(process.env.PV_QA_PHOTO)
     : Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><path fill="#8d513c" d="M0 0h1600v900H0z"/></svg>');
@@ -44,22 +47,66 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   const skip = page.getByRole('button', { name: /Überspringen \(/ });
   await expect(skip).toBeInViewport({ ratio: 1 });
   await skip.click();
+  await expect(page.getByRole('heading', { name: 'Dachecken markieren', exact: true })).toBeVisible();
+  await expect(page.getByTestId('markierungs-fortschritt')).toBeInViewport({ ratio: 1 });
+  await expect(button('4 Ecken übernehmen')).toBeDisabled();
+  await expect(page.getByText('Noch 4 Eckpunkte im Foto setzen.', { exact: true })).toBeInViewport({ ratio: 1 });
   await screenshot('02-dachecken');
   const photo = page.getByRole('img', { name: /im Foto markieren/ });
   // Switch from emulated coarse input to actual mouse before measuring the photo.
   await photo.hover();
   const box = await photo.boundingBox();
   if (!box) throw new Error('Foto fehlt');
+  // Ein Sperrgrund muss sichtbar führen, auch wenn vier Punkte gesetzt sind.
+  for (const x of [.15, .35, .55, .75]) await photo.click({ position: { x: box.width * x, y: box.height * .5 } });
+  const markierungsFehler = page.getByRole('alert').filter({ hasText: 'Die vier Punkte bilden kein Viereck.' });
+  await expect(markierungsFehler).toBeInViewport({ ratio: 1 });
+  await expect(button('4 Ecken übernehmen')).toBeDisabled();
+  await expect(button('Punkt zurück')).toBeInViewport({ ratio: 1 });
+  await expect(page.getByText(/Markierung ungültig: Eckpunkte/)).toBeVisible();
+  await screenshot('02c-markierung-ungueltig');
+  await button('Punkt zurück').click();
+  await expect(markierungsFehler).toHaveCount(0);
+  await expect(page.getByTestId('markierungs-fortschritt')).toContainText('3 von 4 Eckpunkten gesetzt');
+  await button('Entwurf verwerfen').click();
+  await page.getByRole('button', { name: /Überspringen \(/ }).click();
+  let gesetzteEcken = 0;
   for (const [x,y] of [[.06,.87],[.94,.87],[.94,.17],[.06,.17]]) {
     await photo.click({ position: { x: box.width*x!, y: box.height*y! } });
+    gesetzteEcken++;
+    await expect(page.getByTestId('markierungs-fortschritt')).toContainText(`${gesetzteEcken} von 4 Eckpunkten gesetzt`);
+    if (gesetzteEcken < 4) await expect(button('4 Ecken übernehmen')).toBeDisabled();
+    if (gesetzteEcken === 2) await screenshot('02b-zwei-ecken');
   }
   await expect(button('4 Ecken übernehmen')).toHaveCount(1);
   await expect(button('4 Ecken übernehmen')).toBeInViewport({ ratio: 1 });
   await screenshot('03-ecken-bestaetigen');
   await button('4 Ecken übernehmen').click();
-  await expect(button('Weiter zur Modulplatzierung')).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('heading', { name: 'Aussparungen markieren', exact: true })).toBeVisible();
+  await expect(button('Keine Aussparungen – weiter')).toBeInViewport({ ratio: 1 });
   await screenshot('04-aussparungen');
-  await button('Weiter zur Modulplatzierung').click();
+  // Dachaufgaben müssen aus der Fotoverwaltung zu den benannten Zielen führen.
+  await button('Fotos').click();
+  await expect(button('Markierung & Ziegelmaß')).toHaveCount(0);
+  await expect(button('Dachmaße & Dachform')).toBeEnabled();
+  await expect(button('Dachumriss bearbeiten')).toBeEnabled();
+  await expect(button('Punkt setzen')).toHaveCount(0);
+  await expect(page.getByText('Fotos verwalten. Zum Zeichnen ein Dachwerkzeug wählen.', { exact: true })).toBeVisible();
+  const vorschau = page.getByTestId('editor-viewport');
+  await vorschau.click({ position: { x: 70, y: 50 } });
+  await screenshot('04a-fotos-dachzugaenge');
+  await button('Dachmaße & Dachform').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Dachmaße & Dachform', exact: true })).toBeVisible();
+  await expect(traufe).toHaveValue('10');
+  await screenshot('04b-dachmasse');
+  await button('Fotos').click();
+  await button('Dachumriss bearbeiten').click();
+  await expect(page.getByRole('heading', { name: 'Dachumriss nachzeichnen', exact: true })).toBeVisible();
+  await expect(button('Umriss übernehmen')).toBeVisible();
+  await screenshot('04c-dachumriss');
+  await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Aussparungen', exact: true }).click();
+  await button('Keine Aussparungen – weiter').click();
   await expect(button('+ Feld zeichnen')).toHaveAttribute('aria-pressed', 'true');
   await screenshot('05-direkt-zeichnen');
   // Crucial regression: no second tool click before the first field.
@@ -88,7 +135,7 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await page.reload();
   await expect(button('Auswählen')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
-  if (await button('Dachdetails').getAttribute('aria-expanded') !== 'true') await button('Dachdetails').click();
+  if (await button('Dachmaße').getAttribute('aria-expanded') !== 'true') await button('Dachmaße').click();
   await expect(traufe).toHaveValue('10');
   await expect(sparren).toHaveValue('6');
   await traufe.fill('11');
@@ -99,7 +146,48 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await button('Weiter zum Export').click();
   await dialog.getByRole('button', { name: 'Verwerfen', exact: true }).click();
   await button('2. Dach & Belegung').click();
-  if (await button('Dachdetails').getAttribute('aria-expanded') !== 'true') await button('Dachdetails').click();
+  if (await button('Dachmaße').getAttribute('aria-expanded') !== 'true') await button('Dachmaße').click();
   await expect(traufe).toHaveValue('10');
+  // Regression: neue Dachfläche in einem Projekt mit bereits belegtem Dach.
+  await button('Abbrechen').click();
+  const ebenen = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: 'Dachflächen' }) }).first();
+  if (await ebenen.getAttribute('open') === null) await ebenen.locator('summary').click();
+  await button('+ Dachfläche hinzufügen').click();
+  await expect(page.getByLabel('Aktive Dachfläche')).toHaveValue('p2');
+  await expect(traufe).toHaveValue('');
+  await expect(sparren).toHaveValue('');
+  await expect(button('Maße übernehmen')).toBeInViewport({ ratio: 1 });
+  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await screenshot('08-zweite-flaeche-masse');
+  await traufe.fill('8'); await sparren.fill('5');
+  await button('Maße übernehmen').click();
+  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await button('Fotos').click();
+  await page.getByLabel('Vorhandenes Foto für Dachfläche 2 verwenden').selectOption({ index: 1 });
+  await button('Bereich schließen').click();
+  await page.getByRole('button', { name: /Überspringen \(/ }).click();
+  const zweitesFoto = page.getByRole('img', { name: /im Foto markieren/ });
+  await zweitesFoto.hover();
+  for (const [x,y] of [[.08,.88],[.92,.88],[.92,.12],[.08,.12]]) {
+    const fotoBox = (await zweitesFoto.boundingBox())!;
+    await zweitesFoto.click({ position: { x: fotoBox.width*x!, y: fotoBox.height*y! } });
+  }
+  await button('4 Ecken übernehmen').click();
+  await expect(button('Weiter zum Export')).toHaveCount(0);
+  const fotoBox = (await zweitesFoto.boundingBox())!;
+  await zweitesFoto.click({ position: { x: fotoBox.width*.3, y: fotoBox.height*.3 } });
+  await expect(button('Keine Aussparungen – weiter')).toBeEnabled();
+  await expect(button('Keine Aussparungen – weiter')).toBeInViewport({ ratio: 1 });
+  await screenshot('09-keine-aussparungen-weiter');
+  await button('Keine Aussparungen – weiter').click();
+  await expect(button('+ Feld zeichnen')).toHaveAttribute('aria-pressed', 'true');
+  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await expect(page.getByTestId('flaechen-status')).toContainText('Dachfläche 2: 0 Module');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.waitForTimeout(550);
+  const gespeichert = await page.evaluate(() => JSON.parse(localStorage.getItem('pv-belegung-projekte-v2')!));
+  const projekt = gespeichert.projekte.find((p: { id: string }) => p.id === gespeichert.aktivId).projekt;
+  expect(projekt.flaechen[0].felder).toHaveLength(1);
+  expect(projekt.flaechen[1].hindernisse ?? []).toHaveLength(0);
   expect(errors).toEqual([]);
 });

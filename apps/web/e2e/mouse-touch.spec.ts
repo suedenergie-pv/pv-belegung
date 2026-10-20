@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -34,9 +35,10 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
     };
   }, coarse);
   await page.goto('./', { waitUntil: 'domcontentloaded' });
+  await oeffneStartprojekt(page);
   expect(await page.evaluate(() => navigator.maxTouchPoints)).toBeGreaterThan(0);
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
-  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByLabel(/^Traufe/).fill('10');
   await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
@@ -77,7 +79,7 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
   await expect(ecke).not.toHaveAttribute('cx', vorher!);
   await page.screenshot({ path: resolve(ordner, `${info.project.name}-${coarse}-maus.png`) });
   await page.getByRole('button', { name: '4 Ecken übernehmen', exact: true }).click();
-  await page.getByRole('button', { name: 'Weiter zur Modulplatzierung', exact: true }).click();
+  await page.getByRole('button', { name: 'Keine Aussparungen – weiter', exact: true }).click();
   // Gaubenpunkte lassen sich trotz Touch-Hardware unmittelbar setzen und ziehen.
   await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true }).click();
   await page.getByRole('button', { name: 'Satteldachgaube', exact: true }).click();

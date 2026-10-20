@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from 'react';
 import { feldSchrittmasse, posKey, type BelegungsFeldM } from '@pv-belegung/engine';
 import { dateiZuBild } from '../lib/bild';
 import {
@@ -119,6 +119,15 @@ const GRIFF_FANG_M = 0.35;
 const MIN_FELD_M = 0.2;
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
+
+function EinrichtungsAufgabe({ titel, phase }: { titel: string; phase: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const scrollBereich = ref.current?.closest<HTMLElement>('[data-inspektor-inhalt]');
+    if (scrollBereich) scrollBereich.scrollTop = 0;
+  }, [titel, phase]);
+  return <div ref={ref}><span>{phase}</span><h3>{titel}</h3></div>;
+}
 
 /** Hauptflächen und ihre Gauben für die verschachtelte UI zusammenhalten. */
 export function flaechenInBelegungsReihenfolge(flaechen: Flaeche[]): Flaeche[] {
@@ -417,7 +426,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       ...aktuell,
       flaechen: [...aktuell.flaechen, neu],
     }));
-    patchSitzung({ aktiveFlaecheId: neu.id, panel: 'fotos', auswahl: null, modus: null });
+    patchSitzung({ aktiveFlaecheId: neu.id, panel: 'details', auswahl: null, modus: null, verschieben: false });
     window.setTimeout(() => {
       document.getElementById(`belegung-${neu.id}`)?.scrollIntoView({
         behavior: 'smooth',
@@ -1423,7 +1432,12 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       </select>}
       {fotoId && <button type="button" className={aktionKlasse} onClick={() => navigation.weiter(() => loeseFotoZuordnung(f.id, fotoId))}>Perspektive entfernen</button>}
     </div>
-    {foto && <div className={styles.optionGruppe}><button className={aktionKlasse} onClick={() => oeffnePanel('markierung')}>Markierung & Ziegelmaß</button><p>Traufe, Dachecken und Messstrecken im Foto prüfen.</p></div>}
+    {foto && !f.gaubenTyp && <section className={styles.dachZugaenge} aria-label="Dachfläche bearbeiten">
+      <h4>Dachfläche bearbeiten</h4>
+      <button type="button" className={aktionKlasse} onClick={() => oeffnePanel('details')}>Dachmaße & Dachform <span aria-hidden="true">→</span></button>
+      <button type="button" className={aktionKlasse} disabled={!mass.belegen || !foto.eckenPx} onClick={() => oeffnePanel('umriss', true)}>Dachumriss bearbeiten <span aria-hidden="true">→</span></button>
+      {(!mass.belegen || !foto.eckenPx) && <p>{!mass.belegen ? 'Für den Umriss zuerst Dachmaße bestätigen.' : 'Für den Umriss zuerst die Dachecken im Foto festlegen.'}</p>}
+    </section>}
     {projekt.fotos.map((asset) => <div className={styles.fotoZeile} key={asset.id}>
       <input aria-label="Name des Drohnenfotos" value={asset.name} onChange={(e) => {
         const name = e.target.value;
@@ -1543,7 +1557,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     {leerZahl > 0 && <button className={aktionKlasse} onClick={() => zellenZurueckholen(f, felder.map((_, k) => k))}>Alle Module zurückholen ({leerZahl})</button>}
     <button className={aktionKlasse} onClick={() => setzeModus(f, null)}>Fertig</button></div>;
   const bedienPanel = perspektiveHier ? perspektivPanel : sitzung.panel === 'fotos' ? fotosPanel : sitzung.panel === 'details' ? detailsPanel : sitzung.panel === 'mehr' ? mehrPanel : feldNeuWerkzeug ? feldPanel : modusArt(f) === 'zellen' ? zellenPanel : gewaehlt.length && felderWerkzeug ? auswahlPanel : null;
-  const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachdetails & Maße' : sitzung.panel === 'mehr' ? 'Belegung & Ansicht' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
+  const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachmaße & Dachform' : sitzung.panel === 'mehr' ? 'Belegung & Ansicht' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
   const standardPanel = <div className={styles.eigenschaften}>
     <div className={styles.flaechenErgebnis}><strong>{aktiv}<small>Module</small></strong><strong>{fmtDe(aktiv * modul.pmaxW / 1000, 2)}<small>kWp · {f.name}</small></strong></div>
     <dl><div><dt>Abmessungen</dt><dd>{f.massEingabeOffen && !mass.belegen ? 'Noch eingeben' : `${fmtDe(f.breiteM, 2)} × ${fmtDe(f.hoeheM, 2)} m`}</dd></div><div><dt>Modul</dt><dd>{modul.pmaxW} Wp</dd></div><div><dt>Belegungsfelder</dt><dd>{felder.length}</dd></div></dl>
@@ -1553,18 +1567,18 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     {belegungZeigen && !!felder.length && !sitzung.verschieben && auswahlOptionen}
     {sitzung.verschieben && <p>Im Foto ziehen. Zwei Finger verschieben und zoomen immer nur die Ansicht.</p>}
   </div>;
-  const renderArbeitsbereich = ({ bild, steuerung, hinweis, bildSeitenverhaeltnis, abbrechen, punktSteuerung }: { bild: ReactNode; steuerung?: ReactNode; hinweis?: ReactNode; bildSeitenverhaeltnis: number; abbrechen?: () => void; punktSteuerung?: FotoPunktSteuerung }) => <EditorAktionsRahmen>
-    <div className={styles.arbeitsbereich} data-kontext-offen={!!(bedienPanel || steuerung)} data-masse-offen={sitzung.panel === 'details'} data-testid={`arbeitsbereich-${f.id}`}>
+  const renderArbeitsbereich = ({ bild, steuerung, hinweis, bildSeitenverhaeltnis, abbrechen, punktSteuerung, aufgabe }: { bild: ReactNode; steuerung?: ReactNode; hinweis?: ReactNode; bildSeitenverhaeltnis: number; abbrechen?: () => void; punktSteuerung?: FotoPunktSteuerung; aufgabe?: { titel: string; phase: string } }) => <EditorAktionsRahmen>
+    <div className={styles.arbeitsbereich} data-kontext-offen={!!(bedienPanel || steuerung)} data-einrichtung-aktiv={!!aufgabe && !bedienPanel} data-masse-offen={sitzung.panel === 'details'} data-testid={`arbeitsbereich-${f.id}`}>
       <div className={styles.bildBereich}>
-      {(sitzung.panel === 'details' || !mass.belegen || hinweis || feldNeuWerkzeug) && <div className={styles.anleitung}>{sitzung.panel === 'details' ? 'Dachmaße eingeben und übernehmen.' : !mass.belegen ? 'Dachmaße festlegen, bevor du im Foto markierst.' : hinweis ?? (zweiPunkte ? ersteFeldEcke ? 'Gegenüberliegende Ecke antippen.' : 'Erste Ecke des Modulfelds antippen.' : touchBedienung ? 'Ein Finger: Modulfeld aufziehen · Zwei Finger: Bild verschieben' : 'Im Dach klicken und ziehen: Modulfeld aufziehen')}</div>}
+      {(sitzung.panel === 'fotos' || sitzung.panel === 'details' || !mass.belegen || hinweis || feldNeuWerkzeug) && <div className={styles.anleitung}>{sitzung.panel === 'fotos' ? 'Fotos verwalten. Zum Zeichnen ein Dachwerkzeug wählen.' : sitzung.panel === 'details' ? 'Dachmaße eingeben und übernehmen.' : !mass.belegen ? 'Dachmaße festlegen, bevor du im Foto markierst.' : hinweis ?? (zweiPunkte ? ersteFeldEcke ? 'Gegenüberliegende Ecke antippen.' : 'Erste Ecke des Modulfelds antippen.' : touchBedienung ? 'Ein Finger: Modulfeld aufziehen · Zwei Finger: Bild verschieben' : 'Im Dach klicken und ziehen: Modulfeld aufziehen')}</div>}
       <div className={styles.canvas} id={`foto-masse-${f.id}`}>
         <EditorViewport ansicht={sitzung.ansichten[ansichtKey] ?? STANDARD_ANSICHT} bildSeitenverhaeltnis={bildSeitenverhaeltnis}
-          punktSteuerung={mass.belegen && sitzung.panel !== 'details' ? punktSteuerung : undefined}
-          onHintergrundKlick={felderWerkzeug ? () => setAuswahl(null) : undefined}
+          punktSteuerung={mass.belegen && sitzung.panel !== 'details' && sitzung.panel !== 'fotos' ? punktSteuerung : undefined}
+          onHintergrundKlick={felderWerkzeug && sitzung.panel !== 'fotos' ? () => setAuswahl(null) : undefined}
           verschieben={sitzung.verschieben} onGesteAbbrechen={() => { verwerfeGeste(); setGesteAbbruchRevision((wert) => wert + 1); abbrechen?.(); }}
           onAnsichtChange={(ansicht) => patchSitzung((alt) => ({ ansichten: { ...alt.ansichten, [ansichtKey]: ansicht } }))}>
-          {bild}
-          {belegungZeigen && !steuerung && !perspektiveHier && bildFlaechen.filter((x) => x.id !== f.id).map((x) => {
+          {sitzung.panel === 'fotos' ? <div className={styles.fotoVorschau} inert>{bild}</div> : bild}
+          {sitzung.panel !== 'fotos' && belegungZeigen && !steuerung && !perspektiveHier && bildFlaechen.filter((x) => x.id !== f.id).map((x) => {
             const ecken = fotoZuordnungVon(x, fotoId)!.eckenPx!;
             const links = ecken.reduce((sum, p) => sum + p[0], 0) / 4 / foto!.breitePx * 100;
             const oben = ecken.reduce((sum, p) => sum + p[1], 0) / 4 / foto!.hoehePx * 100;
@@ -1575,7 +1589,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       </div>
       </div>
       <aside className={styles.inspektor} aria-label="Dachflächen und Eigenschaften">
-        <div className={styles.inspektorInhalt}>
+        <div className={styles.inspektorInhalt} data-inspektor-inhalt>
         <details className={styles.ebenen} open={!bedienPanel && !steuerung}>
           <summary><WorkbenchIcon symbol="flaeche" />Dachflächen <span>{projekt.flaechen.length}</span></summary>
           <div className={styles.ebenenListe} aria-label="Dachflächen im Projekt">
@@ -1589,14 +1603,14 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
             <button type="button" className={styles.neueEbene} onClick={() => navigation.weiter(fuegeHauptflaecheHinzu)}>+ Dachfläche hinzufügen</button>
           </div>
         </details>
-        <div className={styles.kontext} role="complementary" aria-label="Editor-Einstellungen">
-          <div className={styles.kontextKopf}><div><span>{f.name}</span><h3>{bedienPanel ? panelTitel : steuerung ? sitzung.panel === 'gauben' ? 'Gauben' : markierungOffen ? 'Dach bearbeiten' : 'Fläche einrichten' : 'Eigenschaften'}</h3></div>{(bedienPanel || steuerung) && sitzung.panel !== 'details' && (belegungZeigen || !!bedienPanel) && <button type="button" className={aktionKlasse} aria-label="Bereich schließen" onClick={() => { if (bedienPanel === auswahlPanel) setAuswahl(null); else if (feldNeuWerkzeug || modusArt(f) === 'zellen') setzeModus(f, null); else panelSchliessen(); }}>×</button>}</div>
+        <div className={styles.kontext} data-gefuehrt={!!aufgabe && !bedienPanel} role="complementary" aria-label="Editor-Einstellungen">
+          <div className={styles.kontextKopf}>{aufgabe && !bedienPanel ? <EinrichtungsAufgabe {...aufgabe} /> : <div><span>{f.name}</span><h3>{bedienPanel ? panelTitel : steuerung ? sitzung.panel === 'gauben' ? 'Gauben' : markierungOffen ? 'Dach bearbeiten' : 'Fläche einrichten' : 'Eigenschaften'}</h3></div>}{(bedienPanel || steuerung) && sitzung.panel !== 'details' && (belegungZeigen || !!bedienPanel) && <button type="button" className={aktionKlasse} aria-label="Bereich schließen" onClick={() => { if (bedienPanel === auswahlPanel) setAuswahl(null); else if (feldNeuWerkzeug || modusArt(f) === 'zellen') setzeModus(f, null); else panelSchliessen(); }}>×</button>}</div>
           <div className={styles.kontextInhalt}>{bedienPanel ?? steuerung ?? standardPanel}</div>
         </div>
         </div>
         <div className={styles.exportAbschluss}>
           <EditorAktionsZiel />
-          {onExport && projekt.flaechen.some((x) => !!x.felder?.length) && <><button type="button" onClick={onExport} aria-label="Weiter zum Export">Weiter zum Export <span aria-hidden="true">→</span></button>
+          {onExport && belegungZeigen && !steuerung && !perspektiveHier && felder.length > 0 && <><button type="button" onClick={onExport} aria-label="Weiter zum Export">Weiter zum Export <span aria-hidden="true">→</span></button>
           <span data-export-hinweis>PDF-Vorschau und Download</span></>}
         </div>
       </aside>
@@ -1627,7 +1641,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       <select id="aktive-dachflaeche" className={aktionKlasse} value={f.id} onChange={(e) => wechsleFlaeche(e.target.value)}>
         {belegungsReihenfolge.map((x) => <option key={x.id} value={x.id}>{x.gaubenTyp ? '↳ ' : ''}{x.name}{x.gaubenSeite ? ` · ${x.gaubenSeite}` : ''}</option>)}
       </select>
-      <button className={aktionKlasse} aria-expanded={sitzung.panel === 'details'} onClick={() => oeffnePanel('details')}><WorkbenchIcon symbol="details" />Dachdetails</button>
+      <button className={aktionKlasse} aria-expanded={sitzung.panel === 'details'} onClick={() => oeffnePanel('details')}><WorkbenchIcon symbol="details" />Dachmaße</button>
       <button className={aktionKlasse} aria-expanded={sitzung.panel === 'fotos'} onClick={() => oeffnePanel('fotos')}><WorkbenchIcon symbol="foto" />Fotos</button>
       {!foto && belegungZeigen && <button className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button>}
       {fotoZuordnungen.length > 1 && <select className={`${aktionKlasse} ${styles.perspektiven}`} aria-label={`Ansicht für ${f.name}`} value={fotoId} onChange={(e) => wechsleAnsicht(e.target.value)}>
@@ -1685,7 +1699,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         fotoOverlay={fotoAsset ? (clipIdPrefix) => <><defs><ModulAsset id={`setup-modul-${f.id}`} modul={modul} /></defs>{fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `setup-modul-${f.id}`, clipIdPrefix })}</> : undefined}
         renderArbeitsbereich={renderArbeitsbereich} />
       : foto || belegungZeigen ? renderArbeitsbereich({ bild: belegungsBild, bildSeitenverhaeltnis: foto ? foto.breitePx / foto.hoehePx : rahmenBreiteVon(f) / f.hoeheM, punktSteuerung: perspektivPunktSteuerung })
-      : renderArbeitsbereich({ bild: <div className={styles.canvasLeer}><strong>Foto für {f.name} hinzufügen</strong><p>Danach Dachmaße bestätigen und die Fläche im Bild markieren.</p><button className="rounded-lg bg-akzent px-4 font-semibold text-white" onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button></div>, bildSeitenverhaeltnis: 1.6 })}
+      : renderArbeitsbereich({ bild: <div className={styles.canvasLeer}>{sitzung.panel === 'details' && !mass.belegen ? <><strong>Zuerst die Dachmaße festlegen</strong><p>Danach fügst du das Foto hinzu.</p></> : <><strong>Foto für {f.name} hinzufügen</strong><p>Danach die Dachfläche im Bild markieren.</p><button className="rounded-lg bg-akzent px-4 font-semibold text-white" onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button></>}</div>, bildSeitenverhaeltnis: 1.6 })}
     </div>
     <div className={styles.status}><span data-testid="flaechen-status">{f.name}: {aktiv} Module · {felder.length} {felder.length === 1 ? 'Feld' : 'Felder'} · {fmtDe(aktiv * modul.pmaxW / 1000, 2)} kWp</span><span>Maße: {mass.status === 'bestaetigt' ? 'bestätigt' : mass.status === 'bestand' ? 'Bestand' : 'offen'}</span><span>Perspektive: {fotoZuordnung?.perspektiveBestaetigt ? 'bestätigt' : 'offen'}</span></div>
   </section>;

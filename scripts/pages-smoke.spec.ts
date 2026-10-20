@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from '../apps/web/e2e/projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
@@ -18,6 +19,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
 
   // Relativer Einstieg ist absichtlich vom Basepath der Release-Config abhängig.
   const response = await page.goto('./', { waitUntil: 'domcontentloaded' });
+  await oeffneStartprojekt(page);
   expect(response?.status()).toBe(200);
   expect(new URL(page.url()).pathname).toBe(`${prefix}/`);
   const origin = new URL(page.url()).origin;
@@ -43,7 +45,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   if (prefix) expect((await request.get(`${origin}${assets[0]!.replace(prefix, '')}`)).status()).toBe(404);
 
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
-  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByLabel(/^Traufe/).fill('10');
   await page.getByLabel(/^Sparrenlänge/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
@@ -67,7 +69,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
     await photo.click({ position: { x: bounds.width * x!, y: bounds.height * y! } });
   }
   await page.getByRole('button', { name: '4 Ecken übernehmen', exact: true }).click();
-  await page.getByRole('button', { name: /Weiter zur Modulplatzierung/ }).click();
+  await page.getByRole('button', { name: /Keine Aussparungen – weiter/ }).click();
   await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).filter({ visible: true }).click();
   const before = await gespeichertesProjekt(page);
   expect(before.flaechen[0].massStatus).toBe('bestaetigt');

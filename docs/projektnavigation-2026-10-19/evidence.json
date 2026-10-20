@@ -1,0 +1,13 @@
+{
+  "schema_version": "orchestrate-agent-work.evidence.v1",
+  "problem_frame": "Der normale Einstieg stellt das zuletzt aktive Kundenprojekt samt Schritt wieder her. Die vorhandene Neuanlage ist visuell schwach, mobil wird die Projektidentität abgeschnitten. Nutzer hat die vorgeschlagene Projektübersicht und getrennte Navigation zur Umsetzung freigegeben.",
+  "professional_practice": ["Autodesk Forma startet mit der Projektliste und bietet dort Projekterstellung sowie die Rückkehr aus einem geöffneten Projekt an."],
+  "candidate_patterns": ["Projektübersicht mit eindeutigem Neues-Projekt-Button und bewusstem Fortsetzen", "Explizite Projekt-URL erhält Reload und direkten Projektzugriff"],
+  "anti_patterns": ["Stiller Einstieg beim letzten Kunden", "Unbeschriftete oder verkürzte Hauptaktion", "Projektverwaltung und Dachwerkzeuge in einer Hierarchie"],
+  "tradeoffs": ["Der normale Einstieg verlangt einen zusätzlichen Klick zum Fortsetzen. Explizite Projekt-URLs erhalten den direkten Wiedereinstieg."],
+  "project_fit": ["Interne Anwendung mit mehreren Kundenprojekten, lokaler Speicherung und freigegebener Workbench. Kleine gezielte Navigationserweiterung, keine neue visuelle Richtung des Editors."],
+  "sources": [{"title":"Forma Data Management Navigation Basics","url":"https://help.autodesk.com/cloudhelp/ENU/Docs-Getting-Started/files/Getting_Started_Navigation.html","source_type":"official","retrieved_at":"2026-10-19","supports":"Projektliste beim Einstieg, Projekterstellung, Rückkehr zur Projektliste aus dem Projekt."}],
+  "uncertainties": ["Kein echter Nutzertest und keine native iPad-Abnahme; lokale Headless-Ansichten und Ablaufprüfungen sind technische und visuelle Evidence."],
+  "recommended_direction": "Normale Adresse zeigt Meine Projekte. Neues Projekt und Fortsetzen sind ausdrücklich erreichbar. Im Editor stehen Alle Projekte und Neues Projekt außerhalb der Dachwerkzeuge. Drei Arbeitsschritte bleiben, Projekt heißt Projektdaten. Geometrie, Engine, Speicherformat und Entwurfsschutz bleiben erhalten.",
+  "freshness": {"required":true,"as_of":"2026-10-19","scope":"Im vorangegangenen Analyseturn direkt geöffnete Primärquelle und lokale Desktop-/Mobile-Captures."}
+}

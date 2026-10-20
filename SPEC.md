@@ -6,6 +6,27 @@
 
 ---
 
+## Zusätzliche Dachfläche führen · 19.10.2026
+
+- Jede neu hinzugefügte Hauptdachfläche öffnet unmittelbar das Maßformular mit leeren Pflichteingaben. Bereits belegte andere Dachflächen dürfen keinen Exportknopf zur Hauptaktion dieser Einrichtung machen.
+- Der feste Exportabschluss erscheint nur bei vorhandenen Belegungsfeldern auf der aktiven Dachfläche und angezeigter Belegung ohne laufende Fotoeinrichtung oder Perspektivbearbeitung. Bestehende obere Schrittnavigation und deren Entwurfsschutz bleiben erhalten.
+- Ohne gespeicherte Aussparungen heißt die feste Hauptaktion „Keine Aussparungen – weiter“ und führt zur Modulplatzierung. Auch ein versehentlich gesetzter einzelner Aussparungspunkt darf diese ausdrückliche Entscheidung nicht sperren: Er wird verworfen, bestätigte Geometrie und andere Dachflächen bleiben erhalten. Vorhandene Aussparungen werden dadurch niemals gelöscht.
+- Neue Fläche, Maße, Fotoeinrichtung und Überspringen ohne Aussparungen werden auch in einem bereits belegten Mehrflächenprojekt auf Desktop, Tablet und Smartphone geprüft.
+
+## Eindeutige Zugänge für Dachmaße und Umriss · 19.10.2026
+
+- Der unklare Sammelzugang „Markierung & Ziegelmaß“ entfällt. Im Fotopanel führen „Dachmaße & Dachform“ direkt zum Maßformular und „Dachumriss bearbeiten“ direkt zum Umrisswerkzeug. Umriss benötigt bestätigte Maße und Dachecken; fehlende Voraussetzungen werden am Zugang erklärt.
+- Der dauerhaft sichtbare Zugang „Dachdetails“ heißt „Dachmaße“, sein Panel „Dachmaße & Dachform“. Fotoverwaltung, metrische Dachmaße, tatsächlicher Dachrand und Fotoausrichtung bleiben benannte Aufgaben mit konkretem Ziel. Ziegel zählen bleibt optional unter „Werkzeuge & Prüfungen“.
+- Bestehende Entwürfe, Mehrfach-Fotozuordnungen, Gauben und Navigationsschutz bleiben erhalten. Kein Deploy Teil dieses Auftrags.
+- Im Fotopanel dient das Bild als Vorschau. Versteckte Zeichenwerkzeuge, Fadenkreuzaktionen und zugehörige Zeichenanweisungen sind dort inaktiv; Zoom/Pan bleiben verfügbar. Die dauerhaft geltende Zielperson Walter und der aufgabenbezogene Prüfmaßstab stehen in AGENTS.md, Recherche und Abnahmefragen in `docs/ux-walter-2026-10-19.md`.
+
+## Aussparungen bearbeiten · 19.10.2026
+
+- Manuelle Aussparungen im Foto oder in der Liste auswählen, als Ganzes verschieben und einzelne Ecken frei verziehen. Breite/Höhe des umschließenden Rahmens metrisch editierbar, Kontur proportional mitführen.
+- Bestehende Rechtecke bleiben kompatibel; freie Konturen verwenden `HindernisM.umrissM`, dieselbe genaue Polygonprüfung in Engine, Draufsicht und Fotoprojektion. Automatische Gaubenaussparungen bleiben gekoppelt.
+- Bearbeitung als lokale Vorschau; Übernehmen ergibt einen Historieneintrag, Verwerfen erhält den bisherigen Stand. Entwurfsschutz bei Navigation, keine Modelländerung durch Pan/Zoom/abgebrochene Zeigergesten. Ungültige Konturen mit Selbstschnitt oder praktisch ohne Fläche nicht übernehmen.
+- Maus, Tastatur und vorhandenes Touch-Fadenkreuz unterstützen; neue Aussparungen weiter mit zwei Punkten anlegen. Kein Löschen/Neuzeichnen für Korrekturen notwendig.
+
 ## Verbindlicher Änderungsauftrag 30.09.2026: Fotoeditor für den Vertrieb
 
 Diese Ergänzung beschreibt den freigegebenen fachlichen Zielzustand. Sie hat für diesen Umbau Vorrang vor älteren UI-Ablaufbeschreibungen. Implementierungsstand und Entwurfsfreigabe werden im Ausführungsplan unter `docs/umsetzung-fotoeditor-2026-09-30/` nachgehalten.
@@ -57,6 +78,14 @@ Vom Nutzer nach dem vollständigen UX-Durchlauf freigegeben, einschließlich Ver
 - Verlorener Pointer-Capture verwirft die laufende Feldgeste; ein einzelner ungültiger Koordinatenmesspunkt unterbricht sie dagegen nicht. Engine, Modulmaße und gespeicherte Geometrieformate bleiben unverändert.
 
 ## 1. Zweck
+
+### Führung in der Fotoeinrichtung 19.10.2026
+
+Neue Nutzerkritik am Einrichtungs-Inspektor ersetzt dessen bisherige Darstellung: Die aktuelle Aufgabe führt mit eindeutiger Überschrift, kurzer Anweisung für das Foto und sichtbarem Punktfortschritt. Der feste Abschluss ist schon vor vollständiger Markierung sichtbar und erklärt fehlende Punkte; Korrekturen und Zusatzprüfungen stehen nachgeordnet. Schritte: Maße, Dachkante (überspringbar), Dachecken, Aussparungen (optional), danach Modulplatzierung. Ein Fortschrittsindikator ist keine Werkzeugnavigation. Bestehende Handler, Maßfreigabe, Geometrie, direkte Maus-/Touch-/Fadenkreuzbedienung und Entwurfsschutz bleiben erhalten. Die Korrektur betrifft den vorhandenen Inspektor und dessen Bezug zum Foto, keine neue Workbench oder Engine. Kein Push/Deploy beauftragt.
+
+### Projektnavigation 19.10.2026
+
+Vom Nutzer nach Analyse zur Umsetzung freigegeben: Die normale Adresse öffnet „Meine Projekte“ statt still das letzte Kundenprojekt. „Neues Projekt“ ist dort die Hauptaktion; vorhandene Projekte zeigen Kunde, Adresse und Änderungszeit sowie bewusstes Fortsetzen. Ein expliziter Projekt-Link erhält Reload am gespeicherten Arbeitsschritt. Browser-Zurück/Vor und „Alle Projekte“ respektieren offene Entwürfe. Navigation bleibt separater Ansichtszustand; `aktivId` merkt nur das zuletzt geöffnete Projekt. Die drei Schritte heißen „Projektdaten“, „Dach & Belegung“, „Export“. Innerhalb des Projekts bleiben „Alle Projekte“ und „Neues Projekt“ unmittelbar beschriftet erreichbar; mobil steht die Kundenidentität separat. Eine leere Projektliste ist ein gültiger Startzustand und entsteht auch nach Löschen des letzten Projekts; erst die ausdrückliche Neuanlage erzeugt einen Eintrag, Löschwiederherstellung bleibt erhalten. Diese Änderung ersetzt die historische Erststand-/Ersatzprojekt-Automatik, damit der neue Einstieg keine unbeabsichtigten Leerprojekte erzeugt. Workbench, Engine, Foto-/Speicherformat und Entwurfsschutz bleiben erhalten. Kein Push oder Deploy in diesem Auftrag.
 
 Internes Web-Tool, mit dem Vertriebler und Niederlassungsleiter selbstständig **grobe Dachbelegungen und Stringpläne** erstellen und als strukturierten Datensatz ins Ticketsystem exportieren. Ziel: Entlastung des einzigen Projektleiters, der aktuell alle Planungen für Hauptsitz + 2 Niederlassungen stemmt.
 

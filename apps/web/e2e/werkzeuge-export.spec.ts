@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -31,6 +32,7 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
     localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt: 1, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
   }, projekt);
   await page.goto('./');
+  await oeffneStartprojekt(page);
   const kompakt = info.project.name.startsWith('mobil');
   await expect(page.getByTestId('flaechen-status')).toContainText('2 Felder');
   const exportButton = page.getByRole('button', { name: 'Weiter zum Export', exact: true });
@@ -82,7 +84,7 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
   await expect.poll(async () => (await stand(page)).flaechen[0]!.felder).toEqual(vorher);
 
   // Derselbe Schutz gilt auch für die nun direkt erreichbaren Aktionen.
-  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('19');
   if (!kompakt) {
     await perspektive.click();

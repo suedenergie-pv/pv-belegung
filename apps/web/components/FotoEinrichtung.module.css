@@ -1,0 +1,50 @@
+.einrichtung { display:flex; flex-direction:column; gap:18px; }
+.einrichtung .anweisung { margin:0; font-size:15px; line-height:1.55; color:#263238; }
+.kurz { display:none; }
+.aufgabenKopf span { font-size:12px; color:#5b666e; }
+.aufgabenKopf h3 { margin-top:6px; font-size:22px; font-weight:650; line-height:1.2; }
+.fortschritt { padding:16px 0; border-top:1px solid #d6dadd; border-bottom:1px solid #d6dadd; }
+.fortschritt strong { display:block; font-size:16px; font-weight:650; color:#263238; }
+.einrichtung .fortschritt p { margin:12px 0 0; color:#9f351b; font-size:14px; line-height:1.45; font-weight:550; }
+.punkte { display:flex; align-items:center; gap:12px; margin:14px 0 0; padding:0; list-style:none; }
+.punkte li { display:flex; align-items:center; justify-content:center; width:32px; height:32px; border:1px solid #bcc5ca; border-radius:50%; color:#53616a; font-size:14px; font-weight:550; }
+.punkte li[data-gesetzt=true] { border-color:#68777e; background:#e8ecee; color:#263238; }
+.punkte li[data-aktuell=true] { border:2px solid #b83d1e; color:#9f351b; }
+.punkte li[data-fehler=true] { border-color:#b42318; color:#a32920; background:#fff2ef; }
+.korrekturen { display:flex; gap:8px; flex-wrap:wrap; }
+.korrekturen:empty { display:none; }
+.zusatz { border-top:1px solid #d6dadd; padding-top:2px; }
+.einrichtung .zusatz summary { min-height:44px; padding:10px 0; cursor:pointer; font-size:13px; line-height:1.5; color:#53616a; }
+.zusatz[open]>summary { color:#263238; font-weight:600; }
+.zusatz>div { margin-top:8px; }
+@media(max-width:900px) {
+ .einrichtung { gap:12px; }
+ .fortschritt { order:-1; padding:8px 0 12px; }
+ .einrichtung .fortschritt p { display:none; }
+ .punkte { margin-top:10px; }
+ .kurz { display:inline; }
+ .lang { display:none; }
+}
+@media(max-height:500px) and (orientation:landscape) {
+ .einrichtung { gap:10px; }
+ .fortschritt { order:-1; padding:0; border:0; }
+ .fortschritt strong { font-size:13px; }
+ .punkte,.einrichtung .fortschritt p { display:none; }
+ .einrichtung .anweisung { display:none; }
+}
+.aussparungen { display: grid; gap: .6rem; }
+.aussparungen p { font-size: .875rem; line-height: 1.45; }
+.aussparungEditor { display: grid; gap: .6rem; border-top: 2px solid var(--akzent, #b84a20); padding-top: .75rem; }
+.aussparungEditor h4 { font-weight: 700; }
+.massRaster { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.massRaster label { min-width: 0; font-size: .875rem; }
+.massRaster input { width: 100%; min-height: 44px; margin-top: .25rem; border: 1px solid #94a3b8; border-radius: 6px; padding: .4rem; background: white; }
+.nudge { display: flex; align-items: center; gap: .25rem; }
+.nudge button { min-width: 44px; min-height: 44px; background: white; border: 1px solid #94a3b8; border-radius: 6px; }
+.nudge span { font-size: .8rem; margin-left: .25rem; }
+.aussparungZeile { display: flex; align-items: center; gap: .3rem; border-top: 1px solid #cbd5e1; }
+.aussparungZeile button { min-height: 44px; text-align: left; padding: .45rem .25rem; font-size: .85rem; }
+.aussparungZeile button:first-child { flex: 1; }
+.aussparungZeile button:first-child span { display: block; font-weight: 600; color: #334155; }
+.aussparungZeile button[aria-pressed=true] { font-weight: 700; }
+.aussparungZeile button:last-child { color: #b91c1c; }

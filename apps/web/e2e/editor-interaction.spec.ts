@@ -1,3 +1,4 @@
+import { oeffneStartprojekt } from './projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -32,8 +33,9 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   const fehler: string[] = [];
   page.on('pageerror', (e) => fehler.push(e.message));
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await oeffneStartprojekt(page);
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
-  await page.getByRole('button', { name: 'Dachdetails', exact: true }).click();
+  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByLabel(/^Traufe/).fill('18');
   await page.getByLabel(/^Sparrenlänge/).fill('8');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();

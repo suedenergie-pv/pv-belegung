@@ -4,11 +4,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittProjekt } from '../components/SchrittProjekt';
+import { ProjektUebersicht } from '../components/ProjektUebersicht';
+import { useProjektNavigation } from '../lib/projekt-navigation';
 import { HistorienEingaben, ProjektHistorieContext, useHistorienVerwaltung } from '../lib/projekt-historie-context';
 import { EntwurfNavigationProvider, useEntwurfNavigation } from '../lib/entwurf-navigation';
 import { EditorSitzungProvider } from '../lib/editor-sitzung';
 import {
-  eintragListenName,
   eintragName,
   neuerEintrag,
   neuesProjekt,
@@ -29,12 +30,11 @@ import {
 interface GeloeschtesProjekt {
   eintrag: ProjektEintrag;
   index: number;
-  ersatzId?: string;
 }
 
 // Der Stringcheck bleibt bis zur PV*SOL-Gegenrechnung aus der Oberfläche entfernt.
 // Gespeicherte Stringdaten und die Engine R1–R12 bleiben für Migration und Export erhalten.
-const SCHRITTE = ['Projekt', 'Dach & Belegung', 'Export'] as const;
+const SCHRITTE = ['Projektdaten', 'Dach & Belegung', 'Export'] as const;
 
 export default function Home() {
   return <EntwurfNavigationProvider><ProjektApp /></EntwurfNavigationProvider>;
@@ -73,15 +73,8 @@ function ProjektApp() {
       setLadeProblem(ergebnis);
       return;
     }
-    // Nur ein tatsächlich leerer, unbeschädigter Speicher bekommt einen Erststand.
-    schreibeDb(
-      ergebnis.db.projekte.length > 0
-        ? ergebnis.db
-        : (() => {
-            const e = neuerEintrag();
-            return { aktivId: e.id, projekte: [e], workflowVersion: 2 };
-          })(),
-    );
+    // Die Übersicht darf leer sein. Erst „Neues Projekt“ erzeugt Kundendaten.
+    schreibeDb(ergebnis.db);
     setGeladen(true);
   };
 
@@ -168,6 +161,31 @@ function ProjektApp() {
     historie.end();
     patchAktiv({ schritt: typeof s === 'function' ? s(schritt) : s });
   });
+  const [navigationHinweis, setNavigationHinweis] = useState('');
+  const kundenFokus = useRef(false);
+  const route = useProjektNavigation({
+    bereit: geladen,
+    vorhanden: (id) => dbRef.current.projekte.some((eintrag) => eintrag.id === id),
+    onFehlt: () => setNavigationHinweis('Dieses Projekt ist in diesem Browser nicht vorhanden. Wähle ein Projekt aus der Liste oder lege ein neues an.'),
+    onWechsel: (id) => {
+      historie.end();
+      if (id) setNavigationHinweis('');
+      if (id && id !== dbRef.current.aktivId) schreibeDb((d) => ({ ...d, aktivId: id }));
+    },
+  });
+  const projektOffen = route.projektId !== null;
+  const oeffneProjekt = (id: string | null) => navigation.weiter(() => {
+    setNavigationHinweis('');
+    route.oeffnen(id);
+  });
+  useEffect(() => {
+    if (!geladen) return;
+    const ziel = kundenFokus.current ? 'projekt-kunde' : projektOffen ? 'projekt-kontext' : 'projekt-uebersicht-titel';
+    kundenFokus.current = false;
+    document.getElementById(ziel)?.focus({ preventScroll: true });
+    window.scrollTo?.(0, 0);
+  }, [geladen, route.projektId]);
+
   const geschuetzteHistorie = {
     ...historie,
     undo: () => navigation.weiter(historie.undo),
@@ -178,6 +196,8 @@ function ProjektApp() {
     historie.end();
     const e = neuerEintrag();
     schreibeDb((d) => ({ ...d, aktivId: e.id, projekte: [...d.projekte, e] }));
+    kundenFokus.current = true;
+    route.oeffnen(e.id);
   };
 
   const dupliziereAktiv = () => {
@@ -196,6 +216,7 @@ function ProjektApp() {
       geaendertAm: jetzt,
     };
     schreibeDb((d) => ({ ...d, aktivId: kopie.id, projekte: [...d.projekte, kopie] }));
+    route.oeffnen(kopie.id);
   };
 
   const loescheAktiv = () => {
@@ -205,15 +226,15 @@ function ProjektApp() {
     if (!aktiv) return;
     const index = db.projekte.findIndex((eintrag) => eintrag.id === aktiv.id);
     const rest = db.projekte.filter((eintrag) => eintrag.id !== aktiv.id);
-    const ersatz = rest.length === 0 ? neuerEintrag() : null;
     schreibeDb({
       ...db,
-      aktivId: rest[0]?.id ?? ersatz!.id,
-      projekte: rest.length > 0 ? rest : [ersatz!],
+      aktivId: rest[0]?.id ?? null,
+      projekte: rest,
     });
+    route.oeffnen(null, true);
     setGeloeschteProjekte((alt) => [
       ...alt,
-      { eintrag: aktiv, index, ...(ersatz ? { ersatzId: ersatz.id } : {}) },
+      { eintrag: aktiv, index },
     ]);
     const timer = window.setTimeout(() => {
       setGeloeschteProjekte((alt) => alt.filter((wert) => wert.eintrag.id !== aktiv.id));
@@ -232,20 +253,11 @@ function ProjektApp() {
     if (timer) clearTimeout(timer);
     loeschTimer.current.delete(geloescht.eintrag.id);
     schreibeDb((aktuell) => {
-      let liste = aktuell.projekte;
-      if (
-        geloescht.ersatzId &&
-        liste.length === 1 &&
-        liste[0]?.id === geloescht.ersatzId &&
-        !liste[0].projekt.kunde &&
-        !liste[0].projekt.adresse
-      ) {
-        liste = [];
-      }
-      const neu = [...liste];
+      const neu = [...aktuell.projekte];
       neu.splice(Math.min(geloescht.index, neu.length), 0, geloescht.eintrag);
       return { ...aktuell, aktivId: geloescht.eintrag.id, projekte: neu };
     });
+    route.oeffnen(geloescht.eintrag.id);
     setGeloeschteProjekte((alt) => alt.filter((wert) => wert.eintrag.id !== geloescht.eintrag.id));
   };
 
@@ -337,91 +349,42 @@ function ProjektApp() {
     );
   }
 
+  const dateiVerwaltung = <>
+    <button type="button" className={knopf} disabled={!db.projekte.length} onClick={() => navigation.weiter(exportiereKomplett)}>Alle Projekte sichern</button>
+    <button type="button" className={knopf} onClick={() => navigation.weiter(() => importRef.current?.click())}>Komplettexport importieren</button>
+  </>;
+
   return (
     <ProjektHistorieContext.Provider value={geschuetzteHistorie}>
     <EditorSitzungProvider projektId={aktiv?.id ?? 'leer'}>
-    <div className={schritt === 1 ? 'editor-seite' : 'space-y-5 pb-10 mx-auto max-w-5xl'}>
-      <header className={schritt === 1 ? 'workbench-kopf' : 'contents'}>
-      <div className="projekt-leiste flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-        {schritt === 1 && <span className="workbench-marke" title="SüdEnergie · Belegungsplaner"><span aria-hidden="true" />SüdEnergie</span>}
-        <label htmlFor="projekt-auswahl" className="sr-only">
-          Aktuelles Projekt
-        </label>
-        <select
-          id="projekt-auswahl"
-          aria-label="Aktuelles Projekt"
-          value={db.aktivId ?? ''}
-          onChange={(e) => { const id = e.target.value; navigation.weiter(() => { historie.end(); schreibeDb((d) => ({ ...d, aktivId: id })); }); }}
-          className="h-11 min-w-0 max-w-[22rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 focus:border-akzent focus:outline-none focus:ring-2 focus:ring-akzent/30"
-        >
-          {db.projekte.map((e) => (
-            <option key={e.id} value={e.id}>
-              {eintragListenName(e, db.projekte)}
-            </option>
-          ))}
-        </select>
-        <span role="status" className="speicher-status order-last w-full text-xs text-slate-600 sm:order-none sm:w-auto">
-          {speicherStatus === 'speichert'
-              ? 'Speichert …'
-              : speicherStatus === 'gespeichert'
-                ? 'In diesem Browser gespeichert'
-                : speicherStatus === 'kapazitaet'
-                  ? 'Speicher voll'
-                  : 'Speicher prüfen'}
-        </span>
-        <div className="ml-auto flex gap-2">
-          <button type="button" className={knopf} onClick={() => navigation.weiter(neuesAnlegen)} disabled={!geladen}>
-            + Neu
-          </button>
-          <details className="group relative">
-            <summary className={`${knopf} flex cursor-pointer list-none items-center`}>
-              Projektaktionen ···
-            </summary>
-            <div className="absolute right-0 z-30 mt-2 grid min-w-48 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-              <button
-                type="button"
-                className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => navigation.weiter(dupliziereAktiv)}
-                disabled={!aktiv}
-              >
-                Projekt duplizieren
-              </button>
-              <button
-                type="button"
-                className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => navigation.weiter(exportiereKomplett)}
-              >
-                Alle Projekte sichern
-              </button>
-              <button
-                type="button"
-                className="h-10 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => navigation.weiter(() => importRef.current?.click())}
-              >
-                Komplettexport importieren
-              </button>
-              <input
-                ref={importRef}
-                type="file"
-                className="sr-only"
-                accept=".json,.pvbelegung.json,application/json"
-                aria-label="Komplettexport-Datei auswählen"
-                onChange={(event) => void importiereKomplett(event.target.files?.[0])}
-              />
-              <button
-                type="button"
-                className="h-10 rounded-lg px-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                onClick={() => navigation.weiter(loescheAktiv)}
-                disabled={!aktiv}
-              >
-                Projekt löschen
-              </button>
+    <div className={projektOffen && schritt === 1 ? 'editor-seite' : 'space-y-5 pb-10 mx-auto max-w-5xl'}>
+      <header className={projektOffen && schritt === 1 ? 'workbench-kopf' : 'contents'}>
+      {projektOffen && <div className="projekt-leiste">
+        <button type="button" className="alle-projekte" onClick={() => oeffneProjekt(null)}>← Alle Projekte</button>
+        <div className="projekt-identitaet">
+          <h2 id="projekt-kontext" tabIndex={-1} title={aktiv ? eintragName(aktiv) : 'Projekt'}>{aktiv ? eintragName(aktiv) : 'Projekt'}</h2>
+          {projekt.adresse && projekt.adresse !== projekt.kunde && <span className="projekt-adresse">{projekt.adresse}</span>}
+          <span role="status" className="speicher-status">
+            {speicherStatus === 'speichert' ? 'Speichert …' : speicherStatus === 'gespeichert' ? 'In diesem Browser gespeichert' : speicherStatus === 'kapazitaet' ? 'Speicher voll' : 'Speicher prüfen'}
+          </span>
+        </div>
+        <div className="projekt-zugaenge">
+          <button type="button" className="neues-projekt" onClick={() => navigation.weiter(neuesAnlegen)}>+ Neues Projekt</button>
+          <details className="projekt-aktionen group relative" key={aktiv?.id}>
+            <summary aria-label="Projektaktionen" title="Projektaktionen">···</summary>
+            <div className="absolute right-0 z-30 mt-2 grid min-w-56 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-xl" onClick={(event) => {
+              const knopf = (event.target as HTMLElement).closest('button');
+              if (knopf) event.currentTarget.closest('details')?.removeAttribute('open');
+            }}>
+              <button type="button" className="h-11 rounded px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => navigation.weiter(dupliziereAktiv)}>Projekt duplizieren</button>
+              {dateiVerwaltung}
+              <button type="button" className="h-11 rounded px-3 text-left text-sm font-medium text-red-600 hover:bg-red-50" onClick={() => navigation.weiter(loescheAktiv)}>Projekt löschen</button>
             </div>
           </details>
         </div>
-      </div>
+      </div>}
 
-      <div className="sr-only" aria-live="polite">{dateiStatus}</div>
+      {dateiStatus && <p role="status" className="px-3 py-2 text-sm text-slate-700">{dateiStatus}</p>}
 
       {speicherStatus !== 'gespeichert' && speicherStatus !== 'speichert' && (
         <div
@@ -454,7 +417,7 @@ function ProjektApp() {
         </div>
       ))}
 
-      <div className="ablauf-leiste">
+      {projektOffen && <div className="ablauf-leiste">
       <nav className="schritt-leiste flex flex-wrap items-center gap-2" aria-label="Schritte">
         {SCHRITTE.map((name, i) => {
           return (
@@ -484,10 +447,16 @@ function ProjektApp() {
           ↷ Wiederherstellen
         </button>
       </div>
-      </div>
+      </div>}
       </header>
 
-      <HistorienEingaben>
+      <input ref={importRef} type="file" className="sr-only" accept=".json,.pvbelegung.json,application/json" aria-label="Komplettexport-Datei auswählen" onChange={(event) => void importiereKomplett(event.target.files?.[0])} />
+      {navigationHinweis && <p role="status" className="text-sm text-slate-700">{navigationHinweis}</p>}
+      {!projektOffen && <>
+        <ProjektUebersicht db={db} onNeu={() => navigation.weiter(neuesAnlegen)} onOeffnen={oeffneProjekt} verwaltung={dateiVerwaltung} />
+        <p role="status" className="text-sm text-slate-600">{speicherStatus === 'speichert' ? 'Speichert …' : speicherStatus === 'gespeichert' ? 'In diesem Browser gespeichert' : 'Speicher prüfen'}</p>
+      </>}
+      {projektOffen && <HistorienEingaben>
       {schritt === 0 && <SchrittProjekt key={aktiv?.id} projekt={projekt} onChange={setProjekt} />}
       {schritt === 1 && <SchrittBelegung key={aktiv?.id} projekt={projekt} onChange={setProjekt} onExport={() => setSchritt(2)} />}
       {schritt === 2 && (
@@ -506,9 +475,9 @@ function ProjektApp() {
         />
       )}
 
-      </HistorienEingaben>
+      </HistorienEingaben>}
 
-      {schritt !== 1 && <div className="flex justify-between">
+      {projektOffen && schritt !== 1 && <div className="flex justify-between">
         <button
           type="button"
           disabled={schritt === 0}

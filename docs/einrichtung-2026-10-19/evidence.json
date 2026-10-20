@@ -1,0 +1,47 @@
+{
+  "schema_version": "orchestrate-agent-work.evidence.v1",
+  "problem_frame": "Nutzer lehnt den Fotoeinrichtungs-Inspektor als unübersichtlich und nicht leitend ab. Screenshot zeigt Mini-Schritte, Alternativmenü vor der Aufgabe, redundante Erklärung und fehlenden festen Abschluss vor dem vierten Eckpunkt.",
+  "professional_practice": [
+    "USWDS trennt Fortschrittsanzeige von Navigation und verlangt eine ausdrückliche Aufgabenüberschrift. GOV.UK empfiehlt einen klar dominanten nächsten Handlungsschritt."
+  ],
+  "candidate_patterns": [
+    "Eine aktuelle Aufgabe mit knappem Handlungsverb, sichtbarem Punktfortschritt und festem Abschluss",
+    "Korrekturen und optionale Werkzeuge nach der Hauptaufgabe"
+  ],
+  "anti_patterns": [
+    "Mehrere gleichrangige Statuswörter statt Führung",
+    "Alternativmenü vor der Aufgabe",
+    "Abschlussaktion erscheint erst nach vier Klicks"
+  ],
+  "tradeoffs": [
+    "Der Fotoeditor bleibt eine direkte Zeichenfläche. Der feste Abschluss wird vor vollständiger Markierung mit erklärtem Fehlbestand deaktiviert; das Setzen findet weiter im Bild statt."
+  ],
+  "project_fit": [
+    "Begrenzte Korrektur des vorhandenen Inspektors nach konkreter Nutzerablehnung. Freigegebene Workbench, Geometrie, Gesten, Entwurfsschutz und Engine bleiben erhalten."
+  ],
+  "sources": [
+    {
+      "title": "USWDS Step indicator",
+      "url": "https://designsystem.digital.gov/components/step-indicator/",
+      "source_type": "official",
+      "retrieved_at": "2026-10-19",
+      "supports": "Explizite Überschrift für aktuellen Schritt, Fortschritt getrennt von Vor-/Zurück-Navigation."
+    },
+    {
+      "title": "GOV.UK Button",
+      "url": "https://design-system.service.gov.uk/components/button/",
+      "source_type": "official",
+      "retrieved_at": "2026-10-19",
+      "supports": "Eine dominante Hauptaktion verdeutlicht den nächsten Schritt."
+    }
+  ],
+  "uncertainties": [
+    "Kein echter Nutzertest und keine native iPad-Abnahme; lokale Headless-Ansichten und Ablaufprüfungen sind technische und visuelle Evidence."
+  ],
+  "recommended_direction": "Aktuelle Aufgabe führt den Inspektor. Kurze Aktion im Foto, echter Punktfortschritt und dauerhaft erreichbarer Abschluss mit Fehlbestand. Zusatzwerkzeuge stehen nachgeordnet. Direkte Maus- und Fadenkreuzbedienung, alle bestehenden fachlichen Handlers bleiben unverändert.",
+  "freshness": {
+    "required": true,
+    "as_of": "2026-10-19",
+    "scope": "Im vorangegangenen Analyseturn direkt geöffnete Primärquelle und lokale Desktop-/Mobile-Captures."
+  }
+}

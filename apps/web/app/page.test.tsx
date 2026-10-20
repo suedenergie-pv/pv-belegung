@@ -8,6 +8,8 @@ import { speichereProjekte } from '../lib/speicher';
 import Home from './page';
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/');
+  window.scrollTo = vi.fn();
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() });
   const daten = new Map<string, string>();
   Object.defineProperty(window, 'localStorage', {
@@ -35,12 +37,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+async function renderProjekt() {
+  const ui = render(<Home />);
+  await ui.findByRole('heading', { name: 'Meine Projekte' });
+  const gespeichert = JSON.parse(window.localStorage.getItem('pv-belegung-projekte-v2') ?? 'null');
+  if (gespeichert?.projekte.length) fireEvent.click(await ui.findByRole('link', { name: /Fortsetzen/ }));
+  else {
+    const neu = ui.getByRole('button', { name: '+ Neues Projekt' }) as HTMLButtonElement;
+    await waitFor(() => expect(neu.disabled).toBe(false));
+    fireEvent.click(neu);
+  }
+  await ui.findByRole('button', { name: '1. Projektdaten' });
+  return ui;
+}
+
 describe('Projektverwaltung und Einstieg', () => {
   it('schützt einen Maßentwurf auch beim direkten Wechsel zum Verschiebewerkzeug', async () => {
-    const ui = render(<Home />);
-    await ui.findByRole('button', { name: '+ Neu' });
+    const ui = await renderProjekt();
+    await ui.findByRole('button', { name: '+ Neues Projekt' });
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
-    fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '12' } });
     fireEvent.change(ui.getByLabelText(/^Sparrenlänge/), { target: { value: '6' } });
     fireEvent.click(ui.getByRole('button', { name: 'Foto verschieben' }));
@@ -51,16 +67,16 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Foto verschieben' }));
     fireEvent.click(ui.getByRole('button', { name: 'Übernehmen' }));
     expect(ui.getByRole('button', { name: 'Foto verschieben' }).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('12');
     expect(ui.getByRole('button', { name: '↶ Rückgängig (1)' })).toBeTruthy();
   });
 
   it('löst Maßentwürfe vor Navigation mit Bleiben, Verwerfen oder Übernehmen auf', async () => {
-    const ui = render(<Home />);
-    await ui.findByRole('button', { name: '+ Neu' });
+    const ui = await renderProjekt();
+    await ui.findByRole('button', { name: '+ Neues Projekt' });
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
-    if (ui.getByRole('button', { name: 'Dachdetails' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '12' } });
     fireEvent.change(ui.getByLabelText(/^Sparrenlänge/), { target: { value: '6' } });
     fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
@@ -71,23 +87,23 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Verwerfen' }));
     expect(ui.getByRole('heading', { name: 'Zusammenfassung' })).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
-    if (ui.getByRole('button', { name: 'Dachdetails' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '14' } });
     fireEvent.change(ui.getByLabelText(/^Sparrenlänge/), { target: { value: '6' } });
     fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
     fireEvent.click(ui.getByRole('button', { name: 'Übernehmen' }));
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
-    if (ui.getByRole('button', { name: 'Dachdetails' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('14');
     expect(ui.getByRole('button', { name: '↶ Rückgängig (1)' })).toBeTruthy();
   });
 
   it('lässt ungültige Maßentwürfe beim Navigieren im Editor und speichert keine alten Ersatzwerte', async () => {
-    const ui = render(<Home />);
-    await ui.findByRole('button', { name: '+ Neu' });
+    const ui = await renderProjekt();
+    await ui.findByRole('button', { name: '+ Neues Projekt' });
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
-    if (ui.getByRole('button', { name: 'Dachdetails' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachdetails' }));
+    if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '12' } });
     fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '' } });
     fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
@@ -105,7 +121,7 @@ describe('Projektverwaltung und Einstieg', () => {
       fotoZuordnungen: [{ fotoId: 'foto', traufePx: null, eckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]], perspektiveBestaetigt: true, markierungFertig: true }],
     };
     expect((await speichereProjekte({ aktivId: eintrag.id, projekte: [eintrag], workflowVersion: 2 })).status).toBe('erfolg');
-    const { getByRole, getAllByRole, findAllByRole } = render(<Home />);
+    const { getByRole, getAllByRole, findAllByRole } = await renderProjekt();
     const automatisch = await findAllByRole('button', { name: 'Automatisch belegen' });
     fireEvent.click(automatisch.at(-1)!);
     expect(getByRole('button', { name: '↶ Rückgängig (1)' })).toBeTruthy();
@@ -119,10 +135,8 @@ describe('Projektverwaltung und Einstieg', () => {
   });
 
   it('gruppiert fertige Eingaben und erhält Undo/Redo über Schritt- und Projektwechsel', async () => {
-    const { getByLabelText, getByRole, findByRole } = render(<Home />);
-    await findByRole('button', { name: '+ Neu' });
-    const auswahl = getByLabelText('Aktuelles Projekt') as HTMLSelectElement;
-    const erstesId = auswahl.value;
+    const { getByLabelText, getByRole, findByRole } = await renderProjekt();
+    await findByRole('button', { name: '+ Neues Projekt' });
     const kunde = getByLabelText('Kunde');
     fireEvent.focus(kunde);
     fireEvent.change(kunde, { target: { value: 'F' } });
@@ -131,18 +145,19 @@ describe('Projektverwaltung und Einstieg', () => {
     expect(getByRole('button', { name: '↶ Rückgängig (1)' })).toBeTruthy();
     fireEvent.click(getByRole('button', { name: '3. Export' }));
     fireEvent.click(getByRole('button', { name: /↶ Rückgängig/ }));
-    fireEvent.click(getByRole('button', { name: '1. Projekt' }));
+    fireEvent.click(getByRole('button', { name: '1. Projektdaten' }));
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('');
     fireEvent.click(getByRole('button', { name: '↷ Wiederherstellen' }));
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('Familie Eins');
 
-    fireEvent.click(getByRole('button', { name: '+ Neu' }));
-    const zweitesId = auswahl.value;
+    fireEvent.click(getByRole('button', { name: '+ Neues Projekt' }));
     fireEvent.change(getByLabelText('Kunde'), { target: { value: 'Familie Zwei' } });
-    fireEvent.change(auswahl, { target: { value: erstesId } });
+    fireEvent.click(getByRole('button', { name: '← Alle Projekte' }));
+    fireEvent.click(getByRole('link', { name: /Familie Eins/ }));
     fireEvent.click(getByRole('button', { name: /↶ Rückgängig/ }));
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('');
-    fireEvent.change(auswahl, { target: { value: zweitesId } });
+    fireEvent.click(getByRole('button', { name: '← Alle Projekte' }));
+    fireEvent.click(getByRole('link', { name: /Familie Zwei/ }));
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('Familie Zwei');
     fireEvent.click(getByRole('button', { name: /↶ Rückgängig/ }));
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('');
@@ -154,13 +169,14 @@ describe('Projektverwaltung und Einstieg', () => {
     expect(await findByRole('heading', { name: 'Gespeicherter Stand muss repariert werden' })).toBeTruthy();
     expect(getByRole('button', { name: 'Rohdaten sichern' })).toBeTruthy();
     fireEvent.click(getByRole('button', { name: 'Bewusst leeren Stand anlegen' }));
-    expect(await findByRole('heading', { name: 'Projekt' })).toBeTruthy();
+    expect(await findByRole('heading', { name: 'Meine Projekte' })).toBeTruthy();
   });
 
   it('legt einen sicheren Erststand an, übernimmt Projektdaten und durchläuft alle drei Schritte', async () => {
-    const { getByLabelText, getByRole, getByTestId, findByRole, queryByRole, getByText } = render(<Home />);
-    await findByRole('button', { name: '+ Neu' });
-    expect((getByLabelText('Aktuelles Projekt') as HTMLSelectElement).value).toMatch(/^prj-/);
+    const { getByLabelText, getByRole, getByTestId, findByRole, queryByRole, getByText } = await renderProjekt();
+    await findByRole('button', { name: '+ Neues Projekt' });
+    expect(window.location.hash).toMatch(/^#\/projekt\/prj-/);
+    expect(document.activeElement).toBe(getByLabelText('Kunde'));
 
     fireEvent.change(getByLabelText('Kunde'), { target: { value: 'Familie Audit' } });
     fireEvent.change(getByLabelText('Adresse'), { target: { value: 'Testweg 1' } });
@@ -179,20 +195,67 @@ describe('Projektverwaltung und Einstieg', () => {
     expect(getByRole('heading', { name: 'Zusammenfassung' })).toBeTruthy();
   });
 
-  it('dupliziert und löscht Projekte ohne jemals den letzten aktiven Stand zu verlieren', async () => {
-    const { getByRole, getAllByRole, findByRole, getByText } = render(<Home />);
-    await findByRole('button', { name: '+ Neu' });
-    fireEvent.click(getByText('Projektaktionen ···'));
-    fireEvent.click(getByRole('button', { name: 'Projekt duplizieren' }));
-    await waitFor(() => expect(getAllByRole('option')).toHaveLength(2));
-    fireEvent.click(getByRole('button', { name: 'Projekt löschen' }));
-    await waitFor(() => expect(getAllByRole('option')).toHaveLength(1));
-    expect(getByRole('button', { name: 'Rückgängig' })).toBeTruthy();
-    fireEvent.click(getByRole('button', { name: 'Rückgängig' }));
-    await waitFor(() => expect(getAllByRole('option')).toHaveLength(2));
-    fireEvent.click(getByRole('button', { name: 'Projekt löschen' }));
-    fireEvent.click(getByRole('button', { name: 'Endgültig löschen' }));
-    await waitFor(() => expect(getAllByRole('option')).toHaveLength(1));
-    expect((getByRole('combobox', { name: 'Aktuelles Projekt' }) as HTMLSelectElement).value).not.toBe('');
+  it('dupliziert und löscht Projekte mit Wiederherstellung und einer echten leeren Übersicht', async () => {
+    const ui = await renderProjekt();
+    fireEvent.click(ui.getByLabelText('Projektaktionen'));
+    fireEvent.click(ui.getByRole('button', { name: 'Projekt duplizieren' }));
+    fireEvent.click(ui.getByLabelText('Projektaktionen'));
+    fireEvent.click(ui.getByRole('button', { name: 'Projekt löschen' }));
+    expect(ui.getByRole('heading', { name: 'Meine Projekte' })).toBeTruthy();
+    expect(ui.getAllByRole('link')).toHaveLength(1);
+    fireEvent.click(ui.getByRole('button', { name: 'Rückgängig' }));
+    expect(ui.getByRole('button', { name: '1. Projektdaten' })).toBeTruthy();
+    fireEvent.click(ui.getByLabelText('Projektaktionen'));
+    fireEvent.click(ui.getByRole('button', { name: 'Projekt löschen' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Endgültig löschen' }));
+    fireEvent.click(ui.getByRole('link', { name: /Fortsetzen/ }));
+    fireEvent.click(ui.getByLabelText('Projektaktionen'));
+    fireEvent.click(ui.getByRole('button', { name: 'Projekt löschen' }));
+    expect(ui.queryAllByRole('link')).toHaveLength(0);
+    expect(ui.getByText('Hier beginnen deine Belegungen.')).toBeTruthy();
+  });
+
+  it('zeigt beim normalen Einstieg gespeicherte Projekte, ohne automatisch den Editor zu öffnen', async () => {
+    const eintrag = neuerEintrag();
+    eintrag.projekt.kunde = 'Familie Bestand';
+    eintrag.schritt = 2;
+    await speichereProjekte({ aktivId: eintrag.id, projekte: [eintrag], workflowVersion: 2 });
+    const ui = render(<Home />);
+    await ui.findByRole('heading', { name: 'Meine Projekte' });
+    expect(ui.queryByRole('heading', { name: 'Zusammenfassung' })).toBeNull();
+    fireEvent.click(ui.getByRole('link', { name: /Familie Bestand.*Fortsetzen/ }));
+    expect(ui.getByRole('heading', { name: 'Zusammenfassung' })).toBeTruthy();
+    expect(window.location.hash).toBe(`#/projekt/${eintrag.id}`);
+  });
+
+  it('öffnet einen expliziten Projekt-Link am gespeicherten Schritt und erhält Entwurfsschutz zur Übersicht', async () => {
+    const eintrag = neuerEintrag();
+    eintrag.schritt = 1;
+    await speichereProjekte({ aktivId: eintrag.id, projekte: [eintrag], workflowVersion: 2 });
+    window.history.replaceState(null, '', `/#/projekt/${eintrag.id}`);
+    const ui = render(<Home />);
+    await ui.findByRole('button', { name: 'Dachmaße' });
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
+    fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '12' } });
+    fireEvent.click(ui.getByRole('button', { name: '← Alle Projekte' }));
+    expect(ui.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Bleiben' }));
+    expect(window.location.hash).toBe(`#/projekt/${eintrag.id}`);
+    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('12');
+    fireEvent.click(ui.getByRole('button', { name: '← Alle Projekte' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Verwerfen' }));
+    expect(ui.getByRole('heading', { name: 'Meine Projekte' })).toBeTruthy();
+    expect(window.location.hash).toBe('');
+  });
+
+  it('erklärt einen fehlenden Projekt-Link und erhält den vorhandenen Bestand', async () => {
+    const eintrag = neuerEintrag();
+    eintrag.projekt.kunde = 'Vorhanden';
+    await speichereProjekte({ aktivId: eintrag.id, projekte: [eintrag], workflowVersion: 2 });
+    window.history.replaceState(null, '', '/#/projekt/fehlt');
+    const ui = render(<Home />);
+    await ui.findByText(/Dieses Projekt ist in diesem Browser nicht vorhanden/);
+    expect(ui.getByRole('link', { name: /Vorhanden/ })).toBeTruthy();
+    expect(window.location.hash).toBe('');
   });
 });

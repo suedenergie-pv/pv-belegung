@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 export type OffenerEntwurf = { name: string; gueltig: () => boolean; uebernehmen: () => void; verwerfen: () => void };
-type Navigation = { registriere: (id: string, entwurf: OffenerEntwurf) => () => void; weiter: (aktion: () => void) => void };
-const Kontext = createContext<Navigation>({ registriere: () => () => {}, weiter: (aktion) => aktion() });
+type Navigation = { registriere: (id: string, entwurf: OffenerEntwurf) => () => void; weiter: (aktion: () => void) => void; hatEntwurf: () => boolean };
+const Kontext = createContext<Navigation>({ registriere: () => () => {}, weiter: (aktion) => aktion(), hatEntwurf: () => false });
 export const useEntwurfNavigation = () => useContext(Kontext);
 
 /** Ungespeicherte Geometrieentwürfe vor einem Wechsel bewusst auflösen. */
@@ -15,6 +15,7 @@ export function EntwurfNavigationProvider({ children }: { children: React.ReactN
   const dialogRef = useRef<HTMLDialogElement>(null);
   const vorherigerFokus = useRef<HTMLElement | null>(null);
   const api = useRef<Navigation>({
+    hatEntwurf: () => entwuerfe.current.size > 0,
     registriere(id, entwurf) {
       entwuerfe.current.set(id, entwurf);
       return () => { entwuerfe.current.delete(id); };

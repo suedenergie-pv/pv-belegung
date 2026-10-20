@@ -1,0 +1,26 @@
+# Unabhängiger Review — Fotoeinrichtung, 19.10.2026
+
+**Ergebnis nach Nachprüfung: PASS für die gezielte Inspektorkorrektur; keine offenen Blocker oder Majors.** Der zuvor gefundene Major M1 ist repariert und unabhängig im Browser nachgeprüft. Der reguläre Ablauf ist in den geöffneten Ansichten gegenüber dem vom Nutzer abgelehnten Ausgangsscreenshot deutlich besser geführt. Das Ergebnis beruht auf geöffneten Rendern und einer eigenen Fehler-/Rücknahmereproduktion, nicht auf Testzahlen.
+
+## Behobener Major M1 — Konkreter Sperrgrund außerhalb des sichtbaren Inspektors
+
+- **Reparaturort:** `apps/web/components/FotoHintergrund.tsx:602`, `:638`, `:643`, `:649`, `:1023`; ergänzend `apps/web/components/FotoEinrichtung.module.css:13`, `apps/web/components/FotoEditor.module.css:125`.
+- **Reproduktion:** Frisches Projekt, Foto laden, Maße 10 × 6 m bestätigen, Dachkante überspringen, im Foto vier verschiedene Punkte auf einer waagerechten Linie setzen. Chromium headless, 375 × 812, lokaler Dev-Server `http://localhost:3100/`.
+- **Vorher beobachtet:** Vier Häkchen und „4 von 4 Eckpunkten gesetzt“, obwohl die Punkte kein gültiges Viereck bildeten; der sichtbare Foto-Hinweis verwies auf den deaktivierten Abschluss. Die konkrete Fehlermeldung stand außerhalb des sichtbaren Inspektors hinter den Zusatzbereichen. Der feste Fuß sagte nur „Markierung korrigieren“.
+- **Reparatur beobachtet:** Im festen Fuß ist „Die vier Punkte bilden kein Viereck.“ sichtbar. Direkt daneben stehen ein aktives „Punkt zurück“ und der gesperrte Abschluss. Im Fortschritt erscheinen rote Punktnummern statt Häkchen. Die Foto-Anweisung verlangt ausdrücklich Korrektur oder Rücknahme. Somit sind Sperrgrund und ausführbare Korrektur unmittelbar sichtbar.
+- **Unabhängiger Interaktionsnachweis:** Im eigenen headless Chromium bei 375 × 812 mit JPEG-Foto vier kollineare Punkte gesetzt. Alert und „Punkt zurück“ lagen vollständig im Viewport, Abschluss war deaktiviert, Fortschritt hatte keine Häkchen. „Punkt zurück“ geklickt: Zustand wechselte auf 3/4 Punkte und der Alert verschwand. Dieser Prüfprozess endete erfolgreich mit Exit 0.
+- **Geöffnete Evidence:** ursprünglicher Befund `review-mobil-ungueltig.png`, eigene Nachprüfung `review-mobil-ungueltig-repariert.png` sowie alle fünf neuen `*-02c-markierung-ungueltig.png` unter `.debug-shots/einrichtung-2026-10-19/final/`. In allen fünf Zielgrößen sind Fehlerursache und aktive Rücknahme lesbar; im kurzen Querformat verdrängen sie die Fotoarbeitsfläche nicht.
+
+## Tatsächlich betrachtete Ansichten und Code
+
+Der abgelehnte Clipboard-Screenshot wurde geöffnet und mit dem neuen fokussierten `desktop-inspektor-zwei-ecken.png` verglichen. Zusätzlich wurden **alle 20 Captures** der vier Zustände `02-dachecken`, `02b-zwei-ecken`, `03-ecken-bestaetigen`, `04-aussparungen` auf Desktop (1440 × 900), Tablet quer (1024 × 768), Tablet hoch (768 × 1024), Mobile hoch (375 × 812) und Mobile quer (812 × 375) geöffnet.
+
+Im regulären Ablauf führt die Aufgabenüberschrift jetzt vor den Zusatzwerkzeugen; der Punktfortschritt stimmt sichtbar mit der Markierung überein. Der feste Abschluss erklärt vor dem vierten Punkt den Fehlbestand und nennt danach Aussparungen als nächsten Schritt. Aussparungen sind als optional erklärt; „Weiter zur Modulplatzierung“ bleibt sichtbar. Tablet und Mobile ordnen Inspektor und Foto anders an; in kurzem Querformat trägt die Anleitung über dem Foto die konkrete Handlung. Keine überlappenden Hauptaktionen oder horizontalen Überläufe in diesen Bildern festgestellt. Die fotografische Arbeitsfläche ist auf Mobile klein, aber Zoomen und Verschieben bleiben erreichbar; daraus wird hier kein zusätzlicher Befund ohne Nachweis einer gebrochenen Bedienung abgeleitet.
+
+Gelesen: anwendbare AGENTS-Dateien, SPEC-Vertrag „Führung in der Fotoeinrichtung 19.10.2026“, `exec-plan.json`, `evidence.json`, gezielter Diff von `FotoHintergrund.tsx`, `FotoEditor.module.css`, `SchrittBelegung.tsx`, neuer `FotoEinrichtung.module.css` und zugehörige Teständerungen. Die numerischen Geometrie-/Punkt-Handler wurden im geprüften Diff nicht ersetzt. Die vorhandene Entwurfsregistrierung, Übernahme und Verwerfung bestehen fort. Der Review änderte keine Anwendung und keine anderen uncommitteten Arbeiten.
+
+## Verifikation und Grenzen
+
+Die erste eigene Headless-Reproduktion erzeugte den geöffneten Fehlerzustand. Eine danach geplante DOM-Ausgabe wurde wegen zweier `role=alert`-Elemente (fachliche Meldung plus Next-Route-Announcer) abgebrochen; daraus werden keine zusätzlichen Messwerte oder bestandenen Assertions behauptet. Ein erster Versuch mit SVG-Upload erreichte den Einrichtungszustand nicht. Die abschließende Nachprüfung nutzte das JPEG-Format des vorhandenen Repository-Tests, einen fachlich gefilterten Alert-Locator und bestand die oben genannten eigenen Assertions samt Rücknahme.
+
+Vom Hauptagenten gemeldet, nicht in diesem Review erneut ausgeführt: 141 Engine- und 223 Web-Tests, Typprüfung, isolierter VPS-Build, 10 Ablauf-/Layoutfälle auf fünf Größen und zwei Touch-/Fadenkreuzfälle. Diese technischen Ergebnisse sind Zusatz-Evidence und keine Begründung für visuelle Freigabe. Native Geräteabnahme und Nutzertest wurden nicht vorgenommen. Kein Push oder Deploy.
