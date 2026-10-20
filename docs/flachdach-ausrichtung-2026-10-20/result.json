@@ -1,6 +1,6 @@
 {
   "date": "2026-10-20",
-  "status": "local_qa_and_independent_review_pass",
+  "status": "deployed_live_verified",
   "scope": ["Flachdachfelder frei und genau ausrichten", "manuelle Zellen erhalten", "Montageabstand und Dachrichtung erklären", "bestehende Gaubenbearbeitung gemeinsam veröffentlichen"],
   "research": "evidence.json",
   "mainAgentRevisions": [
@@ -22,7 +22,14 @@
     "previous": "/var/www/belegung/releases/20261020-ux-einrichtung",
     "archiveSha256": "00429977fd81ecd56c4db0e3c52fe8795699c81aa0ea8469ca9b15712db35157",
     "indexSha256": "0e804c49632316d05178d7ef6e2bdda83dfabba550b8ea8fee38faae51272261",
-    "activation": "authorized_pending_execution"
+    "activation": "success",
+    "productCommit": "3d09363e6dcb8dad16d53193089a906efa8fc980",
+    "url": "https://belegung.suedenergie-pv.de/",
+    "publicFilesHashMatched": 33,
+    "publicHeadlessCases": {"flachdach": 5, "gauben": 2, "aussparungen": 2, "pdf_reload_smoke": 2, "total": 11, "passed": true},
+    "liveScreenshotsOpened": ["desktop-01-feld-15-grad.png", "mobil-hoch-01b-drehaktionen.png"],
+    "pagesWorkflow": "https://github.com/suedenergie-pv/pv-belegung/actions/runs/39442992381",
+    "pagesDeployment": "success"
   },
   "limitations": ["Kein beobachteter Bedienversuch mit Walter", "Keine native iPad-Praxisabnahme", "Vertriebliche Belegungsgeometrie, keine Ertrags-/Statik-/Montagefreigabe"],
   "evidence": [".debug-shots/flachdach-ausrichtung-2026-10-20/", ".release/flachdach-qa-final/", ".release/flachdach-regression/", ".release/flachdach-scroll-hits/", ".release/vps/manifest.json", ".release/pages/manifest.json"]
