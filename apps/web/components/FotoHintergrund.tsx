@@ -791,7 +791,7 @@ export function FotoHintergrund({
               role="img"
               aria-label={`${flaechenName} im Foto markieren. Pfeiltasten bewegen das Fadenkreuz, Enter setzt einen Punkt, Escape bricht die laufende Markierung ab.`}
               aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape"
-              className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
+              className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${kompakt && !massCheck.belegen ? 'cursor-default' : greift ? 'cursor-grabbing' : 'cursor-crosshair'}`}
               preserveAspectRatio="xMidYMid meet"
               style={{ touchAction: 'none' }}
               onFocus={(e) => {
@@ -837,6 +837,7 @@ export function FotoHintergrund({
               }}
               onClick={klick}
               onMouseDown={(e) => {
+                if (kompakt && !massCheck.belegen) return;
                 if (e.button !== 0) return;
                 if (fadenkreuzAktiv) return;
                 gesteBeginnen();
@@ -854,6 +855,7 @@ export function FotoHintergrund({
                 }
               }}
               onMouseMove={(e) => {
+                if (kompakt && !massCheck.belegen) return;
                 if (fadenkreuzAktiv || gesteGesperrt.current) return;
                 const k = svgKoord(e);
                 setMausPx(k);
@@ -872,6 +874,7 @@ export function FotoHintergrund({
                 setGreift(false);
               }}
               onPointerDown={(e) => {
+                if (kompakt && !massCheck.belegen) return;
                 if (e.button !== 0) return;
                 gesteBeginnen();
                 if (e.pointerType === 'mouse') {

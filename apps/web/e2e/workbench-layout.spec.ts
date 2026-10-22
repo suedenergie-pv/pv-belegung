@@ -9,6 +9,8 @@ test('Mehrere Dachflächen lassen Eigenschaften auch im kurzen Querformat erreic
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
   for (let i = 0; i < 3; i++) {
     await page.getByRole('button', { name: '+ Dachfläche hinzufügen', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Foto hochladen', exact: true })).toBeInViewport({ ratio: 1 });
+    await page.getByRole('button', { name: 'Maße sind bereits bekannt', exact: true }).click();
     await expect(page.getByLabel(/^Traufe/)).toHaveValue('');
     await expect(page.getByRole('button', { name: 'Maße übernehmen', exact: true })).toBeInViewport({ ratio: 1 });
     await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();

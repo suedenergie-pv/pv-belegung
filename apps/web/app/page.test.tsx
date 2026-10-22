@@ -202,7 +202,7 @@ describe('Projektverwaltung und Einstieg', () => {
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
     expect(getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' })).toBeTruthy();
     expect(getByTestId('arbeitsbereich-p1').className).not.toContain('lg:grid-cols');
-    expect(getByText('Foto für Dachfläche 1 hinzufügen')).toBeTruthy();
+    expect(getByText('Zuerst das Dachfoto wählen')).toBeTruthy();
     expect(queryByRole('button', { name: 'Hochkant' })).toBeNull();
     expect(queryByRole('button', { name: 'Automatisch belegen' })).toBeNull();
     fireEvent.click(getByRole('button', { name: '3. Export' }));

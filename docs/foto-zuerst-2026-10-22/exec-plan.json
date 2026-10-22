@@ -1,0 +1,127 @@
+{
+  "schema_version": "orchestrate-agent-work.exec-plan.v2",
+  "source_package": "orchestrate-agent-work",
+  "loop_type": "build-repair",
+  "objective": "Neue Dachfläche beginnt mit Foto hochladen oder Projektfoto wählen; Bild beim Maßeingeben/Ziegelzählen sichtbar, bekannter Aufmaßweg bleibt erreichbar.",
+  "authorization": "Nutzer22.10.2026 korrigiert laufenden Arbeitsablauf ausdrücklich zu Foto zuerst. Fortgeltender Auftrag: nach Funktions-/UI-/UX-Prüfung ohne weitere Freigabe deployen.",
+  "budget": {
+    "max_parallel_agents": 2,
+    "max_total_agent_tasks": 6,
+    "max_repair_rounds": 3
+  },
+  "evidence_decision": {
+    "evidence_needed": false,
+    "reason_codes": [
+      "user_supplied_workflow_and_screenshot",
+      "bounded_existing_direction_correction"
+    ],
+    "route": "none",
+    "freshness": "not_required",
+    "artifact": null
+  },
+  "tasks": [
+    {
+      "task_id": "contract",
+      "kind": "analysis",
+      "agent": "primary",
+      "depends_on": [],
+      "outputs": [
+        "SPEC und Screenshot/User-Ablauf"
+      ],
+      "inputs": [
+        "User-Screenshot22.10., aktuelle SPEC, Implementierung und bestehende QA"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "checks": [
+        "Auftragsgrenze und Entwurfsschutz bewahren; keine offenen Blocker/Majors"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "build",
+      "kind": "implementation",
+      "agent": "primary",
+      "depends_on": [
+        "contract"
+      ],
+      "outputs": [
+        "Foto-Einstieg und nächste Maßaufgabe"
+      ],
+      "inputs": [
+        "User-Screenshot22.10., aktuelle SPEC, Implementierung und bestehende QA"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "checks": [
+        "Auftragsgrenze und Entwurfsschutz bewahren; keine offenen Blocker/Majors"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "qa",
+      "kind": "deterministic_qa",
+      "agent": "primary",
+      "depends_on": [
+        "build"
+      ],
+      "outputs": [
+        "Unit-/Typ-/Build-/Desktop-/Mobile-/Regressionsevidence"
+      ],
+      "inputs": [
+        "User-Screenshot22.10., aktuelle SPEC, Implementierung und bestehende QA"
+      ],
+      "risk": "internal_reversible",
+      "gate": "internal",
+      "checks": [
+        "Auftragsgrenze und Entwurfsschutz bewahren; keine offenen Blocker/Majors"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "review",
+      "kind": "independent_review",
+      "agent": "foto_zuerst_review",
+      "depends_on": [
+        "qa"
+      ],
+      "outputs": [
+        "docs/foto-zuerst-2026-10-22/review.md"
+      ],
+      "inputs": [
+        "User-Screenshot22.10., aktuelle SPEC, Implementierung und bestehende QA"
+      ],
+      "risk": "read_only",
+      "gate": "internal",
+      "checks": [
+        "Auftragsgrenze und Entwurfsschutz bewahren; keine offenen Blocker/Majors"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt"
+    },
+    {
+      "task_id": "release",
+      "kind": "release",
+      "agent": "primary",
+      "depends_on": [
+        "review"
+      ],
+      "outputs": [
+        "Produktiver VPS, Hash- und Browsernachweis"
+      ],
+      "inputs": [
+        "User-Screenshot22.10., aktuelle SPEC, Implementierung und bestehende QA"
+      ],
+      "risk": "external_write",
+      "gate": "human",
+      "checks": [
+        "Auftragsgrenze und Entwurfsschutz bewahren; keine offenen Blocker/Majors"
+      ],
+      "max_repairs": 3,
+      "stop_condition": "PASS oder wiederholter Fehlerfingerprint ohne Fortschritt"
+    }
+  ]
+}

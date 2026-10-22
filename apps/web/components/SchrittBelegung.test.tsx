@@ -271,7 +271,7 @@ describe('Belegungsbedienung', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('öffnet bei zusätzlicher leerer Dachfläche sofort Maße und zeigt keinen Exportabschluss', () => {
+  it('führt zusätzliche Dachflächen zuerst zum Foto und nach bewusster Fotoauswahl zu leeren Maßen', () => {
     const start = projektMitFoto();
     function Editor() {
       const [projekt, setProjekt] = useState(start);
@@ -280,10 +280,23 @@ describe('Belegungsbedienung', () => {
     const ui = render(<Editor />);
     expect(ui.getByRole('button', { name: 'Weiter zum Export' })).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+    expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
+    expect(ui.queryByRole('button', { name: 'Maße übernehmen' })).toBeNull();
+    fireEvent.change(ui.getByLabelText('Vorhandenes Foto für Dachfläche 2 verwenden'), { target: { value: 'foto-1' } });
     expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
     expect((ui.getByLabelText(/^Sparrenlänge/) as HTMLInputElement).value).toBe('');
     expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
     expect(ui.queryByRole('button', { name: 'Weiter zum Export' })).toBeNull();
+    expect(ui.getByRole('img', { name: /im Foto markieren/ })).toBeTruthy();
+    expect(start.flaechen[0]!.felder).toHaveLength(1);
+  });
+
+  it('lässt bekannte Maße vor einem Foto weiterhin ausdrücklich eingeben', () => {
+    const ui = render(<SchrittBelegung projekt={neuesProjekt()} onChange={vi.fn()} />);
+    fireEvent.click(ui.getByRole('button', { name: 'Maße sind bereits bekannt' }));
+    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
+    expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
   });
 
   it('bestätigt eine alte unbelegte Gaube, ohne Schätzungen zu Messungen umzubenennen', () => {
