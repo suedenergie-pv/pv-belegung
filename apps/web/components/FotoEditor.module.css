@@ -188,8 +188,10 @@
  .arbeitsbereich[data-foto-start=true] .inspektor,.arbeitsbereich[data-foto-start=true] .canvasLeer strong{display:none}
  .arbeitsbereich[data-foto-start=true] .canvasLeer{gap:6px;padding:4px}
  .arbeitsbereich[data-masse-mit-foto=true]{grid-template-rows:minmax(0,1fr) minmax(0,48%)}
- .arbeitsbereich[data-masse-mit-foto=true] .anleitung,.arbeitsbereich[data-masse-mit-foto=true] .kontextKopf{display:none}
+ .arbeitsbereich[data-masse-mit-foto=true] .anleitung{font-size:11px;line-height:1.35;padding:4px 8px}
+ .arbeitsbereich[data-masse-mit-foto=true] .kontextKopf{display:none}
 }
+@media(max-height:700px){.arbeitsbereich[data-foto-start=true] .canvasLeer{overflow:auto;justify-content:flex-start}.arbeitsbereich[data-foto-start=true] .canvasLeer strong{display:none}}
 
 @media(max-height:700px){
  .canvasLeer{padding:8px;gap:8px}
