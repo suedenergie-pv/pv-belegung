@@ -31,7 +31,7 @@ it('unterbindet native Browserauswahl beim Feldzug und behält den SVG-Tastaturf
   expect(e.defaultPrevented).toBe(true);
   expect(document.activeElement).toBe(svg);
   expect(down).toHaveBeenCalledOnce();
-  expect((svg as SVGSVGElement).style.userSelect).toBe('none');
+  expect(svg.style.userSelect).toBe('none');
 });
 
 it('adressiert einen Feldgriff ausdrücklich statt die Fotopixel als Meter-Toleranz zu deuten', () => {
