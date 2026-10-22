@@ -1746,7 +1746,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         fotoOverlay={fotoAsset ? (clipIdPrefix) => <><defs><ModulAsset id={`setup-modul-${f.id}`} modul={modul} /></defs>{fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `setup-modul-${f.id}`, clipIdPrefix })}</> : undefined}
         renderArbeitsbereich={renderArbeitsbereich} />
       : foto || belegungZeigen ? renderArbeitsbereich({ bild: belegungsBild, bildSeitenverhaeltnis: foto ? foto.breitePx / foto.hoehePx : rahmenBreiteVon(f) / f.hoeheM, punktSteuerung: perspektivPunktSteuerung })
-      : renderArbeitsbereich({ bild: <div className={styles.canvasLeer}>
+      : renderArbeitsbereich({ bild: <div key={f.id} className={styles.canvasLeer}>
           <strong>{fotoFehlt ? 'Zuerst das Dachfoto wählen' : `Foto für ${f.name} hinzufügen`}</strong>
           <p>{fotoFehlt ? 'Foto hochladen oder ein vorhandenes Projektfoto verwenden.' : 'Danach die Dachfläche im Bild markieren.'}</p>
           <button type="button" className="rounded-lg bg-akzent px-4 font-semibold text-white" onClick={() => navigation.weiter(() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id }))}>{fotoFehlt ? 'Foto hochladen' : 'Foto hinzufügen'}</button>
