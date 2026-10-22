@@ -27,4 +27,4 @@ Nutzerauftrag: LCV-Druckarbeit als Ausgangspunkt untersuchen, eigenständige Sü
 - Aktivierungsskript SHA-256: `2ef167f3aeab06ec2e07e7625562d5a63e3a6120d39be8c764d3f873049d1bde`.
 - Lokale Evidence: `.release/pdf-ci-qa.json`, `.release/pdf-ci-vps-manifest.json`, `.release/pdf-ci-independent-review-final.md`, `.debug-shots/pdf-ci-2026-10-22/release-final/`.
 
-Die produktive Aktivierung und direkte öffentliche Nachprüfung werden separat in `docs/vps-release.md` dokumentiert. GitHub Pages ist kein Nachweis für den VPS-Deploy. Native iPad-Abnahme oder Walter-Nutzerstudie werden nicht behauptet.
+Produktiv aktiviert und öffentlich geprüft: `20261022-pdf-suedenergie-final`, Produktcommit `d070542`. Alle 34 öffentlichen Dateien hashgleich; zwei Live-Smokes und zehn echte PDF-Downloads bestanden. Alle zehn Live-PDFs zusätzlich geparst: mindestens 12 pt, richtige Seitenzahlen, vollständiger Planungshinweis genau einmal. Details in `docs/vps-release.md`. GitHub Pages ist kein Nachweis für den VPS-Deploy. Native iPad-Abnahme oder Walter-Nutzerstudie werden nicht behauptet.
