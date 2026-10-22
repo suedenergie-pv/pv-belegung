@@ -140,6 +140,14 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await page.mouse.up();
   await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
   await expect(page.getByTestId('flaechen-status')).toContainText(/[1-9]\d* Module/);
+  const neuesFeld = page.locator('[data-feld-ebene="flaeche"] path').first();
+  const feldVorZug = await neuesFeld.getAttribute('d');
+  const feldBox = (await neuesFeld.boundingBox())!;
+  await page.mouse.move(feldBox.x + feldBox.width / 2, feldBox.y + feldBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(feldBox.x + feldBox.width / 2 + 30, feldBox.y + feldBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect(neuesFeld).not.toHaveAttribute('d', feldVorZug!);
   await expect(button('Weiter zum Export')).toBeInViewport({ ratio: 1 });
   await screenshot('06-belegt');
   await button('Weiter zum Export').click();

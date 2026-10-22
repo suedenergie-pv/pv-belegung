@@ -8,6 +8,8 @@
 
 ## Zusätzliche Dachfläche führen · 19.10.2026
 
+- Korrektur 22.10.2026: Neu gezeichnete Belegungsfelder sind sofort mit dem ersten Zug im Inneren verschiebbar. Zeichnen und Verschieben dürfen keine native Browser-Textauswahl oder Text-/Bildziehgeste über den Beschriftungen anderer Dachflächen starten. SVG-Tastaturfokus, Größenänderung, Touch-/Ansichtsgesten und Historie bleiben erhalten.
+
 - Korrektur 22.10.2026 nach Nutzer-Bedienversuch: Jede neue Hauptdachfläche beginnt mit „Foto hochladen“ oder der ausdrücklichen Wahl eines vorhandenen Projektfotos. Erst mit sichtbarem Foto öffnet sich das Maßformular, sodass Ziegelzählen mit Zoom/Pan möglich ist. Bekannte Maße bleiben über „Maße sind bereits bekannt“ beziehungsweise den direkten Zugang „Dachmaße“ eingebbar; der bisherige Maß-zuerst-Zwang entfällt. Keine automatische Übernahme eines fremden Dachfotos. Neue Pflichteingaben bleiben leer und unbestätigt, bis der Nutzer sie übernimmt. Bereits belegte andere Dachflächen dürfen keinen Exportknopf zur Hauptaktion dieser Einrichtung machen.
 - Der feste Exportabschluss erscheint nur bei vorhandenen Belegungsfeldern auf der aktiven Dachfläche und angezeigter Belegung ohne laufende Fotoeinrichtung oder Perspektivbearbeitung. Bestehende obere Schrittnavigation und deren Entwurfsschutz bleiben erhalten.
 - Ohne gespeicherte Aussparungen heißt die feste Hauptaktion „Keine Aussparungen – weiter“ und führt zur Modulplatzierung. Auch ein versehentlich gesetzter einzelner Aussparungspunkt darf diese ausdrückliche Entscheidung nicht sperren: Er wird verworfen, bestätigte Geometrie und andere Dachflächen bleiben erhalten. Vorhandene Aussparungen werden dadurch niemals gelöscht.
