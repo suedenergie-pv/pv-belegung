@@ -180,7 +180,16 @@
 .arbeitsbereich[data-flachdach-drehung=true] .exportAbschluss>button{background:transparent;border:1px solid #aeb9bf;color:#344e64;min-height:44px;padding:8px 10px}
 .arbeitsbereich[data-flachdach-drehung=true] .exportAbschluss>[data-export-hinweis]{display:none}
 .startFotoWahl{max-width:100%;min-height:44px;border:1px solid #aeb9bf;border-radius:4px;background:#fff;color:#243c50;padding:8px;font-size:14px}
-@media(max-width:900px) and (min-height:501px){.arbeitsbereich[data-masse-mit-foto=true]{grid-template-rows:minmax(180px,1fr) minmax(220px,48%)}}
+.startMassDirekt{min-height:44px;border:1px solid #aeb9bf;border-radius:4px;color:#eef2f4;padding:8px 12px}
+@media(max-width:900px) and (min-height:501px){.arbeitsbereich[data-masse-mit-foto=true]{grid-template-rows:minmax(0,1fr) minmax(0,48%)}}
+@media(max-width:600px) and (min-height:501px){.arbeitsbereich[data-masse-mit-foto=true] .kontext figure{display:none}}
+@media(max-width:600px) and (max-height:700px){
+ .arbeitsbereich[data-foto-start=true]{grid-template-rows:minmax(0,1fr)}
+ .arbeitsbereich[data-foto-start=true] .inspektor,.arbeitsbereich[data-foto-start=true] .canvasLeer strong{display:none}
+ .arbeitsbereich[data-foto-start=true] .canvasLeer{gap:6px;padding:4px}
+ .arbeitsbereich[data-masse-mit-foto=true]{grid-template-rows:minmax(0,1fr) minmax(0,48%)}
+ .arbeitsbereich[data-masse-mit-foto=true] .anleitung,.arbeitsbereich[data-masse-mit-foto=true] .kontextKopf{display:none}
+}
 
 @media(max-height:700px){
  .canvasLeer{padding:8px;gap:8px}

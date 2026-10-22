@@ -1594,7 +1594,6 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   const panelTitel = perspektiveHier ? 'Perspektive bearbeiten' : sitzung.panel === 'fotos' ? 'Fotos & Perspektiven' : sitzung.panel === 'details' ? 'Dachmaße & Dachform' : sitzung.panel === 'mehr' ? 'Belegung & Ansicht' : feldNeuWerkzeug ? 'Feld zeichnen' : modusArt(f) === 'zellen' ? 'Module bearbeiten' : 'Ausgewählte Felder';
   const standardPanel = fotoStart ? <div className={styles.eigenschaften}>
     <p>Wähle zuerst das Dachfoto. Danach kannst du im Bild die Ziegel zählen und die Dachmaße eintragen.</p>
-    <button type="button" className={aktionKlasse} onClick={() => oeffnePanel('details')}>Maße sind bereits bekannt</button>
   </div> : <div className={styles.eigenschaften}>
     {f.gaubenTyp && eltern && <div className={styles.gaubenSeitenNavigation} aria-label="Gaubendachseiten">
       {projekt.flaechen.filter(x => x.gaubenTyp && (x.gaubenGruppeId ?? x.id) === (f.gaubenGruppeId ?? f.id)).map(x => <button type="button" key={x.id} aria-pressed={x.id === f.id} onClick={() => wechsleFlaeche(x.id)}>{x.gaubenSeite === 'links' ? 'Linke Dachseite' : x.gaubenSeite === 'rechts' ? 'Rechte Dachseite' : 'Gaubendach'}</button>)}
@@ -1614,7 +1613,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     {sitzung.verschieben && <p>Im Foto ziehen. Zwei Finger verschieben und zoomen immer nur die Ansicht.</p>}
   </div>;
   const renderArbeitsbereich = ({ bild, steuerung, hinweis, bildSeitenverhaeltnis, abbrechen, punktSteuerung, aufgabe }: { bild: ReactNode; steuerung?: ReactNode; hinweis?: ReactNode; bildSeitenverhaeltnis: number; abbrechen?: () => void; punktSteuerung?: FotoPunktSteuerung; aufgabe?: { titel: string; phase: string } }) => <EditorAktionsRahmen>
-    <div className={styles.arbeitsbereich} data-kontext-offen={!!(bedienPanel || steuerung)} data-flachdach-drehung={artVon(f) === 'flachdach' && bedienPanel === auswahlPanel} data-einrichtung-aktiv={!!aufgabe && !bedienPanel} data-gauben-aktiv={sitzung.panel === 'gauben'} data-masse-offen={sitzung.panel === 'details'} data-masse-mit-foto={sitzung.panel === 'details' && !!foto} data-testid={`arbeitsbereich-${f.id}`}>
+    <div className={styles.arbeitsbereich} data-foto-start={fotoStart} data-kontext-offen={!!(bedienPanel || steuerung)} data-flachdach-drehung={artVon(f) === 'flachdach' && bedienPanel === auswahlPanel} data-einrichtung-aktiv={!!aufgabe && !bedienPanel} data-gauben-aktiv={sitzung.panel === 'gauben'} data-masse-offen={sitzung.panel === 'details'} data-masse-mit-foto={sitzung.panel === 'details' && !!foto} data-testid={`arbeitsbereich-${f.id}`}>
       <div className={styles.bildBereich}>
       {(sitzung.panel === 'fotos' || sitzung.panel === 'details' || !mass.belegen || hinweis || feldNeuWerkzeug) && <div className={styles.anleitung}>{sitzung.panel === 'fotos' ? 'Fotos verwalten. Zum Zeichnen ein Dachwerkzeug wählen.' : fotoStart ? 'Zuerst das Dachfoto auswählen.' : sitzung.panel === 'details' ? foto ? 'Ziegel im Foto zählen oder bekannte Dachmaße eintragen.' : 'Bekannte Maße eintragen oder zuerst ein Dachfoto hinzufügen.' : !mass.belegen ? 'Dachmaße mit dem Foto bestimmen und bestätigen.' : hinweis ?? (zweiPunkte ? ersteFeldEcke ? 'Gegenüberliegende Ecke antippen.' : 'Erste Ecke des Modulfelds antippen.' : touchBedienung ? 'Ein Finger: Modulfeld aufziehen · Zwei Finger: Bild verschieben' : 'Im Dach klicken und ziehen: Modulfeld aufziehen')}</div>}
       <div className={styles.canvas} id={`foto-masse-${f.id}`}>
@@ -1756,6 +1755,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
             <option value="">Vorhandenes Foto verwenden …</option>
             {projekt.fotos.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
           </select>}
+          {fotoStart && <button type="button" className={styles.startMassDirekt} onClick={() => oeffnePanel('details')}>Maße sind bereits bekannt</button>}
         </div>, bildSeitenverhaeltnis: 1.6 })}
     </div>
     <div className={styles.status}><span data-testid="flaechen-status">{f.name}: {aktiv} Module · {felder.length} {felder.length === 1 ? 'Feld' : 'Felder'} · {fmtDe(aktiv * modul.pmaxW / 1000, 2)} kWp</span><span>Maße: {mass.status === 'bestaetigt' ? 'bestätigt' : mass.status === 'bestand' ? 'Bestand' : 'offen'}</span><span>Perspektive: {fotoZuordnung?.perspektiveBestaetigt ? 'bestätigt' : 'offen'}</span></div>
