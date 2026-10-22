@@ -28,4 +28,4 @@ Die zwei vollständigen Walter-Abläufe auf 375×500 und 320×568 scheitern nach
 - Index SHA-256 `3ee1edfffca035489ee996370fae5a80bd335fc7e47ba141911604e2bfc8f503`.
 - Unverändertes, auf LF normalisiertes Aktivierungsskript SHA-256 `2ef167f3aeab06ec2e07e7625562d5a63e3a6120d39be8c764d3f873049d1bde`.
 
-Deploy und öffentliche Nachprüfung werden nach erfolgreichem unabhängigem Artefaktreview in `docs/vps-release.md` ergänzt.
+Unabhängiger Artefaktreview PASS. Release atomar auf dem VPS aktiviert, Vorgänger erhalten, alle 33 öffentlichen Dateien gegen das Manifest identisch. Vier direkte Desktop-/Mobilabläufe bestanden. Desktop-Smoke bestanden; Mobil-Smoke beim ersten Laden fehlgeschlagen („Projekte werden geladen“), unverändert gezielt wiederholt und bestanden. Finale Livebilder geöffnet. Details und Rollback in `docs/vps-release.md`.

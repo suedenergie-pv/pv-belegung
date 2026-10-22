@@ -2,6 +2,18 @@
 
 Kanonische Live-Adresse: **https://belegung.suedenergie-pv.de/**. GitHub Pages ist eine separate Ausgabe und kein Nachweis für einen produktiven VPS-Deploy. Nutzerkorrektur und Deploy-Freigabe: 01.10.2026.
 
+## Neue Dachfläche: Foto vor Dachmaßen · 22.10.2026
+
+- Aktiv: `/var/www/belegung/releases/20261022-foto-zuerst`; Rollback erhalten: `/var/www/belegung/releases/20261020-flachdach-gauben`. Produktstand `0bfae1b`, QA-Dokumentation `ff81a47`, auf `main` gepusht. Fortgeltender Nutzerauftrag erlaubt Deploy nach bestandener Prüfung ohne weitere Freigabe.
+- Neue Hauptfläche beginnt mit Upload oder ausdrücklich gewähltem Projektfoto. Danach öffnet sich das leere Maßformular beim sichtbaren, zoombaren Foto zum Ziegelzählen. Bekannte Maße bleiben direkt erreichbar. Feste Maßbestätigung und Schutz offener Entwürfe bleiben erhalten; andere Flächen werden nicht übernommen oder verändert.
+- Isolierter Prüf-Checkout verhindert Übernahme paralleler PDF-Arbeit im Hauptcheckout. Bisheriger bestätigter PDF-Export unverändert. Keine privaten Bilder oder lokalen Konfigurationen veröffentlicht.
+- 470 Unit-/Engine-Tests und Typprüfung bestanden, nach letztem Fix erneut 34 betroffene Tests und Typprüfung. Beide statischen Builds und deren Desktop-/Mobil-Smokes bestanden. Finale lokale QA: acht Layoutfälle auf acht Größen und sechs vollständige Foto-/Mehrflächen-/PDF-Abläufe bestanden. Desktop-/Tablet-/Mobilebilder mit echtem Dachfoto tatsächlich geöffnet; keine Walter-Nutzerstudie und keine native iPad-Abnahme.
+- Ausdrücklich offen: Zwei vollständige Abläufe auf 375×500 und 320×568 scheitern am bereits bestehenden Dachecken-Fortschrittslayout. Alte unveränderte Tests auf dem bisherigen Live-Release scheitern an derselben Stelle mit denselben sichtbaren Anteilen. Diese Fälle werden nicht als bestanden gezählt; keine Assertion gelockert. Der neue Fotoeinstieg und Maßzustand sowie die Mehrflächen-Layoutfälle wurden auch dort geprüft.
+- Unabhängiger Review PASS für die begrenzte Foto-Korrektur, keine offenen Blocker/Majors im Auftrag. 74 Quellen und 33 Export-/Archivdateien per SHA-256 identisch bestätigt. Archiv `837e804c997f1b59057d7d3805e2ff8ac0988cc8cf372468a02bd2e130ab57e7`; Index `3ee1edfffca035489ee996370fae5a80bd335fc7e47ba141911604e2bfc8f503`.
+- Bestehendes Aktivierungs-/Rollbackskript unverändert auf LF normalisiert. Freie Remote-Pfade und unveränderten Vorgänger geprüft, Archiv/Skript übertragen, entfernte Hashwerte und Shell-Syntax bestätigt. Atomare Aktivierung sowie serverseitige HTTPS-/Indexprüfung bestanden. Alle 33 öffentlichen Dateien anschließend ohne Hashabweichung zum geprüften Manifest.
+- Direkte öffentliche Nachprüfung: vier Foto-/Maß-/Mehrflächen-/PDF-/Layoutfälle auf Desktop/Smartphone bestanden. Desktop-Smoke bestanden; erster Mobil-Smoke blieb beim Seitenstart auf „Projekte werden geladen“ und bestand in unveränderter gezielter Wiederholung. Keine Produktänderung oder gelockerte Assertion dafür. Finale Desktop-/Mobile-Livebilder geöffnet.
+- Evidence: `docs/foto-zuerst-2026-10-22/`, `.release/foto-zuerst-vps-manifest.json`, `.release/foto-zuerst-live-hashes.json`, `.debug-shots/foto-zuerst-2026-10-22/`, Browserresultate im dokumentierten isolierten Worktree. GitHub Pages bleibt eine getrennte Ausgabe.
+
 ## Bearbeitbare Gauben und frei ausgerichtete Flachdachfelder · 20.10.2026
 
 - Nutzerauftrag: recherchieren, mit bis zu zwei Agents prüfen, Hauptagent revidiert Funktion/UI/UX und deployt nach bestandener Prüfung ohne weitere Freigabe. Aktiv: `/var/www/belegung/releases/20261020-flachdach-gauben`; Rollback erhalten: `/var/www/belegung/releases/20261020-ux-einrichtung`. Produktcommit `3d09363e6dcb8dad16d53193089a906efa8fc980`, auf `main` gepusht.
