@@ -39,6 +39,22 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await button('Vergrößern').click(); await expect(page.getByLabel('Zoom 125 Prozent')).toBeVisible();
   await massFoto.click();
   await expect(page.getByTestId('markierungs-fortschritt')).toHaveCount(0);
+  if (info.project.name === 'desktop') {
+    await page.waitForTimeout(650);
+    const flaechenVorher = await page.evaluate(() => JSON.parse(localStorage.getItem('pv-belegung-projekte-v2')!).projekte[0].projekt.flaechen);
+    const bildBox = (await page.getByTestId('editor-viewport').boundingBox())!;
+    await page.mouse.move(bildBox.x + bildBox.width / 2, bildBox.y + bildBox.height / 2);
+    await page.keyboard.down('Space'); await page.mouse.down();
+    await page.mouse.move(bildBox.x + bildBox.width / 2 + 40, bildBox.y + bildBox.height / 2 + 20);
+    await page.mouse.up(); await page.keyboard.up('Space');
+    await page.waitForTimeout(650);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pv-belegung-projekte-v2')!).projekte[0].projekt.flaechen)).toEqual(flaechenVorher);
+    await page.reload();
+    await expect(massFoto).toBeVisible();
+    await expect(button('Foto hochladen')).toHaveCount(0);
+    if (await button('Dachmaße').getAttribute('aria-expanded') !== 'true') await button('Dachmaße').click();
+    await expect(traufe).toHaveValue(''); await expect(sparren).toHaveValue('');
+  }
   await button('Alles anzeigen').click();
   await screenshot('01-masse');
   await button('Maße übernehmen').click();
