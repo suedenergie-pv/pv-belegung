@@ -2,6 +2,17 @@
 
 Kanonische Live-Adresse: **https://belegung.suedenergie-pv.de/**. GitHub Pages ist eine separate Ausgabe und kein Nachweis für einen produktiven VPS-Deploy. Nutzerkorrektur und Deploy-Freigabe: 01.10.2026.
 
+## Neues Modulfeld sofort innen verschieben · 22.10.2026
+
+- Aktiv: `/var/www/belegung/releases/20261022-feld-sofort-ziehen`; Rollback erhalten: `/var/www/belegung/releases/20261022-foto-zuerst`. Produktfix `1e5b24b`, Testkorrekturen `9d96429`/`64d6916`, QA/Review `a2a2663`. Bestehende Nutzerfreigabe für Deploy nach bestandener Prüfung gilt fort.
+- Tatsächliches Kundenprojekt aus ausdrücklich freigegebenem Chrome-Tab lokal gesichert: Beim Feldzeichnen wurden unterliegende SVG-Dachbeschriftungen als Browsertext ausgewählt. Der erste Innenzug startete einen nativen Text-Drag statt der Feldbewegung. Im Feld-Pointerpfad Browserstandard unterbunden, SVG-Fokus erhalten und SVG-Textauswahl deaktiviert. Keine Geometrie-, Engine-, Auswahl- oder Gestaltungsänderung.
+- Isolierter Checkout schließt parallele PDF-Arbeit im Hauptcheckout aus. 471 Tests und Typprüfung bestanden; beide statischen Builds und je zwei Desktop-/Mobil-Smokes bestanden. Finale lokale Feldmatrix 19 bestanden/1 ausdrücklich ausgelassen; privates Vierflächenprojekt auf vier Größen bestanden/1 ausgelassen; sechs hybride Eingabefälle und zwei vollständige Foto-bis-PDF-Abläufe bestanden. Screenshots Desktop/Smartphone tatsächlich geöffnet.
+- Bekannte bestehende Grenze: Bei 812×375 verdecken Dachnamen den Zeichenstart der neuen großen Vierflächen-Fixture. Derselbe unveränderte Test scheitert am bisherigen Live-Stand bereits vor Feldanlage. Dieser eine Fall ist ausgelassen, nicht als bestanden gewertet; die übrigen drei Querformat-Feldfälle bestehen. Keine native iPad-Abnahme oder Walter-Nutzerstudie behauptet.
+- Unabhängiger enger Review PASS ohne offene Findings. 74 Quellen, 33 Exportdateien und genau 33 Archivdateien unabhängig identisch bestätigt. Keine privaten Projektdateien oder parallelen PDF-Erweiterungen enthalten. Archiv SHA-256 `d18010121653be75210c62d827fd63211398f260e1e0ebd568e4c837fae51a7e`; Index `30c518e12317f4b9181684cfc89520f1d49d54ef4e07261bc44e224adcf19e81`.
+- Freie Zielpfade und unveränderten Vorgänger vor Übertragung geprüft. Archiv- und Skripthash sowie Shell-Syntax bestätigt. Bestehendes Aktivierungs-/Rollbackskript unverändert auf LF normalisiert; atomare Aktivierung und serverseitige HTTPS-/Indexprüfung bestanden. Alle 33 öffentlichen Dateien danach ohne Hashabweichung zum Manifest.
+- Direkte öffentliche VPS-Prüfung: sechs Erstzugfälle nach Zeichnen/Automatik/Mehrflächenanlage, zwei zusätzliche Erstzugfälle mit dem tatsächlichen gesicherten Projekt sowie zwei PDF-/Reload-Smokes auf Desktop/Smartphone bestanden. Finale private Livebilder geöffnet; Nutzertab und Originalprojekt unverändert.
+- Evidence: `docs/feld-sofort-ziehen-2026-10-22/`, `.release/feld-drag-vps-manifest.json`, `.release/feld-drag-live-hashes.json`, `.release/feld-drag-live/`, `.release/feld-drag-live-privat/`, `.release/feld-drag-live-smoke/`, `.debug-shots/feld-sofort-ziehen-2026-10-22/`. GitHub Pages bleibt eine getrennte Ausgabe.
+
 ## Neue Dachfläche: Foto vor Dachmaßen · 22.10.2026
 
 - Aktiv: `/var/www/belegung/releases/20261022-foto-zuerst`; Rollback erhalten: `/var/www/belegung/releases/20261020-flachdach-gauben`. Produktstand `0bfae1b`, QA-Dokumentation `ff81a47`, auf `main` gepusht. Fortgeltender Nutzerauftrag erlaubt Deploy nach bestandener Prüfung ohne weitere Freigabe.
