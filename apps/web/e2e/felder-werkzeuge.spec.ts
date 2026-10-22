@@ -3,7 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
-import { neuesProjekt, type Projekt } from '../lib/model';
+import { neuesProjekt, neueFlaeche, type Projekt } from '../lib/model';
+import { homographie, projiziere, type Ecken } from '../lib/foto-geometrie';
 
 const shots = resolve(process.env.PV_QA_SHOTS ?? '.debug-shots/feld-tools');
 async function stand(page: Page): Promise<Projekt> {
@@ -22,6 +23,98 @@ async function antippen(page: Page, xm: number, ym: number, touch: boolean) {
   if (touch) await page.touchscreen.tap(p.x, p.y);
   else await page.mouse.click(p.x, p.y);
 }
+
+test('Neues Feld auf zusätzlicher gedrehter Dachperspektive sofort innen verschieben', async ({ page }, info) => {
+  const projekt: Projekt = process.env.PV_QA_PROJECT
+    ? JSON.parse(readFileSync(process.env.PV_QA_PROJECT, 'utf8')).projekt : neuesProjekt();
+  if (!process.env.PV_QA_PROJECT) {
+    // Neutrales Mehrflächenfoto: Ein Feldzug kreuzt die SVG-Beschriftungen A/B/C.
+    const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><path fill="#8d513c" d="M0 0h1600v900H0z"/></svg>').toString('base64');
+    projekt.fotos = [{ id: 'foto', name: 'Dachfoto', breitePx: 1600, hoehePx: 900, dataUrl }];
+    const ecken: Ecken[] = [
+      [[380,618],[1320,632],[1338,445],[370,427]], [[845,870],[850,574],[620,568],[610,882]],
+      [[894,226],[895,50],[662,8],[656,199]], [[664,59],[1256,77],[1335,426],[651,418]],
+    ];
+    projekt.flaechen = ecken.map((punkte,i) => ({ ...neueFlaeche(i+1, ['A','B','C','D'][i]!), breiteM:12, hoeheM:7.7, grunddatenFertig:true, massStatus:'bestaetigt',
+      fotoZuordnungen:[{fotoId:'foto',traufePx:null,eckenPx:punkte,perspektiveBestaetigt:true,markierungFertig:true}], felder:[] }));
+  }
+  const f = projekt.flaechen[3]!; f.felder = [];
+  await page.addInitScript(projekt => {
+    localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt: 1, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
+  }, projekt);
+  await page.goto('./'); await oeffneStartprojekt(page);
+  await page.getByLabel('Aktive Dachfläche').selectOption(f.id);
+  const svg = page.getByRole('img', { name: /^Belegungsfläche/ });
+  const foto = projekt.fotos[0]!;
+  const h = homographie(f.breiteM, f.hoeheM, f.fotoZuordnungen![0]!.eckenPx!)!;
+  const p = async (x: number, y: number) => {
+    const b = (await svg.boundingBox())!, pixel = projiziere(h, [x,y]);
+    return { x: b.x + b.width * pixel[0] / foto.breitePx, y: b.y + b.height * pixel[1] / foto.hoehePx };
+  };
+  await page.getByRole('button', { name: '+ Feld zeichnen', exact: true }).click();
+  const a = await p(-.1,-.1), b = await p(12.1,7.8);
+  await page.mouse.move(a.x,a.y); await page.mouse.down(); await page.mouse.move(b.x,b.y,{steps:8}); await page.mouse.up();
+  await expect(page.getByText('1 von 1 ausgewählt', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => getSelection()?.toString() ?? '')).toBe('');
+  mkdirSync(shots,{recursive:true});
+  await page.screenshot({path:resolve(shots,`${info.project.name}-projekt-nach-zeichnen.png`)});
+  const ziel = svg.locator('[data-feld-ebene="flaeche"] path').first();
+  const vorher = await ziel.getAttribute('d');
+  const c = await p(7,3), d = await p(7.6,3);
+  await page.mouse.move(c.x,c.y); await page.mouse.down(); await page.mouse.move(d.x,d.y,{steps:8}); await page.mouse.up();
+  await expect(ziel).not.toHaveAttribute('d',vorher!);
+  await page.screenshot({path:resolve(shots,`${info.project.name}-projekt-erster-zug.png`)});
+});
+
+for (const anlegen of ['zeichnen', 'automatisch'] as const) test(`Neues Feld sofort nach ${anlegen} ohne erneute Auswahl ziehen`, async ({ page, browserName }, info) => {
+  mkdirSync(shots, { recursive: true });
+  const projekt = neuesProjekt();
+  const dataUrl = process.env.PV_QA_PHOTO
+    ? `data:image/jpeg;base64,${(await sharp(readFileSync(process.env.PV_QA_PHOTO)).resize(1600, 900).jpeg().toBuffer()).toString('base64')}`
+    : 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><path fill="#8d513c" d="M0 0h1600v900H0z"/></svg>').toString('base64');
+  projekt.fotos = [{ id: 'foto', name: 'Drohnenfoto', dataUrl, breitePx: 1600, hoehePx: 900 }];
+  Object.assign(projekt.flaechen[0]!, {
+    breiteM: 18, hoeheM: 8, randM: 0, grunddatenFertig: true, massStatus: 'bestaetigt', felder: anlegen === 'zeichnen' ? [{ xM: 1, yM: 1, breiteM: 6, hoeheM: 6, quer: false }] : [],
+    fotoZuordnungen: [{ fotoId: 'foto', traufePx: null, eckenPx: [[96, 783], [1504, 783], [1504, 153], [96, 153]], perspektiveBestaetigt: true, markierungFertig: true }],
+  });
+  await page.addInitScript(projekt => {
+    localStorage.setItem('pv-belegung-projekte-v1', JSON.stringify({ aktivId: 'qa', workflowVersion: 2, projekte: [{ id: 'qa', projekt, schritt: 1, erstelltAm: Date.now(), geaendertAm: Date.now() }] }));
+  }, projekt);
+  await page.goto('./'); await oeffneStartprojekt(page);
+  const ziehen = async (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    if (browserName === 'chromium' && info.project.name.startsWith('mobil')) {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...a, id: 1 }] });
+      for (let i = 1; i <= 6; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: a.x + (b.x - a.x) * i / 6, y: a.y + (b.y - a.y) * i / 6, id: 1 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.detach();
+    } else {
+      await page.mouse.move(a.x, a.y); await page.mouse.down();
+      await page.mouse.move(b.x, b.y, { steps: 6 }); await page.mouse.up();
+    }
+  };
+  if (anlegen === 'zeichnen') {
+    await page.getByRole('button', { name: '+ Feld zeichnen', exact: true }).click();
+    const a = await punkt(page, 2, 2), b = await punkt(page, 8, 6);
+    await ziehen(a, b);
+  } else {
+    const automatisch = page.getByRole('button', { name: 'Automatisch belegen', exact: true });
+    await automatisch.first().click();
+  }
+  await expect(page.getByRole('button', { name: 'Auswählen', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const feldIndex = anlegen === 'zeichnen' ? 1 : 0;
+  await expect(page.getByText(`1 von ${feldIndex + 1} ausgewählt`, { exact: true })).toBeVisible();
+  if (anlegen !== 'zeichnen') await expect.poll(async () => (await stand(page)).flaechen[0]!.felder!.length).toBe(1);
+  const vorher = anlegen === 'zeichnen' ? { xM: 2, yM: 2, breiteM: 6, hoeheM: 4, quer: false } : (await stand(page)).flaechen[0]!.felder![0]!;
+  const x = vorher.xM + vorher.breiteM / 2, y = vorher.yM + vorher.hoeheM / 2;
+  const a = await punkt(page, x, y), b = await punkt(page, x + .6, y);
+  await ziehen(a, b);
+  await expect.poll(async () => (await stand(page)).flaechen[0]!.felder?.[feldIndex]?.xM ?? -Infinity).toBeGreaterThan(vorher.xM + .2);
+  await page.screenshot({ path: resolve(shots, `${info.project.name}-${anlegen}-sofort-gezogen.png`) });
+  await page.getByRole('button', { name: /Rückgängig/ }).click();
+  if (anlegen === 'zeichnen') await expect.poll(async () => (await stand(page)).flaechen[0]!.felder![feldIndex]!.xM).toBeCloseTo(vorher.xM, 1);
+  else await expect.poll(async () => (await stand(page)).flaechen[0]!.felder).toEqual([vorher]);
+});
 
 test('Einzelauswahl, bewusste Gruppe und Module ohne Feldauswahl', async ({ page }, info) => {
   test.setTimeout(90_000);

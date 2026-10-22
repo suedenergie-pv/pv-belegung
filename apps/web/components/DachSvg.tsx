@@ -270,6 +270,10 @@ function pointerHandler(
       if (e.button !== 0) return;
       const m = zuM(e);
       if (!m) return;
+      // Sonst markiert das Aufziehen auch SVG-Beschriftungen anderer Dächer.
+      // Der nächste Zug startet dann einen nativen Text-Drag statt der Feldgeste.
+      e.preventDefault();
+      e.currentTarget.focus({ preventScroll: true });
       geste.current = { id: e.pointerId, x: e.clientX, y: e.clientY, gezogen: false };
       // Auf einem kleinen/weit herausgezoomten Foto überlappen 44px-Touchziele.
       // Dann zählt der nächstgelegene sichtbare Griff statt der zufälligen SVG-Malreihenfolge.
@@ -1177,7 +1181,7 @@ export function DachSvg({
             viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
             className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
             preserveAspectRatio="xMidYMid meet"
-            style={pointer ? { touchAction: 'none' } : undefined}
+            style={pointer ? { touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } : undefined}
             onClick={klickM}
             onMouseMove={moveM}
             onMouseLeave={moveM ? () => zeichnen!.onMoveM!(null) : undefined}
@@ -1422,7 +1426,7 @@ export function DachSvg({
         viewBox={`0 0 ${B} ${H}`}
         className={`block h-full w-full focus:outline-none focus:ring-4 focus:ring-akzent/40 ${zeichnen?.aktiv ? 'cursor-crosshair' : ''}`}
         preserveAspectRatio="xMidYMid meet"
-        style={pointer ? { touchAction: 'none' } : undefined}
+        style={pointer ? { touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } : undefined}
         onClick={
           zeichnen?.aktiv
             ? (e) => {

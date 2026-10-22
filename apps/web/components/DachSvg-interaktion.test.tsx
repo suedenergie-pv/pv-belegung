@@ -21,6 +21,19 @@ function pointer(ziel: Element, art: string, x: number, y: number) {
   Object.defineProperty(e, 'pointerId', { value: 1 }); fireEvent(ziel, e);
 }
 
+it('unterbindet native Browserauswahl beim Feldzug und behält den SVG-Tastaturfokus', () => {
+  const f = flaeche(), down = vi.fn();
+  const ui = render(<DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul}
+    pointer={{ onDownM: down, onMoveM: vi.fn(), onUpM: vi.fn() }} />);
+  const svg = ui.getByRole('img'); box(svg);
+  const e = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 500, clientY: 350 });
+  Object.defineProperty(e, 'pointerId', { value: 1 }); fireEvent(svg, e);
+  expect(e.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(svg);
+  expect(down).toHaveBeenCalledOnce();
+  expect((svg as SVGSVGElement).style.userSelect).toBe('none');
+});
+
 it('adressiert einen Feldgriff ausdrücklich statt die Fotopixel als Meter-Toleranz zu deuten', () => {
   const f = flaeche(); const griff = vi.fn(); const down = vi.fn();
   const ui = render(<DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul}
