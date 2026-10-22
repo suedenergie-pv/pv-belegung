@@ -38,6 +38,7 @@ function projektMitFlaechen(anzahl = 1): Projekt {
 }
 
 const optionen = {
+  registriereSchrift: async () => 'helvetica',
   ladeLogo: async () => null,
   rastereSvg: vi.fn(async () => ({
     dataUrl: 'data:image/jpeg;base64,eA==',
@@ -96,6 +97,9 @@ describe('PDF-Generator', () => {
       .flat(2)
       .join('\n');
     expect(dateiname).toMatch(/^belegungsplan-projekt-\d+,\d{2}-kwp\.pdf$/);
+    expect(inhalt).toContain('SüdEnergie');
+    expect(inhalt).toContain('suedenergie-pv.de');
+    expect(inhalt).not.toContain('LCV');
     expect(inhalt).not.toContain('Kunde:');
     expect(inhalt).not.toContain('Adresse:');
     expect(inhalt).not.toContain('Erfasser:');
@@ -104,14 +108,14 @@ describe('PDF-Generator', () => {
     expect(inhalt).not.toContain('A · Dachfläche 1');
   });
 
-  it('erzeugt viele Flächen über mehrere Seiten und wiederholt den Tabellenkopf', async () => {
+  it('erzeugt viele Flächen über mehrere Seiten mit nachvollziehbarer Fortsetzung', async () => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const { doc } = await baueBelegungsPdf(projektMitFlaechen(60), null, () => svg, optionen);
     expect(doc.getNumberOfPages()).toBeGreaterThan(1);
     const inhalt = ((doc as unknown as { internal: { pages: string[][] } }).internal.pages)
       .flat(2)
       .join('\n');
-    expect(inhalt).toContain('Flächenübersicht \\(Fortsetzung\\)');
+    expect(inhalt).toContain('Dachflächen / Fortsetzung');
     expect(inhalt).toContain('Belegungsübersicht');
   });
 
@@ -122,7 +126,7 @@ describe('PDF-Generator', () => {
     [4, 9 / 16],
     [5, 3 / 2],
     [6, 9 / 16],
-  ])('ordnet %i Fotos ohne Beschnitt mit höchstens zwei Bildern pro Seite an', async (anzahl, verhaeltnis) => {
+  ])('ordnet %i Fotos ohne Beschnitt auf eigenen Bildseiten an', async (anzahl, verhaeltnis) => {
     const projekt = projektMitFlaechen();
     projekt.fotos = Array.from({ length: anzahl }, (_, i) => ({
       ...projekt.fotos[0]!, id: `foto-${i + 1}`, name: `Drohnenfoto ${i + 1}`,
@@ -137,28 +141,136 @@ describe('PDF-Generator', () => {
     });
     const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages
       .slice(1).map((seite) => seite.join('\n'));
-    expect(seiten).toHaveLength(Math.ceil(anzahl / 2));
-    expect(seiten[0]).toContain('Belegungsübersicht');
+    expect(seiten).toHaveLength(anzahl + (anzahl > 1 ? 1 : 0));
+    expect(seiten[0]).toContain(anzahl > 1 ? 'Perspektive' : 'Belegungsübersicht');
     expect(seiten[0]).toMatch(/\/I\d+ Do/);
+    expect(seiten.join('\n')).toContain('PDF Test');
+    expect(seiten.join('\n')).toContain('Musterweg 1');
+    expect(seiten.join('\n')).not.toContain('1 Dachflächen');
 
-    for (const [index, seite] of seiten.entries()) {
+    // Mehrere Ansichten erhalten eigene, passend ausgerichtete Bildseiten;
+    // die Anlagendaten stehen auf einer separaten A4-Hochformatseite.
+    for (const [index, seite] of seiten.slice(0, anzahl).entries()) {
+      doc.setPage(index + 1);
+      const seitenH = doc.internal.pageSize.getHeight();
+      const seitenB = doc.internal.pageSize.getWidth();
       // Die tatsächlichen PDF-Bildmatrizen prüfen (Punkte, Ursprung unten links).
       const bilder = [...seite.matchAll(/([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm\s+\/I\d+ Do/g)]
         .map((treffer) => {
           const [b, h, x, unten] = treffer.slice(1).map((wert) => Number(wert) * 25.4 / 72);
-          return { b: b!, h: h!, x: x!, y: 297 - unten! - h! };
+          return { b: b!, h: h!, x: x!, y: seitenH - unten! - h! };
         });
-      expect(bilder).toHaveLength(Math.min(2, anzahl - index * 2));
-      expect(seite).toContain('Belegungsübersicht');
+      expect(bilder).toHaveLength(1);
+      expect(seite).toContain(anzahl > 1 ? 'Perspektive' : 'Belegungsübersicht');
+      if (anzahl > 1) expect(seite).toContain(`${index + 1} von ${anzahl}`);
       for (const [bildIndex, bild] of bilder.entries()) {
-        expect(seite).toContain(`Drohnenfoto ${index * 2 + bildIndex + 1}`);
+        if (anzahl === 1) expect(seite).toContain(`Drohnenfoto ${index + 1}`);
         expect(bild.h / bild.b).toBeCloseTo(verhaeltnis, 5);
-        expect(bild.x + bild.b / 2).toBeCloseTo(105, 5);
-        expect(bild.y).toBeGreaterThanOrEqual(33.9);
-        expect(bild.y + bild.h).toBeLessThanOrEqual(277.1);
+        // Das erste Hochformatbild teilt sich die Seite mit einer Datenspalte.
+        // jsPDF rundet das A4-MediaBox-Maß bei der Umrechnung aus Punkten.
+        const mitte = anzahl === 1 && verhaeltnis > 1.1 ? 68
+          : anzahl > 1 && verhaeltnis <= 0.73 ? (76 + seitenB - 16) / 2 : seitenB / 2;
+        expect(bild.x + bild.b / 2).toBeCloseTo(mitte, 2);
+        expect(bild.y).toBeGreaterThanOrEqual(anzahl > 1 && verhaeltnis <= 0.73 ? 29.99 : 33.9);
+        expect(bild.y + bild.h).toBeLessThanOrEqual(seitenH - (anzahl > 1 ? 19.99 : 25));
+        if (anzahl > 1 && verhaeltnis <= 9 / 16) {
+          expect(seitenB).toBeGreaterThan(seitenH);
+          expect(bild.b).toBeGreaterThan(200);
+        }
         if (verhaeltnis <= 9 / 16) expect(bild.b).toBeGreaterThanOrEqual(160);
-        if (verhaeltnis === 3 / 4) expect(bild.b).toBeGreaterThanOrEqual(120);
+        if (verhaeltnis === 3 / 4) expect(bild.b).toBeGreaterThanOrEqual(115);
         if (bildIndex > 0) expect(bild.y).toBeGreaterThan(bilder[bildIndex - 1]!.y + bilder[bildIndex - 1]!.h);
+      }
+    }
+    if (anzahl > 1) {
+      const datenSeite = seiten.at(-1)!;
+      expect(datenSeite).toContain('Anlagendaten');
+      expect(datenSeite).toContain('Ansichten im Überblick');
+      expect(datenSeite).toContain('Ansicht 1 / Seite 1');
+      doc.setPage(doc.getNumberOfPages());
+      expect(doc.internal.pageSize.getHeight()).toBeGreaterThan(doc.internal.pageSize.getWidth());
+    }
+  });
+
+  it.each([1, 2])('erhält bei %i Fotos alle Angaben mit mindestens 12 pt und ohne wiederholten Fußblock', async (anzahlFotos) => {
+    const projekt = projektMitFlaechen();
+    if (anzahlFotos > 1) {
+      projekt.fotos.push({ ...projekt.fotos[0]!, id: 'foto-2', name: 'Andere Perspektive' });
+      projekt.flaechen[0]!.fotoZuordnungen!.push({ ...projekt.flaechen[0]!.fotoZuordnungen![0]!, fotoId: 'foto-2' });
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.slice(1).map(page => page.join('\n'));
+    for (const [index, seite] of seiten.slice(0, anzahlFotos).entries()) {
+      for (const angabe of ['Belegungsplan', 'PDF Test', 'Musterweg 1', 'Datum: 27.08.2026',
+        '27.08.2026', 'Module', 'kWp', anzahlFotos > 1 ? 'Dachfläche A' : 'Dachflächen A',
+        ...(anzahlFotos > 1 ? ['Perspektive', `${index + 1} von 2`, index === 0 ? 'Foto: Dachfoto' : 'Foto: Andere Perspektive'] : ['Dachfoto'])]) {
+        expect(seite).toContain(angabe);
+      }
+      if (anzahlFotos > 1) {
+        expect(seite).not.toContain('Vorplanung, keine Fachplanung');
+        expect(seite).not.toContain('Beratung:');
+      }
+    }
+    for (const seite of seiten) {
+      const groessen = [...seite.matchAll(/\/F\d+\s+([\d.]+)\s+Tf/g)].map(match => Number(match[1]));
+      expect(groessen.length).toBeGreaterThan(0);
+      expect(Math.min(...groessen)).toBeGreaterThanOrEqual(12);
+    }
+    expect(seiten.join('\n').match(/Vorplanung, keine Fachplanung/g)).toHaveLength(1);
+    expect(seiten.at(-1)).toContain('Beratung: Test Vertrieb');
+    expect(seiten.at(-1)).toContain('suedenergie-pv.de');
+  });
+
+  it('richtet gemischte Dachfotos einzeln aus und erhält einen Anhang in Hochformat', async () => {
+    const projekt = projektMitFlaechen();
+    projekt.fotos.push({ ...projekt.fotos[0]!, id: 'foto-2', name: 'Hochformat' });
+    projekt.flaechen[0]!.fotoZuordnungen!.push({ ...projekt.flaechen[0]!.fotoZuordnungen![0]!, fotoId: 'foto-2' });
+    const querSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const hochSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, id => id === 'foto-1' ? querSvg : hochSvg, {
+      ...optionen,
+      rastereSvg: async svg => ({ dataUrl: 'data:image/jpeg;base64,eA==', seitenverhaeltnis: svg === querSvg ? 9 / 16 : 1.5 }),
+    });
+    expect(doc.getNumberOfPages()).toBe(3);
+    doc.setPage(1);
+    expect(doc.internal.pageSize.getWidth()).toBeGreaterThan(doc.internal.pageSize.getHeight());
+    doc.setPage(2);
+    expect(doc.internal.pageSize.getHeight()).toBeGreaterThan(doc.internal.pageSize.getWidth());
+    doc.setPage(3);
+    expect(doc.internal.pageSize.getHeight()).toBeGreaterThan(doc.internal.pageSize.getWidth());
+  });
+
+  it('bettet die Original-Markenschrift für durchsuchbare PDF-Texte ein', async () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projektMitFlaechen(), null, () => svg, { ...optionen, registriereSchrift: undefined });
+    expect(doc.getFontList()['Inter']).toEqual(['normal', 'bold']);
+    expect(doc.output('arraybuffer').byteLength).toBeGreaterThan(20_000);
+  });
+
+  it.each([1, 2])('erhält lange Projekt-, Flächen- und Bildnamen bei %i Fotos vollständig innerhalb der Druckränder', async (fotoAnzahl) => {
+    const projekt = projektMitFlaechen(3);
+    projekt.kunde = 'Sehr langer Kundenname '.repeat(140) + 'KUNDENENDE';
+    projekt.adresse = 'Eine lange Adresse '.repeat(60) + 'ADRESSENENDE';
+    projekt.erfasser = 'Ausführlicher Beratername '.repeat(50) + 'BERATERENDE';
+    projekt.flaechen[0]!.name = 'Dachfläche mit langem Namen '.repeat(140) + 'FLAECHENENDE';
+    projekt.fotos[0]!.name = 'Lange Bildbeschreibung '.repeat(90) + 'BILDENDE';
+    if (fotoAnzahl > 1) {
+      projekt.fotos.push({ ...projekt.fotos[0]!, id: 'foto-2' });
+      projekt.flaechen[0]!.fotoZuordnungen!.push({ ...projekt.flaechen[0]!.fotoZuordnungen![0]!, fotoId: 'foto-2' });
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const seiten = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.slice(1);
+    const inhalt = seiten.flat(2).join('\n');
+    for (const ende of ['KUNDENENDE', 'ADRESSENENDE', 'BERATERENDE', 'FLAECHENENDE', 'BILDENDE']) expect(inhalt).toContain(ende);
+    for (const [index, seite] of seiten.entries()) {
+      doc.setPage(index + 1);
+      const seitenH = doc.internal.pageSize.getHeight();
+      for (const treffer of seite.join('\n').matchAll(/([\d.]+) ([\d.]+) Td/g)) {
+        const y = seitenH - Number(treffer[2]) * 25.4 / 72;
+        expect(y).toBeGreaterThanOrEqual(12);
+        expect(y).toBeLessThanOrEqual(seitenH - 6.99);
       }
     }
   });

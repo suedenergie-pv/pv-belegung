@@ -21,8 +21,8 @@ import {
 
 /**
  * PDF-Export des Belegungsplans (Hauptexport fürs Vertriebsgespräch, 06.07.2026):
- * Kompakte Zusammenfassung und bis zu zwei große Bilder bereits auf Seite 1.
- * Umfangreiche Flächendetails folgen erst nach den Bildseiten. Die Foto-SVGs werden
+ * SüdEnergie-Kundenblatt mit bildbetonter Titelseite und redaktionellen Flächendetails.
+ * Ein unbeschnittenes Foto pro Seite; umfangreiche Flächendetails folgen den Bildern. Die Foto-SVGs werden
  * per Canvas gerastert; kein Server, alles bleibt im Browser. Eine synthetische
  * Dach-Draufsicht wird nicht exportiert.
  * Der Stringplan ist bewusst NUR Zusatzinfo: gültig → eine Zeile, sonst weggelassen.
@@ -65,7 +65,10 @@ export interface PdfGeneratorOptionen {
   ladeLogo?: () => Promise<Awaited<ReturnType<typeof logoPng>> | null>;
   /** Festes Datum für reproduzierbare Exporttests. */
   jetzt?: Date;
+  /** Tests können PDF-Geometrie unabhängig von eingebetteten Schriftglyphen prüfen. */
+  registriereSchrift?: (doc: import('jspdf').jsPDF) => Promise<string>;
 }
+
 
 function azimutLabel(deg: number): string {
   const namen: [number, string][] = [
@@ -76,8 +79,16 @@ function azimutLabel(deg: number): string {
   return treffer ? `${treffer[1]} (${deg}°)` : `${deg}°`;
 }
 
-const HINWEIS =
-  'Vorplanung Vertrieb — keine Fachplanung. Finale Auslegung durch die Projektleitung (PV*SOL).';
+const HINWEIS = 'Vorplanung, keine Fachplanung. Die finale Auslegung erfolgt durch die Projektleitung (PV*SOL).';
+
+async function registriereInter(doc: import('jspdf').jsPDF): Promise<string> {
+  const { INTER_REGULAR, INTER_BOLD } = await import('./pdf-font-data');
+  doc.addFileToVFS('Inter-Regular.ttf', INTER_REGULAR);
+  doc.addFileToVFS('Inter-Bold.ttf', INTER_BOLD);
+  doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
+  doc.addFont('Inter-Bold.ttf', 'Inter', 'bold');
+  return 'Inter';
+}
 
 /**
  * Baut das PDF aus fertig kalibrierten Projektfotos — der Generator kennt kein React.
@@ -112,238 +123,390 @@ export async function baueBelegungsPdf(
     if (zugeordneteFlaechen.length === 0) continue;
     const svg = svgVonFoto(foto.id);
     if (!svg) throw new Error(`Exportbild für „${foto.name || foto.id}“ fehlt.`);
-    const bild = await (optionen.rastereSvg ?? svgZuJpeg)(svg, 1600);
+    const bild = await (optionen.rastereSvg ?? svgZuJpeg)(svg, 2200);
     const flaechen = zugeordneteFlaechen
       .map(({ f, i }) => zonenVon(f, i))
       .join(', ');
     fotoBilder.push({ id: foto.id, name: foto.name, flaechen, ...bild });
   }
 
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const SEITE_B = 210;
-  const SEITE_H = 297;
-  const RAND = 12;
-  const NUTZ_B = SEITE_B - 2 * RAND;
-  const INHALT_ENDE = SEITE_H - 16;
-
-  /** Gemeinsamer Seitenumbruch für Tabellenzeilen und Fotokarten. */
-  const seitenwechselWennNoetig = (hoehe: number, nachUmbruch?: () => void) => {
-    if (y + hoehe <= INHALT_ENDE) return;
-    doc.addPage();
-    y = 18;
-    nachUmbruch?.();
-  };
-
-  const fuss = () => {
-    const seiten = doc.getNumberOfPages();
-    for (let i = 1; i <= seiten; i++) {
-      doc.setPage(i);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(140);
-      doc.text(HINWEIS, RAND, SEITE_H - 8);
-      doc.text(`Seite ${i}/${seiten}`, SEITE_B - RAND, SEITE_H - 8, { align: 'right' });
-    }
-  };
-
-  const kurz = (text: string, breite: number) => {
-    if (doc.getTextWidth(text) <= breite) return text;
-    while (text.length && doc.getTextWidth(`${text}...`) > breite) text = text.slice(0, -1);
-    return `${text}...`;
-  };
-
-  // ---- Seite 1: Kopf + Zusammenfassung ----
-  let y = RAND + 4;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(20);
-  doc.text('Belegungsplan', RAND, y);
-  if (logo) {
-    // Logo oben rechts, an der Titelzeile ausgerichtet (Icon = Schrifthöhe, s. logo.ts)
-    const logoH = 9;
-    const logoW = logoH * (logo.w / logo.h);
-    doc.addImage(logo.dataUrl, 'PNG', SEITE_B - RAND - logoW, y - 6.6, logoW, logoH);
-  } else {
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text('SüdEnergie PV', SEITE_B - RAND, y, { align: 'right' });
-  }
-  y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(80);
+  const mehrereFotos = fotoBilder.length > 1;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: mehrereFotos && fotoBilder[0]!.seitenverhaeltnis <= 0.73 ? 'landscape' : 'portrait', putOnlyUsedFonts: true });
+  doc.setProperties({ title: 'SüdEnergie Belegungsplan', author: 'SüdEnergie', creator: 'SüdEnergie Belegungsplaner', subject: 'Photovoltaik-Vorplanung' });
+  const schrift = await (optionen.registriereSchrift ?? registriereInter)(doc);
+  const RAND = 16, BREITE = 178, ENDE = mehrereFotos ? 272 : 264;
+  // Kunden-PDF: Original-Logo-Orange aus logo.ts, nicht das abweichende Dashboard-Orange.
+  const INK = '#17212b', MUTED = '#53616d', AKZENT = '#EF4C29', LINE = '#d9dfe4';
   const datum = (optionen.jetzt ?? new Date()).toLocaleDateString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
   });
-  const projektzeilen = doc.splitTextToSize([
-    projekt.kunde && `Kunde: ${projekt.kunde}`,
-    projekt.adresse && `Adresse: ${projekt.adresse}`,
-    projekt.erfasser && `Erfasser: ${projekt.erfasser}`,
-    `Datum: ${datum}`,
-  ].filter(Boolean).join(' | '), NUTZ_B) as string[];
-  // Auch ungewöhnlich lange Stammdaten dürfen die Bilder nicht verdrängen.
-  const projektImAnhang = projektzeilen.length > 3;
-  const kopfzeilen = projektImAnhang ? [`Datum: ${datum} | Projektangaben im Anhang`] : projektzeilen;
-  for (const zeile of kopfzeilen) { doc.text(zeile, RAND, y); y += 4; }
-  const gesamtModule = projekt.flaechen.reduce(
-    (sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)), 0,
-  );
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(20);
-  doc.text(`${fmtDe(kwpGesamt(projekt), 2)} kWp | ${gesamtModule} Module`, RAND, y + 1);
-  y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  for (const zeile of doc.splitTextToSize(`${modul.name} (${modul.pmaxW} Wp)${projekt.wrId ? ` | WR: ${wrById(projekt.wrId).name}` : ''}`, NUTZ_B)) {
-    doc.text(zeile, RAND, y); y += 4;
-  }
-  if (result?.valid) {
-    doc.setTextColor(30, 120, 60);
-    doc.text('Stringplan geprüft (Regeln R1-R12): bestanden', RAND, y);
-    y += 4;
-  }
-  y += 2;
-
-  // Flächen-Tabelle
-  const SPALTEN = [RAND, RAND + 52, RAND + 92, RAND + 124, RAND + 152] as const;
-  const tabellenKopf = () => {
-    doc.setDrawColor(210);
+  const font = (groesse: number, fett = false, farbe = INK) => {
+    doc.setFont(schrift, fett ? 'bold' : 'normal');
+    doc.setFontSize(groesse);
+    doc.setTextColor(farbe);
+  };
+  const zeilen = (inhalt: string, breite: number, groesse = 10, fett = false): string[] => {
+    font(groesse, fett);
+    return doc.splitTextToSize(inhalt, breite) as string[];
+  };
+  const text = (inhalt: string | string[], x: number, y: number, groesse = 10, fett = false, farbe = INK) => {
+    font(groesse, fett, farbe);
+    doc.text(inhalt, x, y, { lineHeightFactor: 1.3 });
+  };
+  const linie = (y: number, x = RAND, breite = BREITE) => {
+    doc.setDrawColor(LINE);
     doc.setLineWidth(0.25);
-    doc.line(RAND, y, SEITE_B - RAND, y);
-    y += 5;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(110);
-    doc.text('Fläche', SPALTEN[0], y);
-    doc.text('Ausrichtung', SPALTEN[1], y);
-    doc.text('Neigung', SPALTEN[2], y);
-    doc.text('Module', SPALTEN[3], y);
-    doc.text('Leistung', SPALTEN[4], y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(40);
+    doc.line(x, y, x + breite, y);
   };
-  const zeichneTabelle = () => {
-    tabellenKopf();
-    for (const [i, f] of projekt.flaechen.entries()) {
-      doc.setFontSize(8);
-      const titelZeilen = doc.splitTextToSize(flaechenTitel(f, i).replaceAll(' · ', ' - '), 49) as string[];
-      const feldwinkel = [...new Set((f.felder ?? []).map(feld => normalisiereFeldDrehung(feld.drehungDeg)))];
-      const gedreht = !!f.flachdach && feldwinkel.some(w => w !== 0);
-      const richtungKurz = f.flachdach
-        ? f.flachdach.aufstaenderung === 'ostwest'
-          ? `O/W: O ${flachdachOstRichtung(f)}`
-          : `Süd ${flachdachSuedRichtung(f)}`
-        : azimutLabel(f.azimutDeg);
-      const richtungZeilen = doc.splitTextToSize(gedreht
-        ? `Grundraster ${richtungKurz}\nFelder: ${feldwinkel.map(w => `${fmtDe(w, 1)}°`).join(', ')}`
-        : richtungKurz, 38) as string[];
-      const zeilenH = Math.max(5, titelZeilen.length * 3.5, richtungZeilen.length * 3.5);
-      seitenwechselWennNoetig(zeilenH + 2, () => {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(20);
-        doc.text('Flächenübersicht (Fortsetzung)', RAND, y);
-        y += 6;
-        tabellenKopf();
-      });
-      const raster = rasterFuer(f, modul);
-      const n = aktiveModule(f, raster);
-      const ausrichtungen = ausrichtungenVon(f, raster);
-      // Der UI-Mittelpunkt wird von manchen PDF-Viewern als Kästchen angezeigt.
-      // Im Export einen verlässlich darstellbaren ASCII-Trenner verwenden.
-      doc.setFontSize(8);
-      doc.text(titelZeilen, SPALTEN[0], y, { lineHeightFactor: 1.24 });
-      doc.text(richtungZeilen, SPALTEN[1], y, { lineHeightFactor: 1.24 });
-      doc.text(f.flachdach ? `${f.flachdach.winkelDeg}° (Gestell)` : `${f.neigungDeg}°`, SPALTEN[2], y);
-      doc.text(`${n} (${ausrichtungen.bezeichnung})`, SPALTEN[3], y);
-      doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SPALTEN[4], y);
-      y += zeilenH;
+  const akzent = (x: number, y: number) => {
+    doc.setDrawColor(AKZENT);
+    doc.setLineWidth(0.7);
+    doc.line(x, y, x + 13, y);
+  };
+  // Eine offene Dachkante verbindet Projektdaten und Foto. Das Original-Logo bleibt unverändert.
+  const dachkante = (x: number, oben: number, unten: number) => {
+    doc.setDrawColor(AKZENT);
+    doc.setLineWidth(1.1);
+    doc.lines([[-5, 6], [0, unten - oben - 6]], x + 5, oben, [1, 1], 'S', false);
+  };
+  const bildnameBreite = (verhaeltnis: number) => verhaeltnis <= 0.73 ? 129 : BREITE - 76;
+  const bildSeitenzahlY = new Map<number, number>();
+  const logoKopf = () => {
+    const logoH = mehrereFotos ? 6.5 : 7.5;
+    if (logo) doc.addImage(logo.dataUrl, 'PNG', RAND, mehrereFotos ? 12.4 : 14, logoH * logo.w / logo.h, logoH);
+    else text('SüdEnergie', RAND, 21, 17, true);
+    if (!mehrereFotos) {
+      font(12, true);
+      doc.text('PHOTOVOLTAIK / VORPLANUNG', 194, 17, { align: 'right' });
     }
-    y += 3;
-    doc.line(RAND, y, SEITE_B - RAND, y);
-    y += 4;
-
+    font(12, false, MUTED);
+    doc.text(`Datum: ${datum}`, 194, mehrereFotos ? 16 : 23, { align: 'right' });
+    linie(31);
   };
-  // Normale Projekte kompakt integrieren. Umfangreiche Tabellen kommen hinter
-  // die Fotos, damit niemals eine reine Zusammenfassungsseite vorausgeht.
-  const tabelleImAnhang = projekt.flaechen.length > 8 || projekt.flaechen.some((f, i) => {
-    doc.setFontSize(8);
-    return doc.splitTextToSize(flaechenTitel(f, i).replaceAll(' · ', ' - '), 49).length > 1;
+  const neueSeite = (titel: string) => {
+    doc.addPage('a4', 'portrait');
+    logoKopf();
+    if (mehrereFotos) dachkante(10, 39, 59);
+    else akzent(RAND, 40);
+    text(titel, RAND, 51, mehrereFotos ? 27 : 23, true);
+    return mehrereFotos ? 72 : 65;
+  };
+
+  // Hochformat bekommt Bild und Daten nebeneinander, Querformat die volle Bildbreite.
+  const hochformat = (fotoBilder[0]?.seitenverhaeltnis ?? 0) > 1.1;
+  const kundeZeilen = zeilen(projekt.kunde, 57, 12, true);
+  const adresseZeilen = zeilen(projekt.adresse, 57, 12);
+  const beraterZeilen = zeilen(projekt.erfasser ? `Beratung: ${projekt.erfasser} / suedenergie-pv.de` : '', BREITE - 27, 12);
+  const projektImAnhang = kundeZeilen.length > 2 || adresseZeilen.length > 3 || beraterZeilen.length > 1;
+  const anzahl = projekt.flaechen.reduce((sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)), 0);
+  const flaechen = projekt.flaechen.map((f, i) => {
+    const raster = rasterFuer(f, modul);
+    const n = aktiveModule(f, raster);
+    const winkel = [...new Set((f.felder ?? []).map(feld => normalisiereFeldDrehung(feld.drehungDeg)))];
+    const richtung = f.flachdach
+      ? f.flachdach.aufstaenderung === 'ostwest'
+        ? `Ost/West: Ost ${flachdachOstRichtung(f)}` : `Süd ${flachdachSuedRichtung(f)}`
+      : azimutLabel(f.azimutDeg);
+    const gedreht = !!f.flachdach && winkel.some(w => w !== 0);
+    const ausrichtung = ausrichtungenVon(f, raster).bezeichnung;
+    return {
+      titel: flaechenTitel(f, i).replaceAll(' · ', ' - '),
+      leistung: `${n} Module / ${fmtDe(n * modul.pmaxW / 1000, 2)} kWp`,
+      details: `${gedreht ? 'Grundraster ' : ''}${richtung} / ${f.flachdach ? `${f.flachdach.winkelDeg}° Gestellneigung` : `${f.neigungDeg}° Dachneigung`}
+${ausrichtung === 'hoch' ? 'Hochkant' : ausrichtung === 'quer' ? 'Querformat' : 'Hochkant und Querformat'}${gedreht ? ` / Felder: ${winkel.map(w => `${fmtDe(w, 1)}°`).join(', ')}` : ''}`,
+    };
   });
-  if (!tabelleImAnhang) zeichneTabelle();
+  const ausstattung = `${modul.name}
+${modul.pmaxW} Wp je Modul${projekt.wrId ? `
+Wechselrichter: ${wrById(projekt.wrId).name}` : ''}`;
+  const datenX = hochformat ? 132 : 96;
+  const datenB = 194 - datenX;
+  const ausstattungZeilen = zeilen(ausstattung, datenB, 12);
+  const ausstattungImAnhang = mehrereFotos || ausstattungZeilen.length > (hochformat ? 5 : 4);
+  const kompaktB = hochformat ? datenB : flaechen.length === 2 ? 84 : BREITE;
+  const kompakt = flaechen.map(f => ({
+    ...f,
+    titelZeilen: zeilen(f.titel, kompaktB, 12, true),
+    detailZeilen: zeilen(f.details, kompaktB, 12),
+  }));
+  const detailsImAnhang = mehrereFotos || flaechen.length > 2 || kompakt.some(f => f.titelZeilen.length > 1 || f.detailZeilen.length > 2);
 
-  // Belegungsübersicht ausschließlich aus Drohnenfotos mit ihren zugeordneten Flächen.
-  const fotoKopf = (fortsetzung = false) => {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(20);
-    doc.text(fortsetzung ? 'Belegungsübersicht (Fortsetzung)' : 'Belegungsübersicht', RAND, y);
-    y += 6;
+  // Kein Beschnitt und keine große farbige Trägerfläche. Die Bildunterschrift
+  // folgt dem tatsächlichen Bildrand, auch bei schmalen oder hohen Bildern.
+  const bildZeichnen = (bild: typeof fotoBilder[number], oben: number, unten: number, x = RAND, breite = BREITE, beschriftung = true) => {
+    const platzH = unten - oben - (beschriftung ? 18 : 0);
+    const b = Math.min(breite, platzH / bild.seitenverhaeltnis);
+    const h = b * bild.seitenverhaeltnis;
+    const bildX = x + (breite - b) / 2;
+    const bildY = oben + (platzH - h) / 2;
+    doc.addImage(bild.dataUrl, 'JPEG', bildX, bildY, b, h);
+    const rahmen = { x: bildX, y: bildY, breite: b, hoehe: h };
+    if (!beschriftung) return rahmen;
+    const captionY = bildY + h + 5;
+    text('Belegungsübersicht', bildX, captionY, 12, true);
+    const caption = zeilen(`${bild.name || 'Dachfoto'} / Dachflächen ${bild.flaechen}`, b, 12);
+    text(caption.length <= 1 ? caption : `Foto ${fotoBilder.indexOf(bild) + 1} / Bildangaben im Anhang`, bildX, captionY + 6, 12, false, MUTED);
+    return rahmen;
   };
 
-  if (fotoBilder.length > 0) {
-    const kopfH = 10;
-    const abstand = 5;
-    const maxBildB = NUTZ_B - 6;
-    for (let start = 0; start < fotoBilder.length; start += 2) {
-      if (start > 0) { doc.addPage(); y = 18; }
-      fotoKopf(start > 0);
-      const paar = fotoBilder.slice(start, start + 2);
-      const maxBildH = (INHALT_ENDE - y - abstand * (paar.length - 1)) / paar.length - kopfH - 4;
-      for (const bild of paar) {
-        const bildH = Math.min(maxBildB * bild.seitenverhaeltnis, maxBildH);
-        const bildB = bildH / bild.seitenverhaeltnis;
-        const kartenH = kopfH + bildH + 4;
-
-        const x = RAND;
-        doc.setFillColor(248, 250, 252);
-        doc.setDrawColor(214, 220, 228);
-        doc.setLineWidth(0.3);
-        doc.roundedRect(x, y, NUTZ_B, kartenH, 2, 2, 'FD');
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(35, 45, 60);
-        doc.text(kurz(bild.name || 'Belegungsfoto', NUTZ_B - 6), x + 3, y + 4.5);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
-        doc.setTextColor(105, 115, 130);
-        doc.text(
-          kurz(bild.flaechen ? `Dachflächen ${bild.flaechen}` : 'Noch keine Fläche markiert', NUTZ_B - 6),
-          x + 3,
-          y + 8.5,
-        );
-
-        const bildX = x + (NUTZ_B - bildB) / 2;
-        const bildY = y + kopfH;
-        doc.addImage(bild.dataUrl, 'JPEG', bildX, bildY, bildB, bildH);
-
-        y += kartenH + abstand;
+  if (mehrereFotos) {
+    for (const [index, bild] of fotoBilder.entries()) {
+      const quer = bild.seitenverhaeltnis <= 0.73;
+      if (index > 0) doc.addPage('a4', quer ? 'landscape' : 'portrait');
+      const seitenB = doc.internal.pageSize.getWidth();
+      const seitenH = doc.internal.pageSize.getHeight();
+      const rechts = seitenB - RAND;
+      if (logo) doc.addImage(logo.dataUrl, 'PNG', RAND, 12.4, 6.5 * logo.w / logo.h, 6.5);
+      else text('SüdEnergie', RAND, 21, 17, true);
+      const kundenB = quer ? 136 : BREITE;
+      const namePasst = zeilen(projekt.kunde, kundenB, 14, true).length <= 1;
+      const adressePasst = zeilen(projekt.adresse, kundenB, 12).length <= 1;
+      const name = namePasst ? projekt.kunde : 'Projektangaben im Anhang';
+      const adresse = adressePasst ? projekt.adresse : 'Vollständige Adresse im Anhang';
+      const flaechenAnzahl = `${projekt.flaechen.length} ${projekt.flaechen.length === 1 ? 'Dachfläche' : 'Dachflächen'}`;
+      const kopfX = quer ? 76 : RAND;
+      if (name) text(name, kopfX, quer ? 15.8 : 51, 14, true);
+      if (adresse) text(adresse, kopfX, quer ? 23.2 : 58, 12, false, MUTED);
+      font(12, false, MUTED);
+      doc.text(`Datum: ${datum}`, rechts, 16, { align: 'right' });
+      let rahmen: ReturnType<typeof bildZeichnen>;
+      if (quer) {
+        text('Belegungsplan', RAND, 43, 19, true);
+        text('Gesamtleistung', RAND, 66, 12, false, MUTED);
+        const leistung = fmtDe(kwpGesamt(projekt), 2);
+        font(14, true);
+        const einheitB = doc.getTextWidth('kWp');
+        let groesse = 32;
+        font(groesse, true);
+        while (doc.getTextWidth(leistung) + einheitB + 2.5 > 49 && groesse > 18) font(--groesse, true);
+        const leistungB = doc.getTextWidth(leistung);
+        text(leistung, RAND, 83, groesse, true);
+        text('kWp', RAND + leistungB + 2.5, 83, 14, true, AKZENT);
+        text(`${anzahl} Module`, RAND, 107, 14, true);
+        text(flaechenAnzahl, RAND, 116, 12, false, MUTED);
+        rahmen = bildZeichnen(bild, 30, seitenH - 32, 76, seitenB - 76 - RAND, false);
+        const bildEnde = rahmen.y + rahmen.hoehe;
+        text('Perspektive', RAND, bildEnde - 11, 12, false, MUTED);
+        text(`${index + 1} von ${fotoBilder.length}`, RAND, bildEnde, 18, true);
+        dachkante(69, rahmen.y - 1, bildEnde + 1);
+      } else {
+        text('Belegungsplan', RAND, 39, 27, true);
+        font(12, false, MUTED);
+        doc.text('Perspektive', rechts, 32, { align: 'right' });
+        font(14, true);
+        doc.text(`${index + 1} von ${fotoBilder.length}`, rechts, 40, { align: 'right' });
+        text(`${fmtDe(kwpGesamt(projekt), 2)} kWp`, RAND, 72, 22, true);
+        text(`${anzahl} Module / ${flaechenAnzahl}`, 96, 71, 12, true);
+        dachkante(10, 32, 73);
+        rahmen = bildZeichnen(bild, 81, seitenH - 32, RAND, BREITE, false);
       }
+
+      const bildname = `Foto: ${bild.name || 'Dachfoto'}`;
+      const bildnameB = bildnameBreite(bild.seitenverhaeltnis);
+      const bildnamePasst = zeilen(bildname, bildnameB, 12).length <= 1;
+      const captionY = rahmen.y + rahmen.hoehe + 7;
+      text(bildnamePasst ? bildname : `Foto ${index + 1}: vollständiger Bildname im Anhang`, quer ? 76 : RAND, captionY, 12);
+      const zuordnung = `${bild.flaechen.includes(',') ? 'Dachflächen' : 'Dachfläche'} ${bild.flaechen}`;
+      font(12, true);
+      doc.text(zeilen(zuordnung, 48, 12, true).length <= 1 ? zuordnung : 'Zuordnung im Anhang', rechts - 21, captionY, { align: 'right' });
+      bildSeitenzahlY.set(index + 1, captionY);
     }
   } else {
-    seitenwechselWennNoetig(14);
-    fotoKopf();
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(120);
-    doc.text('Kein fertig kalibriertes Belegungsfoto vorhanden.', RAND, y + 4);
+    logoKopf();
+    text('DACHBELEGUNG', RAND, 39, 12, true, MUTED);
+    text('Belegungsplan', RAND, 55, 27, true);
+    if (projektImAnhang) {
+      text('Projektangaben', 137, 44, 12, true);
+      text('Vollständig im Anhang', 137, 51, 12, false, MUTED);
+    } else {
+      if (projekt.kunde) text(kundeZeilen, 137, 44, 12, true);
+      if (projekt.adresse) text(adresseZeilen, 137, 44 + kundeZeilen.length * 5.5 + 2, 12, false, MUTED);
+    }
+
+    if (fotoBilder[0]) {
+      if (hochformat) bildZeichnen(fotoBilder[0], 74, 262, RAND, 104);
+      else bildZeichnen(fotoBilder[0], 73, 188);
+    } else {
+      text('Kein fertig kalibriertes Belegungsfoto vorhanden.', RAND, 120, 12, false, MUTED);
+    }
+
+    // Die Leistung trägt die Typografie; Orange wird nur als kurzer Akzent eingesetzt.
+    const leistungX = hochformat ? datenX : RAND;
+    const leistungY = hochformat ? 97 : 210;
+    akzent(leistungX, leistungY - 18);
+    const leistung = fmtDe(kwpGesamt(projekt), 2);
+    let leistungGroesse = hochformat ? 30 : 36;
+    font(leistungGroesse, true);
+    while (doc.getTextWidth(leistung) > (hochformat ? datenB : 66) && leistungGroesse > 16) {
+      font(--leistungGroesse, true);
+    }
+    text(leistung, leistungX, leistungY, leistungGroesse, true);
+    text('kWp', leistungX, leistungY + 9, 12);
+    text('Geplante Modulleistung', leistungX, leistungY + 16, 12, false, MUTED);
+
+    const geraeteY = hochformat ? 139 : 195;
+    text('AUSSTATTUNG', datenX, geraeteY, 12, true, MUTED);
+    text(ausstattungImAnhang ? zeilen('Vollständige Ausstattung im Anhang.', datenB, 12) : ausstattungZeilen, datenX, geraeteY + 7, 12);
+    const zaehlerY = hochformat ? 124 : 232;
+    text(zeilen(`${anzahl} Module / ${projekt.flaechen.length} ${projekt.flaechen.length === 1 ? 'Dachfläche' : 'Dachflächen'}`, datenB, 12, true), datenX, zaehlerY, 12, true);
+    if (result?.valid) text(zeilen('Stringcheck: Regeln R1-R12 bestanden', datenB, 12), datenX, hochformat ? 183 : 239, 12, false, MUTED);
+
+    if (detailsImAnhang) {
+      text(zeilen('Dachflächen im Detail: siehe Anhang.', datenB, 12), datenX, hochformat ? 201 : 253, 12, false, MUTED);
+    } else {
+      for (const [i, f] of kompakt.entries()) {
+        const x = hochformat ? datenX : RAND + (flaechen.length === 2 ? i * 94 : 0);
+        const y = hochformat ? 194 + i * 32 : 241;
+        linie(y, x, kompaktB);
+        text(f.titelZeilen, x, y + 6, 12, true);
+        text(f.leistung, x, y + 12, 12, true);
+        text(f.detailZeilen, x, y + 18, 12, false, MUTED);
+      }
+    }
+  }
+  let y = 0;
+  if (detailsImAnhang || ausstattungImAnhang) {
+    y = neueSeite(mehrereFotos ? 'Anlagendaten' : 'Dachflächen im Detail');
+    if (mehrereFotos) {
+      if (!projektImAnhang) {
+        if (projekt.kunde) {
+          for (const zeile of zeilen(projekt.kunde, BREITE, 14, true)) {
+            text(zeile, RAND, y, 14, true);
+            y += 7;
+          }
+        }
+        if (projekt.adresse) {
+          for (const zeile of zeilen(projekt.adresse, BREITE, 12)) {
+            text(zeile, RAND, y, 12, false, MUTED);
+            y += 6.5;
+          }
+        }
+        y += 8;
+      }
+      const leistung = `${fmtDe(kwpGesamt(projekt), 2)} kWp`;
+      let groesse = 34;
+      font(groesse, true);
+      while (doc.getTextWidth(leistung) > 116 && groesse > 18) font(--groesse, true);
+      text(leistung, RAND, y + 7, groesse, true);
+      text(`${anzahl} Module`, 143, y - 1, 16, true);
+      text(`${projekt.flaechen.length} ${projekt.flaechen.length === 1 ? 'Dachfläche' : 'Dachflächen'}`, 143, y + 8, 12, false, MUTED);
+      linie(y + 17);
+      y += 31;
+    }
+    if (ausstattungImAnhang) {
+      if (mehrereFotos) {
+        text('Ausstattung', RAND, y, 14, true);
+        y += 9;
+      }
+      for (const zeile of zeilen(ausstattung, BREITE, 12)) {
+        if (y + 6 > ENDE) y = neueSeite('Anlagendetails / Fortsetzung');
+        text(zeile, RAND, y, 12);
+        y += 6.5;
+      }
+      y += 10;
+    }
+    if (mehrereFotos && result?.valid) {
+      text('Stringcheck: Regeln R1-R12 bestanden', RAND, y, 12, false, MUTED);
+      y += 9;
+    }
+    if (detailsImAnhang) for (const f of flaechen) {
+      const abschnitte: Array<[string, number, boolean]> = [[f.titel, 16, true], [f.leistung, 14, true], [f.details, 12, false]];
+      if (y + 32 > ENDE) y = neueSeite('Dachflächen / Fortsetzung');
+      if (!mehrereFotos) linie(y - 5);
+      for (const [inhalt, groesse, fett] of abschnitte) {
+        const titel = inhalt === f.titel;
+        const absatz = zeilen(inhalt, mehrereFotos ? BREITE - 8 : BREITE, groesse, fett);
+        for (const zeile of absatz) {
+          if (y + 6 > ENDE) y = neueSeite('Dachflächen / Fortsetzung');
+          if (mehrereFotos && titel) {
+            doc.setFillColor('#f4f6f8');
+            doc.rect(RAND, y - 6, BREITE, groesse * 0.46 + 2, 'F');
+            doc.setFillColor(AKZENT);
+            doc.rect(RAND, y - 6, 1.2, groesse * 0.46 + 2, 'F');
+          }
+          text(zeile, RAND + (mehrereFotos ? 4 : 0), y, groesse, fett);
+          y += groesse * 0.46;
+        }
+        y += 2;
+      }
+      y += 7;
+    }
+  }
+  const langeBildangaben = fotoBilder.filter(b => {
+    if (mehrereFotos) {
+      const bildnameZuLang = zeilen(`Foto: ${b.name || 'Dachfoto'}`, bildnameBreite(b.seitenverhaeltnis), 12).length > 1;
+      const zuordnung = `${b.flaechen.includes(',') ? 'Dachflächen' : 'Dachfläche'} ${b.flaechen}`;
+      return bildnameZuLang || zeilen(zuordnung, 48, 12, true).length > 1;
+    }
+    const rahmenB = hochformat ? 104 : BREITE;
+    const rahmenH = hochformat ? 170 : 97;
+    const breite = Math.min(rahmenB, rahmenH / b.seitenverhaeltnis);
+    return zeilen(`${b.name || 'Dachfoto'} / Dachflächen ${b.flaechen}`, breite, 12).length > 1;
+  });
+  if (projektImAnhang || langeBildangaben.length) {
+    y = neueSeite('Projektangaben');
+    const angaben = [
+      ...(projektImAnhang ? [projekt.kunde && `Kunde: ${projekt.kunde}`, projekt.adresse && `Adresse: ${projekt.adresse}`, projekt.erfasser && `Beratung: ${projekt.erfasser}`].filter(Boolean) : []),
+      ...langeBildangaben.map(b => `Foto ${fotoBilder.indexOf(b) + 1}: ${b.name}
+Dachflächen ${b.flaechen}`),
+    ];
+    for (const angabe of angaben) {
+      for (const zeile of zeilen(angabe as string, BREITE, 12)) {
+        if (y + 6 > ENDE) y = neueSeite('Projektangaben / Fortsetzung');
+        text(zeile, RAND, y, 12);
+        y += 6.5;
+      }
+      y += 7;
+    }
   }
 
-  if (projektImAnhang || tabelleImAnhang) {
-    doc.addPage(); y = 18;
-    if (projektImAnhang) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40);
-      for (const zeile of projektzeilen) {
-        seitenwechselWennNoetig(5); doc.text(zeile, RAND, y); y += 4;
-      }
-      y += 6;
+  // Bei kurzen Anlagenblättern erklärt ein Bildindex die Zuordnung der Perspektiven.
+  // Die großen Belegungsfotos davor bleiben die eigentlichen Planblätter.
+  const indexHoehe = fotoBilder.length > 3 ? 51 : 44;
+  if (mehrereFotos && !projektImAnhang && !langeBildangaben.length && y + indexHoehe + 26 <= ENDE) {
+    text('Ansichten im Überblick', RAND, y, 14, true);
+    const vorschauen = fotoBilder.slice(0, 3);
+    const spalteB = (BREITE - 7 * (vorschauen.length - 1)) / vorschauen.length;
+    for (const [index, bild] of vorschauen.entries()) {
+      const x = RAND + index * (spalteB + 7);
+      const b = Math.min(spalteB, 28 / bild.seitenverhaeltnis);
+      const h = b * bild.seitenverhaeltnis;
+      doc.addImage(bild.dataUrl, 'JPEG', x + (spalteB - b) / 2, y + 7 + (28 - h) / 2, b, h);
+      text(`Ansicht ${index + 1} / Seite ${index + 1}`, x, y + 42, 12, false, MUTED);
     }
-    if (tabelleImAnhang) zeichneTabelle();
+    if (fotoBilder.length > 3) text(`Weitere Perspektiven: Seiten 4 bis ${fotoBilder.length}.`, RAND, y + 50, 12, false, MUTED);
+    y += indexHoehe;
   }
-  fuss();
+  if (mehrereFotos) {
+    const beratung = projekt.erfasser && !projektImAnhang ? `Beratung: ${projekt.erfasser} / suedenergie-pv.de` : 'SüdEnergie / suedenergie-pv.de';
+    const kontakt = zeilen(beratung, BREITE, 12);
+    const hinweis = zeilen(HINWEIS, BREITE, 12);
+    const blockH = 8 + kontakt.length * 6.5 + hinweis.length * 5.6;
+    if (y + blockH > ENDE) y = neueSeite('Beratung und Planung');
+    else y += 5;
+    text(kontakt, RAND, y, 12);
+    y += kontakt.length * 6.5 + 3;
+    text(hinweis, RAND, y, 12, false, MUTED);
+  }
+
+  const seiten = doc.getNumberOfPages();
+  for (let i = 1; i <= seiten; i++) {
+    doc.setPage(i);
+    const seitenB = doc.internal.pageSize.getWidth();
+    const seitenH = doc.internal.pageSize.getHeight();
+    if (mehrereFotos) {
+      const seitenzahlY = bildSeitenzahlY.get(i) ?? seitenH - 8;
+      font(12, false, MUTED);
+      doc.text(`${i} / ${seiten}`, seitenB - RAND, seitenzahlY, { align: 'right' });
+      continue;
+    }
+    linie(seitenH - 27, RAND, seitenB - 2 * RAND);
+    text(zeilen(HINWEIS, BREITE, 12), RAND, seitenH - 21, 12, false, MUTED);
+    const kontakt = !projektImAnhang && projekt.erfasser ? `Beratung: ${projekt.erfasser} / suedenergie-pv.de` : 'SüdEnergie / suedenergie-pv.de';
+    text(kontakt, RAND, seitenH - 7, 12, false, MUTED);
+    font(12, true);
+    doc.text(`${i} / ${seiten}`, seitenB - RAND, seitenH - 7, { align: 'right' });
+  }
   return { doc, dateiname: downloadDateiname(projekt, 'belegungsplan', 'pdf') };
 }
 
