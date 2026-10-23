@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { berechneRaster, DEFAULT_RAND_M } from '../src/belegung';
+import { berechneRaster, besterVersatz, DEFAULT_RAND_M } from '../src/belegung';
+import { schraegGeometrie } from '../src/geometrie';
 import { JOLYWOOD_JW_HD96N_R2_460 } from '../src/catalog/modules';
 
 const M = JOLYWOOD_JW_HD96N_R2_460; // 1762 × 1134 mm
@@ -75,5 +76,270 @@ describe('Belegungsraster (SPEC §9)', () => {
     expect(r.cols).toBe(5);
     expect(r.randM).toBe(0);
     expect(r.fugeM).toBe(0.1);
+  });
+
+  it('jede Position trägt Ausrichtung + Maße (Einheitspfad)', () => {
+    const quer = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' });
+    for (const p of quer.positionen) {
+      expect(p.quer).toBe(true);
+      expect(p.wM).toBeCloseTo(1.762, 6);
+      expect(p.hM).toBeCloseTo(1.134, 6);
+    }
+    const hoch = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'hoch' });
+    for (const p of hoch.positionen) {
+      expect(p.quer).toBe(false);
+      expect(p.wM).toBeCloseTo(1.134, 6);
+      expect(p.hM).toBeCloseTo(1.762, 6);
+    }
+  });
+});
+
+describe('Gemischte Ausrichtung — Bänder (SPEC §9, 07.07.2026)', () => {
+  it('baender gleich der Basis = unveränderter Einheitspfad (kein Mix)', () => {
+    const ohne = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'hoch' });
+    const mitGleich = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'hoch',
+      baender: ['hoch', 'hoch', 'hoch'],
+    });
+    expect(mitGleich.positionen).toHaveLength(ohne.positionen.length); // 24
+    expect(mitGleich.rows).toBe(ohne.rows);
+  });
+
+  it('oberstes Band quer bei sonst hoch → gemischte Höhen, weniger Module', () => {
+    // Basis hoch (8×3 = 24). Band 0 → quer: quer(5) + hoch(8) + hoch(8) = 21.
+    const r = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'hoch',
+      baender: ['quer'],
+    });
+    expect(r.rows).toBe(3);
+    const reihe0 = r.positionen.filter((p) => p.row === 0);
+    const rest = r.positionen.filter((p) => p.row > 0);
+    expect(reihe0).toHaveLength(5);
+    expect(reihe0.every((p) => p.quer && Math.abs(p.hM - 1.134) < 1e-6)).toBe(true);
+    expect(rest.every((p) => !p.quer && Math.abs(p.hM - 1.762) < 1e-6)).toBe(true);
+    expect(r.positionen).toHaveLength(21);
+    expect(r.positionen.length).toBeLessThan(24); // Platz geht verloren
+  });
+
+  it('ein hohes (quer→hoch) Band drängt das unterste Band raus', () => {
+    // Basis quer (5×5 = 25 Module, 5 Bänder). Band 0 → hoch (höher) → nur 4 Bänder.
+    const r = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'quer',
+      baender: ['hoch'],
+    });
+    expect(r.rows).toBe(4); // von 5 auf 4 Bänder
+    const reihe0 = r.positionen.filter((p) => p.row === 0);
+    expect(reihe0).toHaveLength(8);
+    expect(reihe0.every((p) => !p.quer)).toBe(true);
+    expect(r.positionen.filter((p) => p.row > 0).every((p) => p.quer)).toBe(true);
+    expect(r.positionen).toHaveLength(23); // hoch(8) + 3× quer(5)
+  });
+
+  it('Bänder halten den Randabstand ein', () => {
+    const r = berechneRaster({
+      breiteM: 10,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'hoch',
+      baender: ['quer'],
+    });
+    for (const p of r.positionen) {
+      expect(p.xM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.yM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.xM + p.wM).toBeLessThanOrEqual(10 - r.randM + 1e-9);
+      expect(p.yM + p.hM).toBeLessThanOrEqual(6 - r.randM + 1e-9);
+    }
+  });
+});
+
+describe("Optimierung 'frei' — Parallelogramm/Schrägdach (08.07.2026)", () => {
+  // Parallelogramm mit 2,2 m Schräge: der Reihen-Versatz gewinnt nur 2 Module —
+  // unter der Auto-Schwelle (max(2, 10 %) = 3). Genrihs Fall: auto verschenkt Platz.
+  const schraeg = 2.2;
+  const basis = {
+    breiteM: 10 + schraeg,
+    hoeheM: 6,
+    module: M,
+    ausrichtung: 'quer' as const,
+    umrissM: [[schraeg, 0], [10 + schraeg, 0], [10, 6], [0, 6]] as [number, number][],
+  };
+
+  it('auto bleibt unter der Schwelle gerade (verschenkt 2 Module)', () => {
+    expect(berechneRaster(basis).positionen.length).toBe(23);
+  });
+
+  it("'frei' füllt jede Reihe maximal (+2 Module)", () => {
+    expect(berechneRaster({ ...basis, optimierung: 'frei' }).positionen.length).toBe(25);
+  });
+
+  it("'frei' ohne Umriss ändert nichts am Rechteck-Raster", () => {
+    const ohne = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' });
+    const frei = berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer', optimierung: 'frei' });
+    expect(frei.positionen.length).toBe(ohne.positionen.length);
+  });
+
+  // Fix 13.07.2026 (Genrih: „Reihen frei versetzen hat keine Funktion"): der
+  // Optimierer lief nur bei Umriss — Rechteck + Hindernisse ging leer aus.
+  it("'frei' wirkt auch am Rechteck-Dach mit Hindernissen (kein Umriss)", () => {
+    // 10×6 quer = 5×5. Zwei Hindernisse, die kein Block-Versatz gleichzeitig
+    // umgehen kann (eins links in Reihe 0, eins rechts in Reihe 2) — nur der
+    // reihenweise Versatz holt beide Module zurück.
+    const basis = { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const };
+    const hindernisse = [
+      { xM: 0.6, yM: 0.2, breiteM: 0.2, hoeheM: 0.3 },
+      { xM: 9.3, yM: 2.5, breiteM: 0.2, hoeheM: 0.3 },
+    ];
+    const auto = berechneRaster({ ...basis, hindernisseM: hindernisse });
+    const frei = berechneRaster({ ...basis, hindernisseM: hindernisse, optimierung: 'frei' });
+    expect(frei.positionen.length).toBe(25); // beide Reihen weichen aus → voll
+    expect(frei.positionen.length).toBeGreaterThan(auto.positionen.length);
+  });
+});
+
+describe('Schiefe Dachfläche / Parallelogramm (schraegGeometrie, 08.07.2026)', () => {
+  it('Parallelogramm: Rahmen = Traufe + Versatz, First liegt versetzt', () => {
+    // Genrihs Fall: Traufe = First = 4,5 m, Versatz 2 m, Sparren 6 m.
+    const g = schraegGeometrie(4.5, 6, 4.5, 2);
+    expect(g.rahmenBreiteM).toBeCloseTo(6.5, 6); // 4,5 + 2
+    // Ecken: Traufe l/r unten, First r/l oben (Rahmen-Koordinaten)
+    expect(g.ecken[0]).toEqual([0, 6]); // Traufe links
+    expect(g.ecken[1]).toEqual([4.5, 6]); // Traufe rechts
+    expect(g.ecken[3][0]).toBeCloseTo(2, 6); // First links = Versatz
+    expect(g.ecken[2][0]).toBeCloseTo(6.5, 6); // First rechts
+  });
+
+  it('Genrihs 4,5-m-Parallelogramm belegt (früher „passt nichts drauf")', () => {
+    const g = schraegGeometrie(4.5, 6, 4.5, 2);
+    // Im RICHTIGEN Rahmen (6,5) statt der reinen Traufe (4,5) → Module > 0.
+    const r = berechneRaster({
+      breiteM: g.rahmenBreiteM,
+      hoeheM: 6,
+      module: M,
+      ausrichtung: 'quer',
+      umrissM: g.umriss,
+      optimierung: 'frei',
+    });
+    expect(r.positionen.length).toBeGreaterThan(0);
+    // Alle Module liegen im Parallelogramm-Umriss (Filter greift)
+    expect(r.positionen.length).toBeLessThan(
+      berechneRaster({ breiteM: g.rahmenBreiteM, hoeheM: 6, module: M, ausrichtung: 'quer' })
+        .positionen.length,
+    );
+  });
+
+  it('Versatz 0 + First < Traufe = symmetrisches Trapez (Rahmen = Traufe)', () => {
+    const g = schraegGeometrie(8, 5, 4, 0);
+    expect(g.rahmenBreiteM).toBeCloseTo(8, 6);
+    expect(g.ecken[3][0]).toBeCloseTo(2, 6); // First links = (8-4)/2
+    expect(g.ecken[2][0]).toBeCloseTo(6, 6); // First rechts
+  });
+});
+
+describe('Gitter-Anker & Versatz-Konsistenz (16.07.2026)', () => {
+  // Parallelogramm-Umriss: hier greift der Block-Optimierer (dx ≠ 0) — genau der
+  // Fall, in dem der Versatz-Pfad früher anders verankert war (Belegung sprang
+  // beim Einschalten von „Verschieben", Lösch-Felder passten nicht mehr; Genrih).
+  const schraeg = 2.2;
+  const basis = {
+    breiteM: 10 + schraeg,
+    hoeheM: 6,
+    module: M,
+    ausrichtung: 'quer' as const,
+    umrissM: [[schraeg, 0], [10 + schraeg, 0], [10, 6], [0, 6]] as [number, number][],
+  };
+  const sortiert = (r: ReturnType<typeof berechneRaster>) =>
+    [...r.positionen].sort((a, b) => a.yM - b.yM || a.xM - b.xM).map((p) => [p.xM, p.yM]);
+
+  it('versatz (0,0) entspricht exakt der Standardlage (inkl. Optimierer-dx)', () => {
+    const std = berechneRaster(basis);
+    expect(std.reihenVersetzt).toBe(false); // auto bleibt hier der Block
+    const v0 = berechneRaster({ ...basis, versatzXM: 0, versatzYM: 0 });
+    const a = sortiert(std);
+    const b = sortiert(v0);
+    expect(b.length).toBe(a.length);
+    a.forEach(([x, y], i) => {
+      expect(b[i]![0]).toBeCloseTo(x!, 9);
+      expect(b[i]![1]).toBeCloseTo(y!, 9);
+    });
+  });
+
+  it('jede Position liegt auf dem Anker-Gitter (anker + k·pitch)', () => {
+    for (const input of [
+      basis,
+      { ...basis, versatzXM: 0.13, versatzYM: -0.07 },
+      { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const },
+    ]) {
+      const r = berechneRaster(input);
+      expect(r.positionen.length).toBeGreaterThan(0);
+      for (const p of r.positionen) {
+        const kx = (p.xM - r.ankerXM) / (r.modulBreiteM + r.fugeM);
+        const ky = (p.yM - r.ankerYM) / (r.modulHoeheM + r.fugeM);
+        expect(Math.abs(kx - Math.round(kx))).toBeLessThan(1e-6);
+        expect(Math.abs(ky - Math.round(ky))).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it("reihenVersetzt: true bei 'frei' am Parallelogramm, false am Rechteck", () => {
+    expect(berechneRaster({ ...basis, optimierung: 'frei' }).reihenVersetzt).toBe(true);
+    expect(
+      berechneRaster({ breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' }).reihenVersetzt,
+    ).toBe(false);
+  });
+
+  it('besterVersatz zählt auf demselben Anker wie berechneRaster (Umriss-Dach)', () => {
+    const best = besterVersatz(basis);
+    const beiBest = berechneRaster({ ...basis, ...best }).positionen.length;
+    const bei0 = berechneRaster({ ...basis, versatzXM: 0, versatzYM: 0 }).positionen.length;
+    expect(beiBest).toBeGreaterThanOrEqual(bei0);
+  });
+});
+
+describe('Manueller Versatz / Nudge (07.07.2026)', () => {
+  const basis = { breiteM: 10, hoeheM: 6, module: M, ausrichtung: 'quer' as const };
+  // Hindernis, das nur Reihe0/Spalte0 streift (x 0,40..0,65) → 1 Modul entfaellt.
+  const hindernis = { xM: 0.4, yM: 0.4, breiteM: 0.25, hoeheM: 0.3 };
+
+  it('Versatz 0 aendert die Standardbelegung (Rechteck) nicht', () => {
+    const ohne = berechneRaster(basis);
+    const mit0 = berechneRaster({ ...basis, versatzXM: 0, versatzYM: 0 });
+    expect(mit0.positionen).toHaveLength(ohne.positionen.length); // 25
+  });
+
+  it('Verschieben befreit ein vom Hindernis gestreiftes Modul', () => {
+    const voll = berechneRaster(basis).positionen.length; // 25
+    const gestreift = berechneRaster({ ...basis, hindernisseM: [hindernis] });
+    expect(gestreift.positionen.length).toBe(voll - 1); // 24
+    // 10 cm nach rechts → Modul frei, wieder voll belegt
+    const verschoben = berechneRaster({ ...basis, hindernisseM: [hindernis], versatzXM: 0.1 });
+    expect(verschoben.positionen.length).toBe(voll); // 25
+  });
+
+  it('besterVersatz findet die Lage mit den meisten Modulen', () => {
+    const input = { ...basis, hindernisseM: [hindernis] };
+    const best = besterVersatz(input);
+    const voll = berechneRaster(basis).positionen.length; // 25
+    const r = berechneRaster({ ...input, versatzXM: best.versatzXM, versatzYM: best.versatzYM });
+    expect(r.positionen.length).toBe(voll); // Hindernis umgangen
+  });
+
+  it('Versatz bleibt in der Zone (Randabstand eingehalten)', () => {
+    const r = berechneRaster({ ...basis, versatzXM: 0.3, versatzYM: -0.2 });
+    expect(r.positionen.length).toBeGreaterThan(0);
+    for (const p of r.positionen) {
+      expect(p.xM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.yM).toBeGreaterThanOrEqual(r.randM - 1e-9);
+      expect(p.xM + p.wM).toBeLessThanOrEqual(10 - r.randM + 1e-9);
+      expect(p.yM + p.hM).toBeLessThanOrEqual(6 - r.randM + 1e-9);
+    }
   });
 });

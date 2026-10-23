@@ -40,6 +40,13 @@
   `.next/types` und brach den typecheck.
 - Nach dem Öffnen von Print-/Export-Dialogen nie screenshotten (Renderer friert ein);
   `preview_eval` verwenden.
+- Preview generell wackelig: das Fenster kollabiert oft auf 0×0 (dann sind alle
+  getBoundingClientRect-Werte 0 → Koordinaten-Klicks landen ins Leere). Vor Klick-
+  Simulationen einmal `preview_resize` auf feste Maße setzen (z. B. 1400×1000).
+- `preview_eval` läuft bei schnellen Klick-Sequenzen / großen Rückgaben oft in den
+  30-s-Timeout, OBWOHL die Aktion durchlief — nicht auf Fehlschlag schließen, sondern
+  den Zustand (localStorage/DOM) frisch nachprüfen (kleine Rückgabe hilft).
+- Der Dev-Server stoppt gelegentlich mitten in der Session — dann `preview_start` neu.
 
 ## Kontakt-Punkte, die auf Genrih warten (nicht blockierend für Schritt 1–3)
 
@@ -58,14 +65,179 @@ Stringcheck-Umbenennung, Belegungs-Optimierer, SüdEnergie-Logo im PDF-Kopf
 (Icon auf Versalhöhe, `lib/logo.ts`) — alle erledigt (5. Session, s.u.).
 
 **Noch offen:**
-1. **PV*SOL-Gegenrechnung (das Gate, Genrih)** — weiterhin der wichtigste Punkt.
-2. Ideen: Foto-Feinpositionierung, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
+1. ~~PV*SOL-Gegenrechnung (das Gate)~~ — Genrih 13.07.: „auf das Gate scheißen wir."
+   Nicht mehr nachhalten.
+2. Ideen: Tablet-Version (die Pfeil-Knöpfe sind dafür da), Felder per Griff größer
+   ziehen/Snap, R13+ (OFFENE_FRAGEN #4), mehr WR-Familien.
+
+⚠️ **Die Belegung läuft seit 16.07.2026 über den FELDER-MODUS** (Nutzer zieht Rechtecke).
+Alle Beschreibungen von Auto-Belegung, Optimierer, „Reihen frei versetzen", Versatz/
+„Beste Position", „Modul setzen", „Einzeln verschieben" und gelöschten Fußabdrücken in
+den Übergaben vom 06.–16.07. sind HISTORIE — dieser Code ist entfernt. Siehe die
+Felder-Übergabe direkt unten.
 
 **Regeln dabei:** Engine rechnet, UI rechnet nie (SPEC §3.4/§3.5). Elektrik nur
 aus Datenblatt-PDFs. Jede Engine-Änderung mit Tests (`npx vitest run --root
 packages/engine`), vor jedem Push `npm run typecheck`. Commits klein, auf Deutsch,
 mit Datum/Begründung wie bisher. Verifikation im Browser über die debug-shot-Route
 (NICHT preview_screenshot), bei 0×0-Viewport zuerst `preview_resize` 1280×900.
+
+## Session-Übergabe 17.07.2026 (11. Session — Codex): Mehrere Belegungsfotos
+
+- Das eigene Tab **„Gesamtansicht" ist entfernt**. Projekt, Dachflächen, Belegung und
+  Export sind die sichtbaren Schritte.
+- `Projekt.fotos: ProjektFoto[]` speichert jedes Bild genau einmal. Eine Fläche verweist
+  über `fotoZuordnung` auf ihr primäres Foto; Ecken, Traufe und Foto-Maßstab liegen in
+  dieser Zuordnung. `dachFotoVon()` baut nur für die vorhandenen Renderer transient die
+  bisherige `DachFoto`-Sicht.
+- Im Belegungsschritt können mehrere Fotos hochgeladen, benannt, ersetzt und gelöscht
+  werden. A/B/C werden pro Foto hinzugefügt oder über den Selektor an der Fläche
+  umgehängt. Mehrere Flächen auf demselben Foto haben unabhängige Perspektiven und
+  Umrisse; die bestehenden Werkzeuge bleiben unverändert.
+- Alte Einzel-Fotos (`Flaeche.foto`) und die alte Gesamtansicht
+  (`Projekt.gesamtFoto`/`gesamtEckenPx`) werden beim Laden einmalig migriert. Die alten
+  optionalen Felder bleiben vorerst nur als Import-Kompatibilität im Typ.
+- PDF-Seite 1 zeigt alle Foto-Gruppen mit ihren jeweils zugeordneten Flächen. Ohne Fotos
+  bleibt die bisherige Draufsicht-Übersicht bestehen.
+- **Gauben umgesetzt (17.07., Nachbesserung):** `gaubenTyp`, `elternFlaecheId`,
+  optional `gaubenSeite`/`gaubenGruppeId`. Flachdachgaube = EINE 5°-Ebene mit
+  Stehfalz und normaler dachparalleler Belegung; niemals `art: 'flachdach'` und
+  niemals PROFINESS-Aufständerung. Satteldachgaube wird per UI als zwei Flächen
+  links/rechts angelegt. Der Gaubenfuß wird auf der Mutterfläche mit dem vorhandenen
+  Hindernis-Werkzeug ausgespart; die Belegung zeigt dafür einen deutlichen Hinweis.
+- PDF-Nachbesserung: kompakte A/B/C-Flächentitel, Foto-Karten mit zugeordneten Zonen
+  sowie sichtbare, ruhige Zonenmarker direkt auf den Belegungsfotos.
+
+## Session-Übergabe 16.07.2026 (10. Session — Fable): Flachdach + Fassade
+
+`Flaeche.art: 'dach' | 'flachdach' | 'fassade'` (Auswahl in Schritt „Dachflächen").
+
+- **Flachdach** nach **PROFINESS Flat** (Genrih: „Profioness Ost West, schau selber
+  online" — Montageanleitung 05/2025 liegt in `docs/datenblaetter/`, Quelle
+  profiness.de): Ost-West 10° mit **Paar-Pitch 2,48 m** (2er-Gestell 2,48 / 4er 4,96 →
+  Paare bündig), Süd 10°/15° mit **Reihen-Pitch 1,80/1,90 m** (Querschnitte S. 22),
+  Randabstand-Defaults 0,60/0,80 m (Windlast, S. 7), **nur querliegende Module**
+  (Rahmen 1050–1170 mm). Engine: `feldZellen`-Generator in `berechneFelderRaster`
+  (`FelderInput.montage`), Fußabdruck = widthMm·cos(winkel), O/W-Module tragen
+  `seite: 'ost'|'west'` (Westhälfte wird abgeschattet gerendert). **Konvention:
+  Unterkante der Fläche = Süden.** Alle Felder-Werkzeuge unverändert.
+- **Fassade** = ebene Fläche mit Neigung fest 90° (Validierung bis 90° geöffnet),
+  Foto frontal, KEIN Engine-Sonderfall. Oberflächen Putz/Klinker; Fenster = Hindernis.
+- Payload: `flaechen[].montage` (`dach | fassade | flachdach_sued_10 | …`).
+- Pitch je Fläche editierbar (anderes Gestell); `flachdachPitchDefault`/`randDefaultVon`
+  in model.ts sind die einzige Stelle mit den PROFINESS-Werten.
+
+## Session-Übergabe 16.07.2026 (9. Session — Fable/Opus): FELDER-MODUS ersetzt den Automatismus
+
+**Das ist jetzt die Belegungs-Wahrheit — alles darunter über Automatik/Optimierer/
+Versatz/Zusatzmodule ist HISTORIE (Code ist raus).** Genrih: „Belegungsautomatismus
+mildern" — nach mehreren Bug-Wellen ersetzt durch SolarEdge-Designer-Prinzip.
+
+**Bedienung:** Neue Flächen starten LEER. Der Nutzer zieht per Klick+Ziehen beliebig
+viele **Belegungsfelder** (Rechtecke) ins Dach, die sich mit Modulen füllen. Antippen =
+aus-/abwählen (mehrere); Ziehen am Feld = Drag&Drop; **Pfeiltasten** (nativer OS-Key-
+Repeat) oder **Pfeil-Knöpfe mit Halte-Wiederholung** (`HoldButton` in ui.tsx, 130 ms —
+BLEIBT für die Tablet-Version, Genrih ausdrücklich). Über Rand/Umriss/Hindernis
+hinausragende Module fallen einfach weg (Feld bleibt, ≥ 0,5 m im Rahmen).
+„Modul löschen" = Zellen antippen. „Automatisch füllen" = ein zentriertes Feld über die
+Nutzfläche (= alte Vollbelegung, aber verschiebbar).
+
+**Architektur:**
+- Engine `berechneFelderRaster(FelderInput, BelegungsFeldM[])` + `vollFeld` + `posKey`
+  (belegung.ts). Überlappende Felder: **früheres gewinnt**, nie zwei Module übereinander.
+- `BelegungsFeldM.leer` = gelöschte Zellen als **feld-lokale** `"row-col"`-Identität →
+  Löcher wandern beim Verschieben von selbst mit. **Merke: nie wieder Löcher/Module an
+  Dach-Koordinaten hängen** — genau das erzeugte die 13./16.07.-Bugs.
+- `Flaeche.felder` ist die EINZIGE Belegungsquelle; `rasterFuer` = reiner Engine-Aufruf
+  ohne UI-Nachfilterung. Alt-Schlüssel werden in `migriereProjekt` gestrippt.
+- `berechneRaster`/`besterVersatz` bleiben in der Engine (Tests hängen dran), werden
+  von der UI aber NICHT mehr benutzt.
+- DachSvg: `pointer`-Prop (Pointer-Events, `touchAction: none`) für beide Zweige
+  (Draufsicht + Foto/Homographie), `felderAnzeige`/`feldVorschau`; `geist` ist raus.
+
+**Drei echte Fehler dabei gefunden (Fallen für die nächste Session):**
+1. `patchFlaeche` las die Fläche aus der **gerenderten Closure** — gehaltene Pfeile
+   feuern schneller als React rendert, jeder zweite Schritt ging verloren (gemessen:
+   2 statt 8/s). Fix: `projektRef` wird beim Patchen sofort mitgezogen.
+2. `speichereProjekte` lief **synchron bei jedem Schritt** und serialisierte das ganze
+   Projekt inkl. Foto-DataURLs → Main-Thread blockiert (1-s-Sleep dauerte 1,84 s).
+   Fix: 400 ms debounced + Flush bei `pagehide`/Unmount (page.tsx).
+   ⚠️ **Testfalle:** localStorage hinkt jetzt 400 ms nach — beim Verifizieren länger
+   warten, sonst misst man alte Werte. Und der pagehide-Flush überschreibt einen per
+   `localStorage.setItem` gesetzten Teststand beim Reload (Workaround: setItem sperren).
+3. `setPointerCapture` stand VOR dem Auslösen; wirft es (NotFoundError bei inaktivem
+   Pointer), war der Knopf/Zug still tot. Reihenfolge gedreht + try/catch.
+   Dazu: Sicherheitsnetz gegen verlorenes `pointerup` (window-Fallback), sonst blieb ein
+   Drag ewig offen und zeigte die Belegung dauerhaft verschoben an.
+
+⚠️ **Preview-Falle (neu):** `setInterval` wird im Preview-Tab auf ~1×/s gedrosselt
+(`visibilityState: 'hidden'`) — die Halte-Wiederholung ist dort NICHT messbar (ein
+nackter `setInterval(130)` feuert genauso langsam). Nicht auf Codefehler schließen.
+
+Nicht im Scope v1: Felder per Griff größer ziehen (löschen + neu ziehen), Snap,
+Undo-History.
+
+## Session-Übergabe 16.07.2026 (8. Session — Fable): Anker-Umbau nach „komplett verbuggt"
+
+Genrih meldete: doppelte Modulschicht beim Zurücksetzen nach Verschieben, „Modul
+setzen" hängt daneben, Gesamtansicht zerschossen beim Flächen-Einzeichnen. Kernursache:
+**Versatz-Pfad und Standardlage der Engine hatten verschiedene Gitter-Anker** (Block-
+Optimierer-dx nur im Default-Pfad) → bei Umriss-Dächern sprang die Belegung beim
+„Verschieben"-Einschalten, und die absolut gespeicherten geloescht-Felder rissen vom
+Raster ab (gelöschte Module kamen zurück, Einzeln-Extras blieben → Doppelschicht).
+
+Umbau (ein Commit, im Browser end-to-end verifiziert, 96 Engine-Tests):
+1. Engine: `sucheBlockDx` geteilt; Versatz-Pfad + `besterVersatz` ankern auf der
+   Standardlage; `BelegungRaster.ankerXM/YM` (Gitterphase) + `reihenVersetzt`-Flag.
+   MERKE: alles, was am Raster kleben soll, RELATIV zum Anker speichern.
+2. `Flaeche.geloeschtRel` ersetzt `geloescht` (absolut → relativ zum Anker, Migration
+   in migriereProjekt). Keine Delta-Buchhaltung mehr in nudge/bestePosition/reset.
+3. `rasterFuer`: Rastermodule, die ein extraModule überlappen, entfallen (Extras
+   gewinnen) → Doppelschicht konstruktiv unmöglich.
+4. „Modul setzen": Reihen-Fang aus dem Anker (auch komplett geleerte Reihen fangbar),
+   Fallback auf freie Klickposition, Geist nutzt dieselbe zielExtra-Logik.
+5. SchrittGesamt: Fläche platzieren löscht NICHT mehr umrissM/hindernisse/inaktiv.
+6. „Verschieben" gesperrt bei `raster.reihenVersetzt` (ein Gitter kann die Lage
+   nicht darstellen); Doppelklick-Schutz in waehleEinzeln.
+
+## Session-Übergabe 13.07.2026 (7. Session — Fable): 4 Genrih-Fixes
+
+Alle je Schritt committet & gepusht (Deploy automatisch):
+
+1. **Stringcheck-Tab ausgeblendet** (page.tsx): nur visuell — Engine R1–R12,
+   `SchrittStrings`, `pruefeStringplan`, JSON-Payload bleiben komplett im Projekt.
+   Gespeicherte Stände auf Alt-Schrittindex 4/5 werden auf Export geklemmt.
+2. **„Reihen frei versetzen" repariert** (belegung.ts): der Optimierer lief nur bei
+   Umriss — am Rechteck mit Hindernissen tat der Knopf nichts. Ohne Umriss läuft er
+   jetzt bei explizitem 'frei'; das Default-Verhalten (zentriert) bleibt unverändert
+   (Test: 2 Hindernisse, frei 23→25). UI graut den Knopf ehrlich aus, wenn er
+   wirkungslos wäre (kein Umriss/Hindernis, oder manueller Versatz aktiv).
+3. **„Modul löschen" endgültig** (SchrittBelegung + model.ts): Modus wählen →
+   Module antippen (rot umrandet) → „Endgültig löschen". Fußabdrücke landen in
+   `Flaeche.geloescht` (RechteckM[]); `rasterFuer` filtert überlappende Rastermodule
+   NACH der Engine — bewusst KEIN Engine-Hindernis, damit Keys stabil bleiben und
+   der Optimierer beim Löschen nichts umsortiert. Felder bleiben auch nach
+   Verschieben/„Beste Position" leer; nur `extraModule` („Modul setzen") darf dort
+   wieder hin. „Gelöschte zurückholen" (Aktionen-Zeile) hebt alles auf.
+4. **„Einzeln verschieben"** (neu): Rastermodul antippen → wird `extraModule`, sein
+   altes Feld wandert nach `geloescht` (bleibt leer) → per Pfeiltasten (window-
+   keydown, Inputs ausgenommen) oder Pfeilknöpfen schieben; Rest der Anlage steht.
+
+Nachtrag (gleicher Tag, Genrih-Feedback): (a) Die geloescht-Leerstellen gehören zur
+ANLAGE, nicht zum Dach — bei Nudge/„Beste Position"/„Zurücksetzen" wandern sie um
+exakt denselben Delta mit (vorher fraßen die stehenbleibenden Löcher beim
+Verschieben Module). (b) „Einzeln verschieben" mit MEHRFACHauswahl: antippen = dazu,
+nochmal = abwählen; Gruppe bewegt sich gemeinsam, alles-oder-nichts-validiert
+(`extraModulGueltig` nimmt jetzt auch eine Index-Liste als `ausser`).
+
+Nebenbei: die 5 Werkzeug-Modi in SchrittBelegung zu EINEM State
+(`modus {art, flaecheId}`, `setzeModus` räumt Auswahl auf) vereinheitlicht;
+DachSvg `hervorhebenKey` → `hervorheben {keys[], farbe}` (Lösch-Auswahl rot);
+launch.json `autoPort: true` (Port 3000 war von anderem Projekt belegt).
+Im Browser verifiziert (per preview_eval, ohne Screenshots): Löschen 25→23,
+Nudge/„Beste Position" holt Gelöschte NICHT zurück, Pfeiltasten bewegen nur das
+Einzelmodul, frei-Knopf 23→25 bzw. disabled am nackten Rechteck. 92 Engine-Tests
+grün, typecheck sauber.
 
 ## Session-Übergabe 07.07.2026 (6. Session — Opus)
 

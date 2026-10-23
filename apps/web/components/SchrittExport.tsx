@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from 'react';
 import {
   aktiveModule,
   bauePayload,
+  dachFotoVon,
+  flaechenTitel,
   fmtDe,
   kwpGesamt,
   modulById,
@@ -15,6 +17,7 @@ import {
 } from '../lib/model';
 import { erzeugeBelegungsPdf } from '../lib/pdf-export';
 import { DachSvg } from './DachSvg';
+import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
 
 export function SchrittExport({ projekt }: { projekt: Projekt }) {
@@ -34,8 +37,15 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
     setPdfLaeuft(true);
     setPdfFehler(null);
     try {
-      await erzeugeBelegungsPdf(projekt, result, (flaecheId) =>
-        renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ?? null,
+      await erzeugeBelegungsPdf(
+        projekt,
+        result,
+        (flaecheId) =>
+          renderRef.current?.querySelector<SVGSVGElement>(`[data-flaeche="${flaecheId}"] svg`) ??
+          null,
+        (fotoId) =>
+          renderRef.current?.querySelector<SVGSVGElement>(`[data-foto="${fotoId}"] svg`) ??
+          null,
       );
     } catch (e) {
       setPdfFehler(e instanceof Error ? e.message : 'PDF-Erzeugung fehlgeschlagen');
@@ -65,12 +75,12 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
             <dt className="text-slate-500">Wechselrichter</dt>
             <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : '— (nur Belegung)'}</dd>
           </div>
-          {projekt.flaechen.map((f) => {
+          {projekt.flaechen.map((f, i) => {
             const raster = rasterFuer(f, modul);
             return (
               <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
                 <dt className="text-slate-500">
-                  {f.name} · {f.neigungDeg}° · Azimut {f.azimutDeg}°
+                  {flaechenTitel(f, i)} · {f.neigungDeg}° · Azimut {f.azimutDeg}°
                 </dt>
                 <dd className="font-medium">
                   {aktiveModule(f, raster)} Module ({f.ausrichtung}) ·{' '}
@@ -151,9 +161,9 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         </div>
         {exportGesperrt && (
           <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            JSON-Export gesperrt: Der Stringplan ist ungültig (SPEC §7) oder es sind mehr Module
-            verstringt als belegt. Fehler im Schritt „Stringcheck" beheben — oder den
-            Wechselrichter auf „kein Stringplan" stellen. Das PDF oben bleibt verfügbar.
+            JSON-Export gesperrt: Der hinterlegte Stringplan ist ungültig (SPEC §7) oder es sind
+            mehr Module verstringt als belegt. (Wechselrichter/Strings stammen aus einer früheren
+            Planung — der Stringcheck-Schritt ist ausgeblendet.) Das PDF oben bleibt verfügbar.
           </p>
         )}
         <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
@@ -173,9 +183,23 @@ export function SchrittExport({ projekt }: { projekt: Projekt }) {
         className="pointer-events-none fixed top-0 h-0 overflow-hidden"
         style={{ left: -10000, width: 1400 }}
       >
-        {projekt.flaechen.map((f) => (
-          <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
-            <DachSvg flaeche={f} raster={rasterFuer(f, modul)} modul={modul} druck />
+        {projekt.flaechen.map((f) => {
+          const foto = dachFotoVon(projekt, f);
+          const renderFlaeche = foto ? { ...f, foto } : f;
+          return (
+            <div key={f.id} data-flaeche={f.id} style={{ width: 1400 }}>
+              <DachSvg
+                flaeche={renderFlaeche}
+                raster={rasterFuer(f, modul)}
+                modul={modul}
+                druck
+              />
+            </div>
+          );
+        })}
+        {projekt.fotos.map((foto) => (
+          <div key={foto.id} data-foto={foto.id} style={{ width: 1400 }}>
+            <ProjektFotoSvg projekt={projekt} foto={foto} beschriftung />
           </div>
         ))}
       </div>

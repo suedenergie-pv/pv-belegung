@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SchrittBelegung } from '../components/SchrittBelegung';
 import { SchrittExport } from '../components/SchrittExport';
 import { SchrittFlaechen } from '../components/SchrittFlaechen';
 import { SchrittProjekt } from '../components/SchrittProjekt';
-import { SchrittStrings } from '../components/SchrittStrings';
 import {
   eintragDatum,
   eintragName,
@@ -18,7 +17,10 @@ import {
   type Projekt,
 } from '../lib/model';
 
-const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Stringcheck', 'Export'] as const;
+// „Stringcheck" ist seit 13.07.2026 ausgeblendet (Genrih: kein Main-Feature, soll
+// im finalen Programm nicht zu sehen sein). Die Rechenlogik (Engine R1–R12,
+// SchrittStrings, pruefeStringplan) bleibt vollständig im Projekt.
+const SCHRITTE = ['Projekt', 'Dachflächen', 'Belegung', 'Export'] as const;
 
 export default function Home() {
   const [db, setDb] = useState<ProjektDb>({ aktivId: null, projekte: [] });
@@ -39,16 +41,43 @@ export default function Home() {
     setGeladen(true);
   }, []);
 
+  /**
+   * Speichern ENTKOPPELT (16.07.2026): `speichereProjekte` serialisiert das ganze
+   * Projekt inkl. Foto-DataURLs (mehrere MB) — bei jedem Tastendruck synchron
+   * ausgeführt blockiert das den Main-Thread, und gehaltene Pfeiltasten/Knöpfe
+   * schieben sichtbar stockend statt flüssig (gemessen: 3 statt 8 Schritten/s).
+   * Der State ist sofort aktuell, nur die Platte hinkt ~400 ms hinterher; beim
+   * Verlassen der Seite wird sofort geschrieben, damit nichts verloren geht.
+   */
+  const dbRef = useRef(db);
+  dbRef.current = db;
   useEffect(() => {
-    if (geladen) speichereProjekte(db);
+    if (!geladen) return;
+    const t = setTimeout(() => speichereProjekte(dbRef.current), 400);
+    return () => clearTimeout(t);
   }, [geladen, db]);
+
+  useEffect(() => {
+    if (!geladen) return;
+    const sichern = () => speichereProjekte(dbRef.current);
+    // pagehide deckt auch iOS-Safari ab, wo beforeunload nicht zuverlässig feuert
+    window.addEventListener('pagehide', sichern);
+    document.addEventListener('visibilitychange', sichern);
+    return () => {
+      window.removeEventListener('pagehide', sichern);
+      document.removeEventListener('visibilitychange', sichern);
+      sichern(); // Unmount: letzten Stand festschreiben
+    };
+  }, [geladen]);
 
   const aktiv: ProjektEintrag | undefined = useMemo(
     () => db.projekte.find((e) => e.id === db.aktivId),
     [db],
   );
   const projekt = aktiv?.projekt ?? neuesProjekt();
-  const schritt = aktiv?.schritt ?? 0;
+  // Klemmen: gespeicherte Stände konnten noch auf dem entfallenen Stringcheck-Tab
+  // stehen (alter Index 4/5) — die landen jetzt auf dem Export.
+  const schritt = Math.min(aktiv?.schritt ?? 0, SCHRITTE.length - 1);
 
   /** Patch am aktiven Eintrag (Projekt und/oder Schritt), Zeitstempel aktualisieren. */
   const patchAktiv = (patch: Partial<Pick<ProjektEintrag, 'projekt' | 'schritt'>>) =>
@@ -103,7 +132,8 @@ export default function Home() {
       f.hoeheM > 0 &&
       Number.isFinite(f.neigungDeg) &&
       f.neigungDeg >= 0 &&
-      f.neigungDeg <= 75,
+      // 90° = Fassade (16.07.2026); Schrägdächer bleiben praktisch bei ≤ 75°
+      f.neigungDeg <= 90,
   );
   const weiterErlaubt = schritt !== 1 || flaechenOk;
 
@@ -129,7 +159,7 @@ export default function Home() {
           {db.projekte.length} {db.projekte.length === 1 ? 'Projekt' : 'Projekte'}
         </span>
         <div className="ml-auto flex gap-2">
-          <button type="button" className={knopf} onClick={neuesAnlegen}>
+          <button type="button" className={knopf} onClick={neuesAnlegen} disabled={!geladen}>
             + Neu
           </button>
           <button type="button" className={knopf} onClick={dupliziereAktiv} disabled={!aktiv}>
@@ -168,8 +198,7 @@ export default function Home() {
       {schritt === 0 && <SchrittProjekt projekt={projekt} onChange={setProjekt} />}
       {schritt === 1 && <SchrittFlaechen projekt={projekt} onChange={setProjekt} />}
       {schritt === 2 && <SchrittBelegung projekt={projekt} onChange={setProjekt} />}
-      {schritt === 3 && <SchrittStrings projekt={projekt} onChange={setProjekt} />}
-      {schritt === 4 && <SchrittExport projekt={projekt} />}
+      {schritt === 3 && <SchrittExport projekt={projekt} />}
 
       <div className="flex justify-between">
         <button

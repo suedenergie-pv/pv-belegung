@@ -14,6 +14,8 @@
  * den Ziegel-Maßstab) gegen die eingegebenen Maße hält.
  */
 
+import type { PunktM, RechteckM } from '@pv-belegung/engine';
+
 export type Punkt = [number, number];
 
 /** Ecken der Dachfläche im Foto. Reihenfolge: Traufe links, Traufe rechts, First rechts, First links. */
@@ -21,6 +23,9 @@ export type Ecken = [Punkt, Punkt, Punkt, Punkt];
 
 /** 3×3-Matrix, zeilenweise. */
 type M3 = [number, number, number, number, number, number, number, number, number];
+
+/** Öffentlicher Alias für eine Homographie-Matrix (Rückgabe von `homographie`). */
+export type Homographie = M3;
 
 function adjugat(m: M3): M3 {
   return [
@@ -59,12 +64,23 @@ function basisZu(p: Ecken): M3 {
 }
 
 /**
- * Homographie Flächen-Koordinaten (Meter, Ursprung First links, y zur Traufe)
- * → Foto-Pixel. null bei entarteten Ecken.
+ * Homographie Flächen-/Rahmen-Koordinaten (Meter, Ursprung First links, y zur
+ * Traufe) → Foto-Pixel. null bei entarteten Ecken.
+ *
+ * `quelle` (08.07.2026, Genrih): Ist die Fläche ein Trapez/Parallelogramm, klickt
+ * der Nutzer die 4 ECHTEN Dach-Ecken an. Dann müssen die QUELLPUNKTE die passende
+ * Form haben (Trapez- bzw. Parallelogramm-Ecken in Rahmen-Koordinaten, Reihenfolge
+ * wie `ecken`) — sonst wird ein Rechteck in die Form gestreckt und alles verzerrt.
+ * Ohne `quelle` (Rechteck-Fläche) ist die Quelle das volle Rahmen-Rechteck.
  */
-export function homographie(breiteM: number, hoeheM: number, ecken: Ecken): M3 | null {
+export function homographie(
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  quelle?: Ecken,
+): M3 | null {
   if (breiteM <= 0 || hoeheM <= 0) return null;
-  const src: Ecken = [
+  const src: Ecken = quelle ?? [
     [0, hoeheM],
     [breiteM, hoeheM],
     [breiteM, 0],
@@ -84,8 +100,13 @@ export function projiziere(h: M3, [x, y]: Punkt): Punkt {
  * die Inverse bis auf Skalierung die Adjugate — Grundlage für „Umriss zeichnen"
  * und Hindernis-Markierung direkt im Foto (SPEC §9, 06.07.2026).
  */
-export function inverseHomographie(breiteM: number, hoeheM: number, ecken: Ecken): M3 | null {
-  const h = homographie(breiteM, hoeheM, ecken);
+export function inverseHomographie(
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  quelle?: Ecken,
+): M3 | null {
+  const h = homographie(breiteM, hoeheM, ecken, quelle);
   if (!h) return null;
   const inv = adjugat(h);
   return inv.every((n) => Number.isFinite(n)) && (inv[6] || inv[7] || inv[8]) ? inv : null;
@@ -175,6 +196,53 @@ function laenge(a: Punkt, b: Punkt): number {
 }
 
 /**
+ * Umriss aus Foto-Klicks: Pixel → Flächen-Koordinaten (Meter) via inverser
+ * Homographie, geklemmt auf [0..breiteM]×[0..hoeheM]. Geteilt von Einzelfoto und
+ * Gesamtfoto, damit beide identisch rechnen. null bei < 3 Punkten / entarteten Ecken.
+ */
+export function umrissAusKlicks(
+  pts: Punkt[],
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  quelle?: Ecken,
+): PunktM[] | null {
+  if (pts.length < 3) return null;
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, quelle);
+  if (!hinv) return null;
+  return pts.map((p) => {
+    const [x, y] = projiziere(hinv, p);
+    return [Math.max(0, Math.min(breiteM, x)), Math.max(0, Math.min(hoeheM, y))] as PunktM;
+  });
+}
+
+/**
+ * Hindernis-Rechteck aus zwei Foto-Klicks (gegenüberliegende Ecken) in Flächen-
+ * Koordinaten (Meter). null bei entarteten Ecken oder zu kleinem Rechteck (< 5 cm).
+ */
+export function hindernisAusKlicks(
+  p1: Punkt,
+  p2: Punkt,
+  breiteM: number,
+  hoeheM: number,
+  ecken: Ecken,
+  quelle?: Ecken,
+): RechteckM | null {
+  const hinv = inverseHomographie(breiteM, hoeheM, ecken, quelle);
+  if (!hinv) return null;
+  const [ax, ay] = projiziere(hinv, p1);
+  const [bx, by] = projiziere(hinv, p2);
+  const cl = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+  const rect: RechteckM = {
+    xM: cl(Math.min(ax, bx), breiteM),
+    yM: cl(Math.min(ay, by), hoeheM),
+    breiteM: Math.abs(bx - ax),
+    hoeheM: Math.abs(by - ay),
+  };
+  return rect.breiteM > 0.05 && rect.hoeheM > 0.05 ? rect : null;
+}
+
+/**
  * Sortiert 4 beliebig angeklickte Ecken in die kanonische Reihenfolge
  * (Traufe links, Traufe rechts, First rechts, First links) — Klick-Reihenfolge
  * und -Richtung sind damit egal. Annahme: die Traufe ist die im Bild unterste
@@ -198,6 +266,65 @@ export function sortiereEcken(punkte: [Punkt, Punkt, Punkt, Punkt]): Ecken {
       traufeIdx = i;
     }
   }
+  let a = ring[traufeIdx]!;
+  let b = ring[(traufeIdx + 1) % 4]!;
+  let c = ring[(traufeIdx + 2) % 4]!;
+  let d = ring[(traufeIdx + 3) % 4]!;
+  if (a[0] > b[0]) {
+    // Ring-Richtung umdrehen, damit die Traufe links→rechts läuft
+    [a, b, c, d] = [b, a, d, c];
+  }
+  return [a, b, c, d];
+}
+
+/**
+ * Ordnet 4 beliebig geklickte Ecken anhand einer vom Nutzer gezogenen TRAUFLINIE
+ * (entlang der Traufe/Dachrinne). Die Traufe ist damit EINDEUTIG bestimmt — nicht
+ * mehr über die Annahme „unterste Kante im Bild" (Genrih 08.07.2026: die Traufe
+ * gehört an die Traufe, dann ist die Klick-Reihenfolge der 4 Ecken egal).
+ * Zwei Schritte: (1) das gegenüberliegende Kantenpaar wählen, das parallel zur
+ * Linie liegt (= Traufe/First-Achse); (2) davon die Kante als Traufe nehmen, die
+ * der gezogenen Linie am nächsten liegt.
+ */
+export function orientiereEcken(
+  punkte: [Punkt, Punkt, Punkt, Punkt],
+  traufLinie: [Punkt, Punkt],
+): Ecken {
+  const cx = (punkte[0][0] + punkte[1][0] + punkte[2][0] + punkte[3][0]) / 4;
+  const cy = (punkte[0][1] + punkte[1][1] + punkte[2][1] + punkte[3][1]) / 4;
+  const ring = [...punkte].sort(
+    (a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx),
+  ) as [Punkt, Punkt, Punkt, Punkt];
+
+  // Richtungsvektor der Trauflinie (normiert)
+  let rx = traufLinie[1][0] - traufLinie[0][0];
+  let ry = traufLinie[1][1] - traufLinie[0][1];
+  const rl = Math.hypot(rx, ry) || 1;
+  rx /= rl;
+  ry /= rl;
+  const align = (i: number): number => {
+    const a = ring[i]!;
+    const b = ring[(i + 1) % 4]!;
+    let ex = b[0] - a[0];
+    let ey = b[1] - a[1];
+    const el = Math.hypot(ex, ey) || 1;
+    ex /= el;
+    ey /= el;
+    return Math.abs(ex * rx + ey * ry); // 1 = parallel zur Linie
+  };
+  // Gegenüberliegendes Kantenpaar, das am besten zur Linie parallel liegt = Traufe/First-Achse
+  const paar = (align(0) + align(2)) / 2 >= (align(1) + align(3)) / 2 ? [0, 2] : [1, 3];
+  // Mittelpunkt der gezogenen Trauflinie
+  const lx = (traufLinie[0][0] + traufLinie[1][0]) / 2;
+  const ly = (traufLinie[0][1] + traufLinie[1][1]) / 2;
+  const abstandZurLinie = (i: number): number => {
+    const mx = (ring[i]![0] + ring[(i + 1) % 4]![0]) / 2;
+    const my = (ring[i]![1] + ring[(i + 1) % 4]![1]) / 2;
+    return Math.hypot(mx - lx, my - ly);
+  };
+  // Von den beiden achsparallelen Kanten die der Trauflinie NÄCHSTE = Traufe
+  const traufeIdx = abstandZurLinie(paar[0]!) <= abstandZurLinie(paar[1]!) ? paar[0]! : paar[1]!;
+
   let a = ring[traufeIdx]!;
   let b = ring[(traufeIdx + 1) % 4]!;
   let c = ring[(traufeIdx + 2) % 4]!;
@@ -243,6 +370,8 @@ export function belegungsCheck(
   hoeheM: number,
   neigungDeg: number,
   pxProM: number | undefined,
+  /** Erwartetes First/Traufe-Verhältnis (Trapez: firstBreiteM/breiteM, sonst 1). */
+  erwarteterFirstAnteil = 1,
 ): BelegungsCheck {
   const meldungen: string[] = [];
   if (!eckenPlausibel(ecken)) {
@@ -295,11 +424,16 @@ export function belegungsCheck(
     );
   }
 
-  if (perspektive < 0.8 || perspektive > 1.25) {
+  // First/Traufe-Verhältnis: NUR ein informativer Schräg-Hinweis bei Rechteck-
+  // Flächen. Aus dem Pixel-Verhältnis lässt sich KEIN Maßfehler ableiten (Genrih
+  // 08.07.): First liegt höher = näher an der Drohne und erscheint im Foto größer —
+  // das ist normale Perspektive, kein Kippen. Bei Trapez/Schief ist ein
+  // abweichendes Verhältnis erst recht erwartet. Ground Truth bleibt der Blick:
+  // laufen die Module parallel zu den Ziegellinien, stimmt die Markierung.
+  if (erwarteterFirstAnteil >= 0.98 && (perspektive < 0.8 || perspektive > 1.25)) {
     meldungen.push(
-      'Foto ist deutlich schräg aufgenommen (First/Traufe-Verhältnis ' +
-        `${Math.round(perspektive * 100)} %) — Platzierung ist perspektivisch korrekt, ` +
-        'die Höhen-Schätzung aus dem Foto aber nur grob. Aufmaß geht vor.',
+      `Foto ist schräg aufgenommen (First/Traufe im Bild ${Math.round(perspektive * 100)} %) — ` +
+        'die Platzierung ist perspektivisch korrekt, die Höhen-Schätzung aus dem Foto aber nur grob. Aufmaß geht vor.',
     );
   }
 

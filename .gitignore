@@ -10,3 +10,6 @@ kalibrierung-engine-output.md
 
 # Screenshots der debug-shot-Dev-Route
 .debug-shots/
+
+# Graphify-Wissensgraph (generierter Output, maschinen-spezifisch)
+graphify-out/
