@@ -2,6 +2,16 @@
 
 Kanonische Live-Adresse: **https://belegung.suedenergie-pv.de/**. GitHub Pages ist eine separate Ausgabe und kein Nachweis für einen produktiven VPS-Deploy. Nutzerkorrektur und Deploy-Freigabe: 01.10.2026.
 
+## SüdEnergie-Druckdatei · 22.10.2026
+
+- Ausdrücklicher Nutzerauftrag „deploy“, anschließend Fußzeilenkorrektur vor Aktivierung berücksichtigt. Aktiv: `/var/www/belegung/releases/20261022-pdf-suedenergie-final`; Rollback erhalten: `/var/www/belegung/releases/20261022-feld-sofort-ziehen`. Produktcommit `d070542`.
+- Eigenständige SüdEnergie-Druckgestaltung mit Original-Logo-Orange `#EF4C29`, eingebetteter Inter und großen vollständigen Perspektivbildern. Auf Mehrfoto-Bildseiten nur Bildname, Dachzuordnung und Seitennummer direkt am Bild; kein grauer Fußblock. Beratung, Website und vollständiger Vorplanungshinweis einmal bei den Anlagendaten. Auch Einzelbild-Ausdruck mit aktiven Schriftgrößen mindestens 12 pt, übliche kurze Fälle weiterhin einseitig.
+- 477 Tests und Typprüfung bestanden. Finaler isolierter VPS-Build sowie zwei Desktop-/Mobil-Smokes und zehn echte PDF-Downloads mit 1/2/3/4/6 Bildern bestanden. Einzelbild-, Hochformat-, Mehrdach-, Perspektiv- und Langtextmuster gerendert; finale Browser-PDFs geöffnet. Unabhängiger finaler Quell-/Sicht-/Archivreview PASS ohne offene Blocker/Majors. Anfänglicher Major zu kleinen Einzelbild-Schriften vor Aktivierung korrigiert und erneut geprüft.
+- 75 Quellen und 34 Export-/Archivdateien unabhängig vollständig hashgleich. Inhaltlich gegenüber dem vorherigen Release nur PDF-Generator und neue Schriftdaten geändert; 23 weitere Quellhashabweichungen ausschließlich LF/CRLF. Keine privaten Fotos oder QA-Artefakte im Paket.
+- Neue freie Zielpfade und unveränderten Vorgänger vor Übertragung geprüft. Archiv SHA-256 `1bf08ce176166661dc8a90fe63e314125a557eba3909d18e8f2c91e2062fa371`, Index `96d54d15ff72c1d80e396c1a4e92b615c5bb6a31f77d5c0dc6c1efd978a6c43f`; Archiv-/Skripthash und Shell-Syntax auf dem VPS bestätigt. Unverändertes LF-normalisiertes Aktivierungsskript atomar ausgeführt; serverseitige HTTPS-/Indexprüfung bestanden.
+- Alle 34 Dateien der öffentlichen Domain stimmen mit dem geprüften Manifest überein. Direkt öffentlich zwei Desktop-/Mobil-Smokes und zehn PDF-Downloads bestanden. Alle zehn Live-PDFs zusätzlich geparst: Mindestschriftgröße 12 pt, erwartete Seitenzahlen, vollständiger Planungshinweis genau einmal im Dokument; bei Mehrfoto auf den Anlagendaten statt auf jedem Bildblatt. Live-Bild- und Datenblatt tatsächlich gerendert und geöffnet.
+- Evidence: `docs/pdf-druckgestaltung-2026-10-22/review.md`, `.release/pdf-ci-qa.json`, `.release/pdf-ci-vps-manifest.json`, `.release/pdf-ci-independent-review-final.md`, `.release/pdf-ci-live-hashes.json`, `.release/pdf-ci-live-pdfs.json`, `.debug-shots/pdf-ci-2026-10-22/release-final/` und `release-live/`. Kein GitHub-Pages-Deploy im Rahmen dieser Aktivierung behauptet. Native iPad-Abnahme und Walter-Nutzerstudie bleiben getrennt.
+
 ## Neues Modulfeld sofort innen verschieben · 22.10.2026
 
 - Aktiv: `/var/www/belegung/releases/20261022-feld-sofort-ziehen`; Rollback erhalten: `/var/www/belegung/releases/20261022-foto-zuerst`. Produktfix `1e5b24b`, Testkorrekturen `9d96429`/`64d6916`, QA/Review `a2a2663`. Bestehende Nutzerfreigabe für Deploy nach bestandener Prüfung gilt fort.

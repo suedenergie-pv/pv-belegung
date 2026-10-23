@@ -116,6 +116,6 @@ for (const anzahl of [1, 2, 3, 4, 6]) test(`Echter PDF-Download mit ${anzahl} Bi
   await datei.saveAs(resolve(shots, `${info.project.name}-${anzahl}.pdf`));
   expect(await datei.failure()).toBeNull();
   const pdf = readFileSync(resolve(shots, `${info.project.name}-${anzahl}.pdf`)), text = pdf.toString('latin1');
-  expect((text.match(/\/Type \/Page\b/g) ?? []).length).toBe(Math.ceil(anzahl / 2));
+  expect((text.match(/\/Type \/Page\b/g) ?? []).length).toBe(anzahl + (anzahl > 1 ? 1 : 0));
   expect(errors).toEqual([]);
 });
