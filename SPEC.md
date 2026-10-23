@@ -587,12 +587,39 @@ die Gesamtanlagengröße in kWp, damit Dateien außerhalb des Tools eindeutig bl
 Der PDF-Download darf auch ohne Kunde, Adresse und Erfasser erfolgen (nackter
 Belegungsplan); diese Angaben bleiben für den Ticketsystem-JSON-Export Pflicht.
 
-PDF-Bildlayout (korrigiert 01.10.2026): Große Belegungsfotos stehen zu zweit
-untereinander, ausdrücklich bereits auf der ersten A4-Seite: 2/4/6 Fotos benötigen
-1/2/3 Bildseiten. Keine vorgeschaltete Zusammenfassungsseite. Kopf und erforderliche
-Flächendaten werden kompakt integriert; umfangreiche Detailtabellen folgen erst nach
-den Bildern. Einzelbilder und das letzte Bild bei ungerader Anzahl nutzen den freien
-Platz ihrer Seite. Bilder behalten ihr Seitenverhältnis und werden nicht beschnitten.
+PDF-Bildlayout (Nutzerkorrektur 22.10.2026): Eigenständiges SüdEnergie-Projektblatt,
+keine umgefärbte LCV-Vorlage. Weißer Grund, vorhandenes Logo und eingebettete Inter.
+Sachlicher Titel „Belegungsplan“, großes Dachbild und dunkle Leistungszahl.
+Orange führt die Seitenkomposition als offene Dachkante und betont die Einheit.
+Für die Druckdatei gilt das Original-Logo-Orange `#EF4C29` (Quelle `lib/logo.ts`);
+das Dashboard-Orange `#E8603A` wird nicht in die Druckakzente übernommen.
+Keine Sloganheadline oder farbige Leistungsfläche. Einzelne Hochformatbilder stehen neben einer Datenspalte. Flächendetails
+als lesbare Abschnitte ohne Tabellenraster. Ein übliches Projekt mit 1–2 kurzen Flächeneinträgen bleibt
+einseitig. Mehrere Fotos erhalten je eine eigene große Bildseite im zum Foto passenden
+A4-Quer-/Hochformat, ohne vorgeschaltetes Deckblatt. Querformatbilder nutzen die breite
+Blattfläche, Hochformate die Höhe. Anlagendaten und Dachflächen folgen dann separat,
+damit keine Bildseite für technische Angaben verkleinert wird.
+Korrektur nach ausdrücklichem Nutzerfeedback 22.10.2026: Informationen dürfen zur
+Beruhigung des Layouts nicht entfernt werden. Jede Bildseite enthält Logo und
+Dokumenttitel, Kunde, Adresse, Datum, Perspektivennummer, Anlagenleistung,
+Modul-/Dachflächenanzahl, Bildname, Dachzuordnung und Seitenzahl. Vorplanungshinweis,
+Beratung und Website bleiben vollständig im Dokument enthalten. Nach der weiteren Nutzerkritik „leblos / dreimal das gleiche“
+wird die Komposition der Mehrfoto-Ausgabe geändert: Querformatseiten erhalten links
+einen Projektstreifen mit Titel, großer Leistungszahl, Anzahl und Perspektive, rechts
+das große Foto. Hochformatseiten ordnen diese Inhalte über dem Bild an. Eine offene,
+orange Dachkante verbindet Daten und Bild. Nach der anschließenden Nutzerkritik an der
+Fußzeile entfällt die graue Fußzone: Auf Bildseiten stehen nur Bildname, Dachzuordnung
+und Seitenzahl direkt am Bild. Beratung, Website und vollständiger Vorplanungshinweis
+werden einmal lesbar bei den Anlagendaten gesammelt. Die Anlagenübersicht übernimmt Typografie und Dachkante;
+Flächentitel erhalten klar abgesetzte Zeilen. Aktive Schriftgrößen mindestens 12 pt.
+Bei kurzen Anlagenübersichten verbindet ein kompakter Bildindex mit Seitenverweisen
+die Daten mit den großen Perspektivblättern, ohne zusätzliche Indexseiten zu erzeugen.
+Technische Modul- und Dachdetails bleiben in der gemeinsamen Übersicht erhalten.
+Überlange Angaben werden vollständig im Anhang wiedergegeben und im betreffenden
+Bereich ausdrücklich referenziert. Alle Bilder bleiben
+vollständig und proportional. Umfangreiche Flächen und lange Projekt-/Bildangaben
+folgen vollständig paginiert im Anhang. Der neue Ausdruck ersetzt ausdrücklich das
+bisherige Zwei-Fotos-Raster. Keine Ertrags- oder Wirtschaftlichkeitsversprechen.
 In der Workbench bietet die Dachflächenliste direkt eine Entfernen-Aktion. Bestehende
 Gauben-/Stringbereinigung, erhaltene Fotos, Entwurfsschutz und Rückgängig bleiben erhalten.
 
