@@ -27,7 +27,6 @@ import {
 } from '../lib/foto-geometrie';
 import {
   fmtDe,
-  GAUBEN_NAMEN,
   type GaubenGeometrie,
   fotoZuordnungenVon,
   modulById,
@@ -120,11 +119,34 @@ function ZahlenEingabe({
   );
 }
 
+const GAUBEN_FORMEN: Record<GaubenTyp, { titel: string; beschreibung: string; ansicht: string }> = {
+  flachdach: { titel: 'Flach / leicht geneigt', beschreibung: 'Eine Dachseite. Die Neigung gibst du selbst ein.', ansicht: 'Seitenansicht' },
+  satteldach: { titel: 'Zwei Dachseiten', beschreibung: 'Zwei Seiten treffen sich oben am First. Beide werden gemeinsam angelegt.', ansicht: 'Vorderansicht' },
+  schleppdach: { titel: 'Eine stärker geneigte Dachseite', beschreibung: 'Schleppgaube: eine durchgehende Dachfläche.', ansicht: 'Seitenansicht' },
+  walmdach: { titel: 'Dachseite oben schmaler', beschreibung: 'Walmgaube: jede ebene Seite einzeln anlegen.', ansicht: 'Dachseite von oben' },
+  spitzdach: { titel: 'Dachseite mit Spitze', beschreibung: 'Spitzgaube: jede ebene Seite einzeln anlegen.', ansicht: 'Dachseite von oben' },
+};
+
+function gruppenName(flaechen: Flaeche[], fallback: number) {
+  return flaechen[0]?.name.replace(/\s*·\s*(?:Linke|Rechte) Dachseite$/u, '').trim() || `Gaube ${fallback}`;
+}
+
+function GaubenFormSkizze({ typ }: { typ: GaubenTyp }) {
+  return <svg viewBox="0 0 100 64" aria-hidden="true" className={styles.formSkizze}>
+    {typ === 'walmdach' || typ === 'spitzdach' ? <polygon points={typ === 'spitzdach' ? '12,53 50,11 88,53' : '12,53 32,13 68,13 88,53'} fill="#edf0f1" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /> : <>
+      <path d={typ === 'satteldach' ? 'M16 36 V55 H84 V36' : typ === 'schleppdach' ? 'M16 16 V55 H84 V40' : 'M16 25 V55 H84 V32'} fill="none" stroke="#9aa5ac" strokeWidth="2" />
+      <path d={typ === 'satteldach' ? 'M10 40 L50 10 L90 40' : typ === 'schleppdach' ? 'M10 14 L90 42' : 'M10 24 L90 32'} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </>}
+  </svg>;
+}
+
 export function GaubenEditor({
   eltern,
   gauben,
   projekt,
   bearbeiteGruppenId,
+  bearbeiteFlaecheId,
+  bearbeitungsAufgabe = 'position',
   onBearbeitungGestartet,
   onBearbeitungBeendet,
   onErstellen,
@@ -146,6 +168,8 @@ export function GaubenEditor({
   aktiveFotoId?: string;
   /** Startsignal von einer sichtbaren Gaubenkarte. */
   bearbeiteGruppenId?: string | null;
+  bearbeiteFlaecheId?: string | null;
+  bearbeitungsAufgabe?: 'masse' | 'form' | 'position';
   onBearbeitungGestartet?: () => void;
   onBearbeitungBeendet?: () => void;
   onErstellen: (gaube: NeueGaubeAusFoto) => void;
@@ -166,10 +190,13 @@ export function GaubenEditor({
   const foto = eltern.foto;
   const navigation = useEntwurfNavigation();
   const entwurfAktionen = useRef<OffenerEntwurf | null>(null);
+  const markierungsEntwurfAbmelden = useRef<(() => void) | null>(null);
+  const letzterGespeicherterUmriss = useRef<string | null>(null);
   const startPunkte = useRef('[]');
   const formularRef = useRef<HTMLElement>(null);
   const [offen, setOffen] = useState(initialOffen);
   const [typ, setTyp] = useState<GaubenTyp>('flachdach');
+  const [neigungDeg, setNeigungDeg] = useState(5);
   const [quelle, setQuelle] = useState<GaubenMessung['quelle']>('nachbardach');
   const [breiteM, setBreiteM] = useState(3);
   const [hoeheM, setHoeheM] = useState(2.5);
@@ -186,9 +213,11 @@ export function GaubenEditor({
   const [werkzeug, setWerkzeug] = useState<'position' | 'form'>('form');
   const [element, setElement] = useState('punkt:0');
   const [massId, setMassId] = useState<string | null>(null);
+  const [aktiveSeiteId, setAktiveSeiteId] = useState<string | null>(null);
   const [kopieVon, setKopieVon] = useState<string | null>(null);
   const [moduleZeigen, setModuleZeigen] = useState(true);
   const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
+  const [speicherHinweis, setSpeicherHinweis] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState<Punkt | null>(null);
   const ziehAuswahl = useRef<{ start: Punkt; indizes?: number[] } | null>(null);
   const [fallbackGrund, setFallbackGrund] = useState<string | null>(null);
@@ -215,11 +244,13 @@ export function GaubenEditor({
   const fotoId = aktiveFotoId ?? fotoZuordnungenVon(eltern)[0]?.fotoId;
   const svgInstanzId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
 
-  const bearbeitungStarten = (gruppenId: string, flaechen: Flaeche[], aufgabe: 'position' | 'form' = 'position') => {
-    setMassId(null); setKopieVon(null); setSpeicherFehler(null); setTouchStart(null);
+  const abmeldenMarkierung = () => { markierungsEntwurfAbmelden.current?.(); markierungsEntwurfAbmelden.current = null; };
+  const bearbeitungStarten = (gruppenId: string, flaechen: Flaeche[], aufgabe: 'position' | 'form' = 'position', seiteId?: string | null) => {
+    setMassId(null); setKopieVon(null); setSpeicherFehler(null); setSpeicherHinweis(null); setTouchStart(null);
     setWerkzeug(aufgabe); setElement('punkt:0');
     const erster = flaechen[0];
     if (!erster) return;
+    setAktiveSeiteId(flaechen.find(f => f.id === (seiteId ?? aktiveSeiteId))?.id ?? erster.id);
     setTyp(erster.gaubenTyp ?? 'flachdach');
     setQuelle(erster.gaubenMessung?.quelle ?? 'aufmass');
     setBearbeiteId(gruppenId);
@@ -234,21 +265,37 @@ export function GaubenEditor({
       setLetzteGueltigePunkte(kopie);
       setFallbackGrund(null);
     } else {
+      startPunkte.current = '[]';
       setPunkte([]);
       setLetzteGueltigePunkte([]);
       setFallbackGrund(rekonstruiert.grund);
     }
   };
 
+  const masseStarten = (id: string) => {
+    const flaeche = gauben.find(f => f.id === id);
+    if (!flaeche) return;
+    abmeldenMarkierung();
+    setBearbeiteId(flaeche.gaubenGruppeId ?? flaeche.id); setAktiveSeiteId(id); setMassId(id);
+    setTyp(flaeche.gaubenTyp ?? 'flachdach');
+    setMarkieren(false); setOffen(true); setKopieVon(null); setTouchStart(null);
+    setSpeicherFehler(null); setSpeicherHinweis(null); setFallbackGrund(null);
+    setPunkte([]); setLetzteGueltigePunkte([]);
+  };
+
   useEffect(() => {
     if (!bearbeiteGruppenId) return;
     const flaechen = gruppen.find(([id]) => id === bearbeiteGruppenId)?.[1];
-    if (flaechen) bearbeitungStarten(bearbeiteGruppenId, flaechen);
+    if (flaechen) {
+      const seiteId = flaechen.find(f => f.id === bearbeiteFlaecheId)?.id ?? flaechen[0]!.id;
+      if (bearbeitungsAufgabe === 'masse') masseStarten(seiteId);
+      else bearbeitungStarten(bearbeiteGruppenId, flaechen, bearbeitungsAufgabe, seiteId);
+    }
     onBearbeitungGestartet?.();
     // Das Signal wird vom Eltern-Editor direkt quittiert; die lokale Bearbeitung
-    // bleibt bis Speichern/Abbrechen bestehen.
+    // bleibt auch nach dem Speichern bestehen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bearbeiteGruppenId]);
+  }, [bearbeiteGruppenId, bearbeiteFlaecheId, bearbeitungsAufgabe]);
 
   useEffect(() => () => {
     if (ziehFrame.current !== null) window.cancelAnimationFrame(ziehFrame.current);
@@ -262,16 +309,36 @@ export function GaubenEditor({
     return () => { window.removeEventListener('pointerup', ende); window.removeEventListener('pointercancel', abbrechen); window.removeEventListener('blur', abbrechen); };
   }, []);
 
-  const geaendert = markieren && punkte.length > 0 && JSON.stringify(punkte) !== startPunkte.current;
+  const geaendert = markieren && (!!bearbeiteId || punkte.length > 0) && JSON.stringify(punkte) !== startPunkte.current;
   useEffect(() => {
     if (!geaendert) return;
-    return navigation.registriere(`gaube-${eltern.id}`, {
+    const abmelden = navigation.registriere(`gaube-${eltern.id}`, {
       name: `${eltern.name} · Gaubenmarkierung`,
       gueltig: () => entwurfAktionen.current?.gueltig() ?? false,
       uebernehmen: () => entwurfAktionen.current?.uebernehmen(),
       verwerfen: () => entwurfAktionen.current?.verwerfen(),
     });
+    markierungsEntwurfAbmelden.current = abmelden;
+    return abmelden;
   }, [geaendert, eltern.id, eltern.name, navigation]);
+
+  const gespeicherterUmriss = useMemo(() => {
+    if (!bearbeiteId) return null;
+    const rekonstruiert = rekonstruiereGaubenPunkte(eltern, gauben, bearbeiteId, fotoId);
+    return rekonstruiert.ok ? JSON.stringify(rekonstruiert.punkte) : null;
+  }, [eltern, gauben, bearbeiteId, fotoId]);
+  useEffect(() => {
+    if (!markieren || !bearbeiteId) { letzterGespeicherterUmriss.current = null; return; }
+    // Undo/Redo und andere gespeicherte Änderungen sollen sofort im offenen Editor
+    // sichtbar sein. Einen lokalen Entwurf oder eine laufende Geste nie ersetzen.
+    if (geaendert || zieht || touchStart || !gespeicherterUmriss) return;
+    const vorher = letzterGespeicherterUmriss.current;
+    letzterGespeicherterUmriss.current = gespeicherterUmriss;
+    if (vorher === null || vorher === gespeicherterUmriss) return;
+    const neu = JSON.parse(gespeicherterUmriss) as Punkt[];
+    startPunkte.current = gespeicherterUmriss;
+    setPunkte(neu); setLetzteGueltigePunkte(neu); setSpeicherHinweis(null); setSpeicherFehler(null);
+  }, [markieren, bearbeiteId, gespeicherterUmriss, geaendert, zieht, touchStart]);
 
   if (!foto?.eckenPx) return null;
 
@@ -335,6 +402,7 @@ export function GaubenEditor({
 
   const setzePunkteKontrolliert = (neu: Punkt[], normalisiereVierten = false) => {
     setSpeicherFehler(null);
+    setSpeicherHinweis(null);
     let naechste = neu.map(([x, y]) => [x, y] as Punkt);
     if (normalisiereVierten && naechste.length === 4) {
       naechste = [...sortiereEcken(naechste as [Punkt, Punkt, Punkt, Punkt])];
@@ -416,8 +484,9 @@ export function GaubenEditor({
       : schaetzung;
 
   const reset = () => {
+    abmeldenMarkierung();
     setModuleZeigen(true);
-    setMassId(null); setKopieVon(null); setSpeicherFehler(null); setTouchStart(null);
+    setMassId(null); setAktiveSeiteId(null); setKopieVon(null); setSpeicherFehler(null); setSpeicherHinweis(null); setTouchStart(null);
     startPunkte.current = '[]';
     verwerfeVorgemerkteZiehPunkte();
     setOffen(false);
@@ -427,6 +496,16 @@ export function GaubenEditor({
     setBearbeiteId(null);
     setFallbackGrund(null);
     onBearbeitungBeendet?.();
+  };
+
+  const markierungVerwerfen = () => {
+    if (!bearbeiteId) { reset(); return; }
+    abmeldenMarkierung(); verwerfeVorgemerkteZiehPunkte();
+    const basis = gespeicherterUmriss ?? startPunkte.current;
+    startPunkte.current = basis; letzterGespeicherterUmriss.current = basis;
+    const original = JSON.parse(basis) as Punkt[];
+    setPunkte(original); setLetzteGueltigePunkte(original); setTouchStart(null); setSpeicherFehler(null);
+    setSpeicherHinweis('Nicht übernommene Änderungen verworfen.');
   };
 
   const starten = () => {
@@ -443,7 +522,6 @@ export function GaubenEditor({
 
   const markierungKomplettNeu = (gruppenId: string, flaechen: Flaeche[]) => {
     setWerkzeug('form'); setTouchStart(null);
-    startPunkte.current = '[]';
     setTyp(flaechen[0]?.gaubenTyp ?? 'flachdach');
     setQuelle(flaechen[0]?.gaubenMessung?.quelle ?? 'aufmass');
     setBearbeiteId(gruppenId);
@@ -463,6 +541,7 @@ export function GaubenEditor({
     setQuelle(messung?.quelle ?? 'aufmass');
     setBreiteM(erste.breiteM);
     setHoeheM(erste.hoeheM);
+    setNeigungDeg(erste.neigungDeg);
     setZiegelQuer(messung?.ziegelQuer ?? 10);
     setDeckbreiteCm(messung?.deckbreiteCm ?? 30);
     setZiegelReihen(messung?.ziegelReihen ?? 8);
@@ -498,7 +577,10 @@ export function GaubenEditor({
         aussparung,
       });
       if (gespeichert === false) { setSpeicherFehler('Die Änderung konnte nicht übernommen werden. Bitte Foto und Dachseiten prüfen.'); return; }
-      reset();
+      abmeldenMarkierung();
+      startPunkte.current = JSON.stringify(punkte);
+      setPunkte(punkte.map(([x, y]) => [x, y]));
+      setSpeicherHinweis('Gaubenumriss übernommen. Du kannst direkt weiterarbeiten.');
       return;
     }
 
@@ -519,7 +601,14 @@ export function GaubenEditor({
     onErstellen({
       typ,
       ...(kopie ? { geometrie: geometrieVon(kopie), seitenGeometrie: Object.fromEntries(gauben.filter(f => (f.gaubenGruppeId ?? f.id) === kopieVon && f.gaubenSeite).map(f => [f.gaubenSeite!, geometrieVon(f)])) }
-        : typ === 'walmdach' || typ === 'spitzdach' ? { geometrie: { neigungDeg: 30, azimutDeg: eltern.azimutDeg, dachform: 'trapez', fotoBezugsrahmen: true, firstBreiteM: typ === 'spitzdach' ? 0 : firstBreiteM } } : {}),
+        : typ === 'satteldach' ? { seitenGeometrie: {
+          links: { neigungDeg, azimutDeg: (eltern.azimutDeg + 270) % 360, dachform: 'rechteck' },
+          rechts: { neigungDeg, azimutDeg: (eltern.azimutDeg + 90) % 360, dachform: 'rechteck' },
+        } }
+        : { geometrie: { neigungDeg, azimutDeg: eltern.azimutDeg,
+          dachform: typ === 'walmdach' || typ === 'spitzdach' ? 'trapez' : 'rechteck',
+          ...(typ === 'walmdach' || typ === 'spitzdach' ? { fotoBezugsrahmen: true, firstBreiteM: typ === 'spitzdach' ? 0 : firstBreiteM } : {}),
+        } }),
 
       aussen,
       ...(seiten ? { seiten } : {}),
@@ -552,11 +641,11 @@ export function GaubenEditor({
     name: `${eltern.name} · Gaubenmarkierung`,
     gueltig: () => !touchStart && !!markierungAktuell && pruefungAktuell.status !== 'fehler' && (!!bearbeiteId || !!kopieVon || quelle !== 'nachbardach' || !!sichtbareSchaetzung),
     uebernehmen: () => erstellen(false),
-    verwerfen: reset,
+    verwerfen: markierungVerwerfen,
   };
 
   const gruppe = gruppen.find(([id]) => id === bearbeiteId);
-  const gaubenName = gruppe ? `Gaube ${gruppen.findIndex(([id]) => id === bearbeiteId) + 1}` : kopieVon ? 'Gaubenkopie' : 'Neue Gaube';
+  const gaubenName = gruppe ? gruppenName(gruppe[1], gruppen.findIndex(([id]) => id === bearbeiteId) + 1) : kopieVon ? 'Gaubenkopie' : 'Neue Gaube';
   const massFlaeche = gauben.find(f => f.id === massId);
   const massGruppe = massFlaeche ? gruppen.find(([, fs]) => fs.some(f => f.id === massFlaeche.id)) : undefined;
   const indizesFuer = (wert = element): number[] | undefined => {
@@ -632,7 +721,12 @@ export function GaubenEditor({
       setWerkzeug('form'); setFallbackGrund('Maße übernommen. In dieser Fotoansicht fehlen passende Gaubenecken: bitte die Kopie neu markieren.');
     }
   };
-  const oeffneMasse = (id: string) => navigation.weiter(() => { reset(); setMassId(id); });
+  const oeffneMasse = (id: string) => navigation.weiter(() => masseStarten(id));
+  const waehleTyp = (neu: GaubenTyp) => {
+    if (neu !== typ) setNeigungDeg(neu === 'flachdach' ? 5 : neu === 'schleppdach' ? 15 : 30);
+    setTyp(neu);
+    if (neu === 'walmdach' || neu === 'spitzdach') setQuelle('aufmass');
+  };
   const konturFlaeche = (bearbeiteId || kopieVon) ? gauben.find(f => (f.gaubenGruppeId ?? f.id) === (bearbeiteId ?? kopieVon)) :
     (typ === 'walmdach' || typ === 'spitzdach') ? { ...neueGaubenFlaeche(0, '', typ), breiteM, hoeheM,
       dachform: 'trapez' as const, firstBreiteM: typ === 'spitzdach' ? 0 : firstBreiteM, fotoBezugsrahmen: true } : undefined;
@@ -656,7 +750,7 @@ export function GaubenEditor({
         if (punkte.length >= erwartet) verschiebe(v[e.key]![0] * schritt, v[e.key]![1] * schritt);
         else setTastaturPunkt(([x, y]) => [Math.max(0, Math.min(foto.breitePx, x + v[e.key]![0] * schritt)), Math.max(0, Math.min(foto.hoehePx, y + v[e.key]![1] * schritt))]);
       } else if (e.key === 'Enter' && punkte.length < erwartet) { e.preventDefault(); punktBestaetigen(); }
-      else if (e.key === 'Escape') { e.preventDefault(); if (zieht) zugAbbrechen(); else if (touchStart) setTouchStart(null); else if (bearbeiteId || kopieVon) reset(); else { setPunkte([]); setLetzteGueltigePunkte([]); setMarkieren(false); } }
+      else if (e.key === 'Escape') { e.preventDefault(); if (zieht) zugAbbrechen(); else if (touchStart) setTouchStart(null); else if (bearbeiteId || kopieVon) markierungVerwerfen(); else { setPunkte([]); setLetzteGueltigePunkte([]); setMarkieren(false); } }
     }}
     onClick={e => {
       if (!markieren || punkte.length >= erwartet || touchBedienung) return;
@@ -674,7 +768,7 @@ export function GaubenEditor({
       const m = fs[0]!.gaubenTyp === 'satteldach' ? satteldachSeitenEcken(r.punkte.slice(0, 4) as Ecken, [r.punkte[4]!, r.punkte[5]!], eltern) : undefined;
       const ps = gaubenFotoUmriss(r.punkte.slice(0, 4) as Ecken, m ?? undefined);
       return <polygon key={id} points={ps.map(p => p.join(',')).join(' ')} role="button" tabIndex={0}
-        aria-label={`Gaube ${index + 1} im Foto bearbeiten`} className={styles.auswahlKontur}
+        aria-label={`${gruppenName(fs, index + 1)} im Foto bearbeiten`} className={styles.auswahlKontur}
         onClick={e => { e.stopPropagation(); navigation.weiter(() => bearbeitungStarten(id, fs)); }}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); navigation.weiter(() => bearbeitungStarten(id, fs)); } }} />;
     })}
@@ -699,11 +793,11 @@ export function GaubenEditor({
         </g>;
       })}
       {punkte.map((p, i) => <g key={i}>
-        <circle cx={p[0]} cy={p[1]} r={Math.max(5, foto.breitePx * .006)} fill="transparent" stroke="transparent" strokeWidth="44" vectorEffect="non-scaling-stroke"
+        {punkte.length >= erwartet && <circle cx={p[0]} cy={p[1]} r={Math.max(5, foto.breitePx * .006)} fill="transparent" stroke="transparent" strokeWidth="44" vectorEffect="non-scaling-stroke"
           role="button" tabIndex={0} aria-label={`Gaubenpunkt ${i + 1}`} aria-pressed={werkzeug === 'form' && element === `punkt:${i}`} style={{ cursor: 'grab', touchAction: 'none' }}
           onFocus={() => { if (werkzeug === 'form') waehleElement(`punkt:${i}`); }} onClick={e => e.stopPropagation()}
           onPointerDown={e => { if (werkzeug === 'form') { setAusgewaehlt(i); setElement(`punkt:${i}`); } beginneZug(e, werkzeug === 'position' ? undefined : [i]); }}
-          onPointerMove={bewegeZug} onPointerUp={endeZug} onPointerCancel={zugAbbrechen} />
+          onPointerMove={bewegeZug} onPointerUp={endeZug} onPointerCancel={zugAbbrechen} />}
         <circle cx={p[0]} cy={p[1]} r={Math.max(5, foto.breitePx * .008)} fill={i >= 4 ? '#0284c7' : werkzeug === 'form' && element === `punkt:${i}` ? '#263238' : '#b83d1e'} stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" pointerEvents="none" />
         <text x={p[0]} y={p[1]} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.max(10, foto.breitePx * .012)} fontWeight="700" pointerEvents="none">{i + 1}</text>
       </g>)}
@@ -717,10 +811,10 @@ export function GaubenEditor({
   const fehler = speicherFehler ?? (punkte.length >= erwartet && pruefungAktuell.status === 'fehler' ? pruefungAktuell.meldungen.join(' ') : null);
   const gueltig = punkte.length >= erwartet && !fehler && (!!bearbeiteId || !!kopieVon || quelle !== 'nachbardach' || !!sichtbareSchaetzung);
   const korrektur = <>
-    <div className={styles.aufgaben} role="group" aria-label="Gaube bearbeiten">
+    {!bearbeiteId && <div className={styles.aufgaben} role="group" aria-label="Gaube bearbeiten">
       <button type="button" aria-pressed={werkzeug === 'position'} onClick={() => waehleWerkzeug('position')} disabled={punkte.length < erwartet}>Position ändern</button>
       <button type="button" aria-pressed={werkzeug === 'form'} onClick={() => waehleWerkzeug('form')}>Form korrigieren</button>
-    </div>
+    </div>}
     <p>{punkte.length < 4 ? `Gaubenumriss: noch ${4 - punkte.length} Ecke(n) setzen.` : typ === 'satteldach' && punkte.length < 6 ? `Jetzt die Firstlinie: noch ${6 - punkte.length} Punkt(e) setzen.` : werkzeug === 'position' ? touchBedienung ? 'Gaube greifen, Fadenkreuz zum Ziel bewegen und dort ablegen.' : 'Innerhalb der Gaube ziehen. Alle Ecken und die Aussparung bewegen sich mit.' : touchBedienung ? `${elementName} wählen, greifen und am Ziel ablegen.` : 'Ecken einzeln ziehen. Kanten und Firstlinie lassen sich gemeinsam verschieben.'}</p>
     {punkte.length >= erwartet && <>
       {werkzeug === 'form' && <label className={styles.feld}>Was möchtest du korrigieren?<select value={element} onChange={e => waehleElement(e.target.value)} aria-label="Gaubenelement">
@@ -746,26 +840,46 @@ export function GaubenEditor({
     <EditorAktionen><div data-gauben-abschluss>
       <span role={fehler ? 'alert' : 'status'}>{fehler ?? (touchStart ? `${elementName} gegriffen – zuerst ablegen oder die Bewegung abbrechen.` : punkte.length < erwartet ? `${punkte.length} von ${erwartet} Punkten gesetzt` : `${gaubenName} · ${bearbeiteId ? 'Änderung prüfen' : 'Bereit zum Anlegen'}`)}</span>
       <button type="button" disabled={!gueltig || !!touchStart} onClick={() => erstellen(false)}>{bearbeiteId ? 'Änderungen übernehmen' : kopieVon ? 'Gaubenkopie anlegen' : 'Gaube anlegen & fertig'}</button>
-      {touchStart ? <button type="button" onClick={() => setTouchStart(null)}>Bewegung abbrechen</button> : <button type="button" onClick={reset}>Abbrechen</button>}
+      {touchStart ? <button type="button" onClick={() => setTouchStart(null)}>Bewegung abbrechen</button> : <button type="button" onClick={markierungVerwerfen}>{bearbeiteId ? 'Änderungen verwerfen' : 'Abbrechen'}</button>}
     </div></EditorAktionen>
   </>;
 
   const steuerung = <section ref={formularRef} data-gauben-steuerung className={styles.editor}>
+    {gruppe && <div className={styles.ausgewaehlteGaube}>
+      <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{GAUBEN_FORMEN[gruppe[1][0]!.gaubenTyp ?? 'flachdach'].titel}</span></div>
+      {gruppe[1].length > 1 && <div className={styles.aufgaben} role="group" aria-label="Dachseite der Gaube">
+        {gruppe[1].map(f => <button key={f.id} type="button" aria-pressed={aktiveSeiteId === f.id}
+          onClick={() => massFlaeche ? oeffneMasse(f.id) : setAktiveSeiteId(f.id)}>{f.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite'}</button>)}
+      </div>}
+      <div className={styles.aufgabenNavigation} role="group" aria-label="Gaube bearbeiten">
+        <button type="button" aria-pressed={!!massFlaeche} onClick={() => { if (!massFlaeche) oeffneMasse(aktiveSeiteId ?? gruppe[1][0]!.id); }}>Maße & Neigung</button>
+        <button type="button" aria-pressed={markieren && werkzeug === 'form'} onClick={() => markieren ? waehleWerkzeug('form') : navigation.weiter(() => bearbeitungStarten(gruppe[0], gruppe[1], 'form'))}>Umriss</button>
+        <button type="button" aria-pressed={markieren && werkzeug === 'position'} disabled={markieren && punkte.length < erwartet} onClick={() => markieren ? waehleWerkzeug('position') : navigation.weiter(() => bearbeitungStarten(gruppe[0], gruppe[1], 'position'))}>Verschieben</button>
+        <button type="button" onClick={() => navigation.weiter(() => onBelegungOeffnen ? onBelegungOeffnen(aktiveSeiteId ?? gruppe[1][0]!.id) : belegungOeffnen(gruppe[0]))}>Module</button>
+      </div>
+      <button type="button" className={styles.alleGauben} onClick={() => navigation.weiter(reset)}>← Alle Gauben</button>
+    </div>}
+    {speicherHinweis && <p role="status" className={styles.nebenhinweis}>{speicherHinweis}</p>}
     {massFlaeche ? <>
-      <div className={styles.kurzKopf}><strong>{`Gaube ${gruppen.findIndex(([id]) => id === massGruppe?.[0]) + 1}`}</strong><span>{massFlaeche.gaubenTyp === 'satteldach' ? massFlaeche.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite' : 'Gaubendach'}</span></div>
-      <GaubenMassEditor key={massFlaeche.id} flaeche={massFlaeche} modul={modul} onSpeichern={(b, h, messung, geometrie) => { onMasseAendern(massFlaeche.gaubenGruppeId ?? massFlaeche.id, massFlaeche.id, b, h, messung, geometrie); setMassId(null); }} onAbbrechen={() => setMassId(null)} />
-      {massGruppe && massGruppe[1].length > 1 && <div className={styles.nebenAktionen}>{massGruppe[1].filter(f => f.id !== massFlaeche.id).map(f => <button type="button" key={f.id} onClick={() => oeffneMasse(f.id)}>{f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachseite bearbeiten</button>)}</div>}
+      <GaubenMassEditor key={massFlaeche.id} flaeche={massFlaeche} modul={modul} onSpeichern={(b, h, messung, geometrie) => onMasseAendern(massFlaeche.gaubenGruppeId ?? massFlaeche.id, massFlaeche.id, b, h, messung, geometrie)} onAbbrechen={() => {}} />
     </> : markieren ? <>
-      <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{GAUBEN_NAMEN[typ]}</span></div>
+      {!gruppe && <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{GAUBEN_FORMEN[typ].titel}</span></div>}
       {korrektur}
     </> : offen ? <>
-      <div className={styles.aufgaben} role="group" aria-label="Gaubentyp">
-        <ToggleButton aktiv={typ === 'flachdach'} onClick={() => setTyp('flachdach')}>Flachdachgaube · Stehfalz</ToggleButton>
-        <ToggleButton aktiv={typ === 'schleppdach'} onClick={() => setTyp('schleppdach')}>Schleppgaube</ToggleButton>
-        <ToggleButton aktiv={typ === 'satteldach'} onClick={() => setTyp('satteldach')}>Satteldachgaube</ToggleButton>
-        <ToggleButton aktiv={typ === 'walmdach'} onClick={() => { setTyp('walmdach'); setQuelle('aufmass'); }}>Walmgaube · Dachseite</ToggleButton>
-        <ToggleButton aktiv={typ === 'spitzdach'} onClick={() => { setTyp('spitzdach'); setQuelle('aufmass'); }}>Spitzgaube · Dachseite</ToggleButton>
+      <p><strong>Wie sieht das Gaubendach aus?</strong></p>
+      <div className={styles.formAuswahl} role="group" aria-label="Gaubentyp">
+        {(['flachdach', 'satteldach'] as const).map(art => <button key={art} type="button" aria-pressed={typ === art} aria-label={GAUBEN_FORMEN[art].titel} onClick={() => waehleTyp(art)}>
+          <span><GaubenFormSkizze typ={art} /><small>{GAUBEN_FORMEN[art].ansicht}</small></span><span><strong>{GAUBEN_FORMEN[art].titel}</strong><span>{GAUBEN_FORMEN[art].beschreibung}</span></span>
+        </button>)}
       </div>
+      <details className={styles.weitereFormen} open={typ === 'schleppdach' || typ === 'walmdach' || typ === 'spitzdach' ? true : undefined}>
+        <summary>Weitere Formen</summary>
+        <div className={styles.formAuswahl} role="group" aria-label="Weitere Gaubenformen">{(['schleppdach', 'walmdach', 'spitzdach'] as const).map(art => <button key={art} type="button" aria-pressed={typ === art} aria-label={GAUBEN_FORMEN[art].titel} onClick={() => waehleTyp(art)}>
+          <span><GaubenFormSkizze typ={art} /><small>{GAUBEN_FORMEN[art].ansicht}</small></span><span><strong>{GAUBEN_FORMEN[art].titel}</strong><span>{GAUBEN_FORMEN[art].beschreibung}</span></span>
+        </button>)}</div>
+      </details>
+      <ZahlenEingabe label={typ === 'satteldach' ? 'Dachneigung beider Seiten' : 'Dachneigung der Gaube'} value={neigungDeg} onChange={setNeigungDeg} einheit="°" min={0} max={75} />
+      <p className={styles.nebenhinweis}>0° = waagerecht. Die Module liegen auf dem Gaubendach, ohne Aufständerung.{typ === 'satteldach' ? ' Unterschiedliche Neigungen kannst du danach je Seite eingeben.' : ''}</p>
       {(typ === 'walmdach' || typ === 'spitzdach') && <p className={styles.nebenhinweis}>Jede ebene Dachseite einzeln anlegen. Im Foto vier Ecken des umschließenden Rechtecks als Bezug setzen; die tatsächliche Fläche wird als {typ === 'spitzdach' ? 'Dreieck' : 'Trapez'} ausgeschnitten. Weitere Seiten danach ergänzen. Rundungen sind keine ebene Dachfläche.</p>}
       {typ === 'walmdach' && <ZahlenEingabe label="Obere Breite der Dachseite" value={firstBreiteM} onChange={setFirstBreiteM} einheit="m" min={0} max={quelle === 'ziegel' ? ziegelQuer * deckbreiteCm / 100 : breiteM} />}
       <p>Wie kommen die Maße zustande?</p>
@@ -774,7 +888,7 @@ export function GaubenEditor({
         <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => setQuelle('ziegel')}>Ziegel zählen</ToggleButton>
         <ToggleButton aktiv={quelle === 'nachbardach'} onClick={() => setQuelle('nachbardach')}>Aus Nachbardach schätzen</ToggleButton>
       </div>
-      {quelle === 'aufmass' ? <div className={styles.zweiSpalten}><ZahlenEingabe label="Breite der belegbaren Fläche" value={breiteM} onChange={setBreiteM} einheit="m" /><ZahlenEingabe label="Länge Traufe bis First" value={hoeheM} onChange={setHoeheM} einheit="m" /></div> : quelle === 'ziegel' ? <div className={styles.zweiSpalten}>
+      {quelle === 'aufmass' ? <div className={styles.zweiSpalten}><ZahlenEingabe label="Breite der belegbaren Fläche" value={breiteM} onChange={setBreiteM} einheit="m" /><ZahlenEingabe label="Tiefe auf dem Gaubendach" value={hoeheM} onChange={setHoeheM} einheit="m" /></div> : quelle === 'ziegel' ? <div className={styles.zweiSpalten}>
         <ZahlenEingabe label="Ziegel quer" value={ziegelQuer} onChange={setZiegelQuer} einheit="Stk." min={1} /><ZahlenEingabe label="Deckbreite" value={deckbreiteCm} onChange={setDeckbreiteCm} einheit="cm" min={1} />
         <ZahlenEingabe label="Ziegelreihen" value={ziegelReihen} onChange={setZiegelReihen} einheit="Stk." min={1} /><ZahlenEingabe label="Reihenabstand" value={reihenabstandCm} onChange={setReihenabstandCm} einheit="cm" min={1} />
       </div> : <p className={styles.warnung}>Das Hauptdach liefert einen Schätzwert. Die Gaube liegt auf einer anderen Ebene; für genaue Maße später Aufmaß oder Ziegelwerte verwenden.</p>}
@@ -783,7 +897,7 @@ export function GaubenEditor({
     </> : <>
       <p>{gruppen.length ? `${gruppen.length} ${gruppen.length === 1 ? 'Gaube angelegt' : 'Gauben angelegt'}. Im Foto oder hier auswählen.` : 'Gaube im selben Foto anlegen. Die Aussparung im Hauptdach wird automatisch mitgeführt.'}</p>
       <div className={styles.gruppenListe}>{gruppen.map(([id, fs], index) => <div key={id} className={styles.gruppe} data-gaubengruppe={id}>
-        <div className={styles.gruppenKopf}><strong>Gaube {index + 1}</strong><span>{GAUBEN_NAMEN[fs[0]!.gaubenTyp!]}</span></div>
+        <div className={styles.gruppenKopf}><strong>{gruppenName(fs, index + 1)}</strong><span>{GAUBEN_FORMEN[fs[0]!.gaubenTyp ?? 'flachdach'].titel}</span></div>
         <div className={styles.aufgaben}>
           <button type="button" onClick={() => navigation.weiter(() => bearbeitungStarten(id, fs, 'position'))}>Position ändern</button>
           <button type="button" onClick={() => navigation.weiter(() => bearbeitungStarten(id, fs, 'form'))}>Form korrigieren</button>
@@ -791,7 +905,7 @@ export function GaubenEditor({
         <div className={styles.seiten}>{fs.map(f => <div key={f.id}>
           <strong>{fs.length > 1 ? f.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite' : 'Gaubendach'}</strong>
           <span>{fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m · {fmtDe(f.neigungDeg, 1)}° Neigung · {f.gaubenMessung?.qualitaet === 'bestaetigt' ? 'Aufmaß bestätigt' : f.gaubenMessung?.qualitaet === 'gemessen' ? 'Ziegel gemessen' : f.gaubenMessung?.qualitaet === 'geschaetzt' ? 'geschätzt' : 'Maße aus Altprojekt'}</span>
-          <div className={styles.aufgaben}><button type="button" onClick={() => oeffneMasse(f.id)} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachmaße ändern` : 'Dachmaße ändern'}>Maße & Winkel ändern</button>
+          <div className={styles.aufgaben}><button type="button" onClick={() => oeffneMasse(f.id)} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachmaße ändern` : 'Dachmaße ändern'}>Maße & Neigung</button>
           <button type="button" onClick={() => navigation.weiter(() => onBelegungOeffnen ? onBelegungOeffnen(f.id) : belegungOeffnen(id))} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Module bearbeiten` : 'Module bearbeiten'}>Module bearbeiten</button></div>
         </div>)}</div>
         <div className={styles.nebenAktionen}><button type="button" onClick={() => navigation.weiter(() => kopiereGaube(id, fs))}>Gaube kopieren</button><button type="button" onClick={() => navigation.weiter(() => onLoeschen(id))}>Entfernen …</button></div>
@@ -803,7 +917,7 @@ export function GaubenEditor({
   const aktuelleAufgabe = massFlaeche ? 'Dachmaße ändern' : markieren ? punkte.length < erwartet ? 'Gaube im Foto markieren' : werkzeug === 'position' ? 'Gaube verschieben' : 'Gaubenform korrigieren' : offen ? 'Gaube anlegen' : 'Gauben bearbeiten';
   const hinweis = massFlaeche ? `${massFlaeche.gaubenSeite === 'links' ? 'Linke Dachseite' : massFlaeche.gaubenSeite === 'rechts' ? 'Rechte Dachseite' : 'Gaubendach'}: tatsächliche Maße eingeben.` : markieren ? punkte.length < erwartet ? `${punkte.length} von ${erwartet} Punkten · ${punkte.length < 4 ? 'Dachecken' : 'Firstenden'} ${touchBedienung ? 'mit dem Fadenkreuz setzen' : 'anklicken'}.` : werkzeug === 'position' ? `${gaubenName}: ${touchBedienung ? 'greifen und am Ziel ablegen' : 'innerhalb der Gaube ziehen'}. Dachmaße bleiben unverändert.` : `${gaubenName}: Ecken, Kanten oder First korrigieren.` : 'Gaube im Foto oder in der Liste auswählen.';
   return renderArbeitsbereich ? renderArbeitsbereich({
-    bild, steuerung, hinweis, aufgabe: { titel: aktuelleAufgabe, phase: massFlaeche ? `Gaube ${gruppen.findIndex(([id]) => id === massGruppe?.[0]) + 1}` : markieren ? gaubenName : eltern.name },
+    bild, steuerung, hinweis, aufgabe: { titel: aktuelleAufgabe, phase: massFlaeche && massGruppe ? gruppenName(massGruppe[1], gruppen.findIndex(([id]) => id === massGruppe[0]) + 1) : markieren ? gaubenName : eltern.name },
     bildSeitenverhaeltnis: foto.breitePx / foto.hoehePx,
     abbrechen: zugAbbrechen,
     punktSteuerung: markieren ? {

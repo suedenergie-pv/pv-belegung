@@ -26,7 +26,7 @@ test('Bewusster Projekteinstieg, Fortsetzen, Reload und geschützte Browsernavig
   await expect(page.getByLabel('Kunde', { exact: true })).toBeFocused();
   await page.getByLabel('Kunde', { exact: true }).fill('Familie Muster mit langem Kundennamen');
   await page.getByLabel('Adresse', { exact: true }).fill('Musterweg 12, 88299 Leutkirch im Allgäu');
-  await page.getByLabel('Erfasser (Vertrieb)').focus();
+  await page.getByLabel('Ihr Name (Beratung)').focus();
   const projektUrl = page.url();
   await shot('02-projektdaten');
   await button('2. Dach & Belegung').click();

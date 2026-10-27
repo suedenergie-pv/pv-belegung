@@ -82,7 +82,7 @@ for (const coarse of [false, true]) test(`Maus und Touch wechseln ohne Punktverl
   await page.getByRole('button', { name: 'Keine Aussparungen – weiter', exact: true }).click();
   // Gaubenpunkte lassen sich trotz Touch-Hardware unmittelbar setzen und ziehen.
   await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true }).click();
-  await page.getByRole('button', { name: 'Satteldachgaube', exact: true }).click();
+  await page.getByRole('button', { name: 'Zwei Dachseiten', exact: true }).click();
   await page.getByRole('button', { name: 'Im Foto markieren →', exact: true }).click();
   const gaube = page.getByRole('img', { name: 'Gaube im Dachfoto markieren', exact: true });
   for (const [x, y] of [[.3, .75], [.7, .75], [.7, .35], [.3, .35], [.5, .3], [.5, .8]]) await mausPunkt(page, gaube, x!, y!);

@@ -334,7 +334,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   // Laufende Zeiger-Geste (Aufziehen/Verschieben) — NICHT im Projekt, s. mitDrag()
   const [drag, setDrag] = useState<Drag | null>(null);
   const [perspektivEntwurf, setPerspektivEntwurf] = useState<PerspektivEntwurf | null>(null);
-  const [gaubenBearbeitung, setGaubenBearbeitung] = useState<{ elternId: string; gruppenId: string } | null>(null);
+  const [gaubenBearbeitung, setGaubenBearbeitung] = useState<{ elternId: string; gruppenId: string; flaecheId?: string; aufgabe: 'masse' | 'form' | 'position' } | null>(null);
   const [gaubenStatus, setGaubenStatus] = useState('');
   /**
    * Läuft gerade eine Geste? Als Ref, damit `onUpM` doppelt aufgerufen werden darf
@@ -735,6 +735,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         .filter(Number.isFinite);
       let nr = Math.max(0, ...nummern) + 1;
       const mitZonen = [...p.flaechen];
+      let gaubenNummer = 1;
+      while (p.flaechen.some((f) => f.name === `Gaube ${gaubenNummer}` || f.name.startsWith(`Gaube ${gaubenNummer} · `))) gaubenNummer++;
       const gemeinsameWerte = {
         breiteM: daten.breiteM,
         hoeheM: daten.hoeheM,
@@ -752,6 +754,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         let kind = neueGaubenFlaeche(nr++, zone, daten.typ, eltern.id, seite, gruppeId);
         kind = {
           ...kind,
+          name: `Gaube ${gaubenNummer}${seite ? ` · ${seite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite'}` : ''}`,
           ...gemeinsameWerte,
           ...(seite && daten.seitenMessung?.[seite] ? { gaubenMessung: daten.seitenMessung[seite] } : {}),
           ...(seitenMass ? { breiteM: seitenMass.breiteM, hoeheM: seitenMass.hoeheM } : {}),
@@ -868,8 +871,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     return true;
   };
 
-  const starteGaubenBearbeitung = (elternId: string, gruppenId: string) => {
-    setGaubenBearbeitung({ elternId, gruppenId });
+  const starteGaubenBearbeitung = (elternId: string, gruppenId: string, aufgabe: 'masse' | 'form' | 'position' = 'position', flaecheId?: string) => {
+    setGaubenBearbeitung({ elternId, gruppenId, aufgabe, flaecheId });
     window.setTimeout(() => {
       document.getElementById(`gauben-editor-${elternId}`)?.scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -1378,6 +1381,14 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     if (werkzeugStart) setMarkierungsRevision((revision) => revision + 1);
     patchSitzung({ panel: !werkzeugStart && sitzung.panel === panel ? '' : panel, verschieben: false, auswahl: null, modus: null });
   });
+  const oeffneAktiveGaube = (aufgabe: 'masse' | 'form' | 'position') => navigation.weiter(() => {
+    if (!f?.gaubenTyp || !f.elternFlaecheId) return;
+    verwerfeGeste();
+    setGeometrieVorschau(null);
+    setPerspektivEntwurf(null);
+    patchSitzung({ panel: 'gauben', verschieben: false, auswahl: null, modus: null });
+    starteGaubenBearbeitung(f.elternFlaecheId, f.gaubenGruppeId ?? f.id, aufgabe, f.id);
+  });
 
   useEffect(() => {
     if (!['gauben', 'umriss', 'aussparungen'].includes(sitzung.panel)) return;
@@ -1564,11 +1575,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
           </select> : null;
   const detailsPanel = f.gaubenTyp ? <div className={styles.kontextAktionen}>
     <p>{f.name} · {fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m</p>
-    <button className={aktionKlasse} onClick={() => oeffnePanel('gauben')}>Maß verbessern</button>
-    <button className={aktionKlasse} onClick={() => navigation.weiter(() => {
-      patchSitzung({ panel: 'gauben' });
-      if (f.elternFlaecheId) starteGaubenBearbeitung(f.elternFlaecheId, f.gaubenGruppeId ?? f.id);
-    })}>Perspektive bearbeiten</button>
+    <button className={aktionKlasse} onClick={() => oeffneAktiveGaube('masse')}>Maße & Neigung</button>
+    <button className={aktionKlasse} onClick={() => oeffneAktiveGaube('form')}>Umriss ändern</button>
     <button className={aktionKlasse} onClick={() => navigation.weiter(() => { if (f.elternFlaecheId) loescheGaube(f.elternFlaecheId, f.gaubenGruppeId ?? f.id); })}>Gaube löschen</button>
   </div> : <>{fotoZuordnung?.referenzMessung && <div className={styles.referenzEinstieg}><button type="button" className={aktionKlasse} onClick={() => oeffnePanel(fotoZuordnung?.referenzMessung?.ziegel ? 'dachrand' : 'referenz')}>Referenz und Dachrand neu prüfen</button></div>}{fotoZuordnung?.referenzMessung && <p className={styles.hinweis}>Dachrand aus Foto · Referenz {fmtDe(fotoZuordnung.referenzMessung.breiteM, 2)} × {fmtDe(fotoZuordnung.referenzMessung.hoeheM, 2)} m. {Math.abs(f.breiteM - fotoZuordnung.referenzMessung.rahmenBreiteM) > .00001 || Math.abs(f.hoeheM - fotoZuordnung.referenzMessung.rahmenHoeheM) > .00001 || JSON.stringify(fotoZuordnung.eckenPx) !== JSON.stringify(fotoZuordnung.referenzMessung.rahmenEckenPx) ? 'Die Dachmaße oder Perspektive wurden danach korrigiert; die Referenz dokumentiert das ursprüngliche Aufmaß.' : 'Die Gesamtmaße wurden daraus berechnet.'}</p>}{vorhandeneFotoWahl && <div className="mb-4">{vorhandeneFotoWahl}</div>}{referenzMoeglich && !fotoZuordnung?.referenzMessung && artVon(f) === 'dach' && <div className={styles.referenzEinstieg}><button type="button" className={aktionKlasse} onClick={() => oeffnePanel('dachrand')}>Dachrand nachzeichnen</button><p>Spitze oder mehrere Ecken? Folge dem sichtbaren Dachrand. Danach bestimmst du den Maßstab mit den Ziegeln.</p></div>}<FlaechenInlineEditor key={f.id} projekt={projekt} flaeche={f} index={projekt.flaechen.indexOf(f)} kompakt initialOffen
     massVorschlag={massVorschlag?.flaecheId === f.id ? massVorschlag.masse : undefined}
@@ -1692,7 +1700,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   </div> : <div className={styles.eigenschaften}>
     {f.gaubenTyp && eltern && <div className={styles.gaubenSeitenNavigation} aria-label="Gaubendachseiten">
       {projekt.flaechen.filter(x => x.gaubenTyp && (x.gaubenGruppeId ?? x.id) === (f.gaubenGruppeId ?? f.id)).map(x => <button type="button" key={x.id} aria-pressed={x.id === f.id} onClick={() => wechsleFlaeche(x.id)}>{x.gaubenSeite === 'links' ? 'Linke Dachseite' : x.gaubenSeite === 'rechts' ? 'Rechte Dachseite' : 'Gaubendach'}</button>)}
-      <button type="button" onClick={() => oeffnePanel('gauben')}>Zur Gaubenbearbeitung</button>
+      <button type="button" onClick={() => oeffneAktiveGaube('masse')}>Maße & Neigung</button>
+      <button type="button" onClick={() => oeffneAktiveGaube('form')}>Umriss ändern</button>
     </div>}
     <div className={styles.flaechenErgebnis}><strong>{aktiv}<small>Module</small></strong><strong>{fmtDe(aktiv * modul.pmaxW / 1000, 2)}<small>kWp · {f.name}</small></strong></div>
     <dl><div><dt>Abmessungen</dt><dd>{f.massEingabeOffen && !mass.belegen ? 'Noch eingeben' : `${fmtDe(f.breiteM, 2)} × ${fmtDe(f.hoeheM, 2)} m`}</dd></div><div><dt>Modul</dt><dd>{modul.pmaxW} Wp</dd></div><div><dt>Belegungsfelder</dt><dd>{felder.length}</dd></div></dl>
@@ -1701,14 +1710,17 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       <p>Ein Belegungsfeld antippen, um es frei zu drehen. Dachrichtung und Gestellabstand in den Dacheinstellungen ändern.</p>
       <button type="button" className={aktionKlasse} onClick={() => oeffnePanel('details')}>Aufständerung & Dachrichtung</button>
     </section>}
-    {!mass.belegen && <p className={styles.hinweis}>{mass.meldung} <button className={aktionKlasse} onClick={() => oeffnePanel(f.gaubenTyp ? 'gauben' : 'details')}>Maße bestätigen</button></p>}
+    {!mass.belegen && <p className={styles.hinweis}>{mass.meldung} <button className={aktionKlasse} onClick={() => f.gaubenTyp ? oeffneAktiveGaube('masse') : oeffnePanel('details')}>Maße bestätigen</button></p>}
     {belegungZeigen && !felder.length && <><h3>Bereit für die Belegung</h3><p>Lass dir eine Belegung vorschlagen. Fenster und Hindernisse bleiben frei. Danach kannst du alles anpassen.</p><button className={aktionKlasse} onClick={() => waehleBelegungsWerkzeug('feld_neu')}>Bereich selbst zeichnen</button></>}
     {belegungZeigen && !!felder.length && !raster.positionen.length && <p className={styles.hinweis}>Kein Modul passt in die nutzbare Fläche. Feldgröße, Rand und Aussparungen prüfen.</p>}
     {belegungZeigen && !!felder.length && !sitzung.verschieben && auswahlOptionen}
     {sitzung.verschieben && <p>Im Foto ziehen. Zwei Finger verschieben und zoomen immer nur die Ansicht.</p>}
   </div>;
   const renderArbeitsbereich = ({ bild, steuerung, hinweis, bildSeitenverhaeltnis, abbrechen, punktSteuerung, aufgabe }: { bild: ReactNode; steuerung?: ReactNode; hinweis?: ReactNode; bildSeitenverhaeltnis: number; abbrechen?: () => void; punktSteuerung?: FotoPunktSteuerung; aufgabe?: { titel: string; phase: string } }) => {
-    const fokusKey = `${f.id}:${fotoId}:${sitzung.panel}:${aufgabe?.titel ?? ''}`;
+    // Der letzte Gaubenpunkt ändert nur die Anleitung. Der Bildfokus muss bis
+    // zum bewussten Wechsel erhalten bleiben, auch während einer Touch-Geste.
+    const fokusAufgabe = sitzung.panel === 'gauben' && aufgabe?.titel !== 'Dachmaße ändern' ? 'gauben-markierung' : aufgabe?.titel ?? '';
+    const fokusKey = `${f.id}:${fotoId}:${sitzung.panel}:${fokusAufgabe}`;
     const fokusAktiv = !!aufgabe && !!steuerung && bildFokus === fokusKey;
     return <EditorAktionsRahmen>
     <div className={styles.arbeitsbereich} data-bildfokus={fokusAktiv} role={fokusAktiv ? 'dialog' : undefined} aria-modal={fokusAktiv ? true : undefined} aria-label={fokusAktiv ? `${f.name} · ${aufgabe?.titel}` : undefined}
@@ -1777,7 +1789,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
           <EditorAktionsZiel />
           {belegungZeigen && !felder.length && !steuerung && !perspektiveHier && !suedHier && !geometrieEntwurfAktiv && !feldNeuWerkzeug && <button type="button" onClick={starteAutoBelegung}>Belegung vorschlagen</button>}
           {suedHier && <><button type="button" disabled={suedHier.winkel === null} onClick={speichereSued}>Südrichtung übernehmen</button><button type="button" className={styles.suedAbbrechen} onClick={() => {setSuedEntwurf(null);patchSitzung({panel:''});}}>Abbrechen</button></>}
-          {onExport && belegungZeigen && !steuerung && !perspektiveHier && !suedHier && !geometrieEntwurfAktiv && felder.length > 0 && <><button type="button" onClick={onExport} aria-label="Weiter zum Export">Weiter zum Export <span aria-hidden="true">→</span></button>
+          {onExport && belegungZeigen && !steuerung && !perspektiveHier && !suedHier && !geometrieEntwurfAktiv && felder.length > 0 && <><button type="button" onClick={onExport} aria-label="Weiter zum Kunden-PDF">Weiter zum Kunden-PDF <span aria-hidden="true">→</span></button>
           <span data-export-hinweis>PDF-Vorschau und Download</span></>}
         </div>
       </aside>
@@ -1818,7 +1830,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         {fotoId && fotoAsset && !fotoAsset.massplanFlaecheId && <option value="auf-foto">+ Weitere Fläche auf diesem Foto</option>}
         <option value="">+ Neue Fläche hinzufügen</option>
       </select>
-      <button className={aktionKlasse} aria-label={f.einsatzort === 'freiflaeche' ? 'Flächenmaße' : 'Dachmaße'} aria-expanded={sitzung.panel === 'details'} onClick={() => oeffnePanel('details')}><WorkbenchIcon symbol="details" /><span className={styles.langeBeschriftung}>{f.einsatzort === 'freiflaeche' ? 'Flächenmaße' : 'Dachmaße'}</span><span className={styles.kurzeBeschriftung} aria-hidden="true">Maße</span></button>
+      <button className={aktionKlasse} aria-label={f.gaubenTyp ? 'Gaubenmaße & Neigung' : f.einsatzort === 'freiflaeche' ? 'Flächenmaße' : 'Dachmaße'} aria-expanded={sitzung.panel === (f.gaubenTyp ? 'gauben' : 'details')} onClick={() => f.gaubenTyp ? oeffneAktiveGaube('masse') : oeffnePanel('details')}><WorkbenchIcon symbol="details" /><span className={styles.langeBeschriftung}>{f.gaubenTyp ? 'Maße & Neigung' : f.einsatzort === 'freiflaeche' ? 'Flächenmaße' : 'Dachmaße'}</span><span className={styles.kurzeBeschriftung} aria-hidden="true">Maße</span></button>
       {artVon(f) === 'flachdach' && belegungZeigen && <button type="button" className={aktionKlasse} aria-pressed={!!suedHier} onClick={() => navigation.weiter(starteSued)}>Süden {suedOffen ? 'festlegen' : 'ändern'}</button>}
       <button className={aktionKlasse} aria-expanded={sitzung.panel === 'fotos'} onClick={() => oeffnePanel('fotos')}><WorkbenchIcon symbol="foto" />Fotos</button>
       {(!foto || !!fotoAsset?.massplanFlaecheId) && belegungZeigen && <button className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button>}
@@ -1840,9 +1852,9 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       </>}
     </div>
     <div className={styles.dachWerkzeuge} role="group" aria-label="Dach bearbeiten">
-      <button type="button" aria-label="Dachrand" aria-expanded={sitzung.panel === 'umriss'} disabled={!foto?.eckenPx || !mass.belegen} title="Dachumriss zeichnen oder ändern · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('umriss', true)}><WorkbenchIcon symbol="umriss" /><span>Dachrand</span></button>
+      <button type="button" aria-label="Dachrand" aria-expanded={sitzung.panel === 'umriss'} disabled={!foto?.eckenPx || !mass.belegen} title="Dachumriss zeichnen oder ändern · benötigt bestätigte Maße und Dachecken" onClick={() => f.gaubenTyp ? oeffneAktiveGaube('form') : oeffnePanel('umriss', true)}><WorkbenchIcon symbol="umriss" /><span>Dachrand</span></button>
       <button type="button" aria-label="Aussparungen" aria-expanded={sitzung.panel === 'aussparungen'} disabled={!foto?.eckenPx || !mass.belegen} title="Fenster, Kamin oder andere Aussparungen markieren · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('aussparungen', true)}><WorkbenchIcon symbol="aussparung" /><span>Aussparen</span></button>
-      {gaubenErlaubt && <button type="button" aria-label="Gauben" aria-expanded={sitzung.panel === 'gauben'} disabled={!elternMitFoto?.foto?.eckenPx || !massFreigabe(elternMitFoto).belegen} title="Gauben im Foto anlegen oder bearbeiten · benötigt bestätigte Maße und Dachecken" onClick={() => oeffnePanel('gauben')}><WorkbenchIcon symbol="gaube" /><span>Gauben</span></button>}
+      {gaubenErlaubt && <button type="button" aria-label="Gauben" aria-expanded={sitzung.panel === 'gauben'} disabled={!elternMitFoto?.foto?.eckenPx || !massFreigabe(elternMitFoto).belegen} title="Gauben im Foto anlegen oder bearbeiten · benötigt bestätigte Maße und Dachecken" onClick={() => f.gaubenTyp ? oeffneAktiveGaube('position') : oeffnePanel('gauben')}><WorkbenchIcon symbol="gaube" /><span>Gauben</span></button>}
       {fotoZuordnung?.eckenPx && !f.gaubenTyp && <button type="button" className={styles.zusatzWerkzeug} aria-label="Perspektive bearbeiten" aria-pressed={!!perspektiveHier} title="Die vier Dachecken im Foto korrigieren" onClick={oeffnePerspektive}><WorkbenchIcon symbol="perspektive" /><span>Perspektive</span></button>}
     </div>
     <div className={styles.weitereWerkzeuge}>
@@ -1864,6 +1876,8 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
         initialOffen={!projekt.flaechen.some((x) => x.elternFlaecheId === eltern.id && !!x.gaubenTyp)}
         gauben={projekt.flaechen.filter((x) => x.elternFlaecheId === eltern.id && !!x.gaubenTyp)}
         bearbeiteGruppenId={gaubenBearbeitung?.elternId === eltern.id ? gaubenBearbeitung.gruppenId : null}
+        bearbeiteFlaecheId={gaubenBearbeitung?.elternId === eltern.id ? gaubenBearbeitung.flaecheId : null}
+        bearbeitungsAufgabe={gaubenBearbeitung?.elternId === eltern.id ? gaubenBearbeitung.aufgabe : undefined}
         onBearbeitungGestartet={() => setGaubenBearbeitung(null)}
         onBelegungOeffnen={wechsleFlaeche}
         onErstellen={(daten) => erstelleGaube(eltern, gaubenFotoId!, daten)}

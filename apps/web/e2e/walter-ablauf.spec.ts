@@ -148,9 +148,9 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await page.mouse.move(feldBox.x + feldBox.width / 2 + 30, feldBox.y + feldBox.height / 2, { steps: 6 });
   await page.mouse.up();
   await expect(neuesFeld).not.toHaveAttribute('d', feldVorZug!);
-  await expect(button('Weiter zum Export')).toBeInViewport({ ratio: 1 });
+  await expect(button('Weiter zum Kunden-PDF')).toBeInViewport({ ratio: 1 });
   await screenshot('06-belegt');
-  await button('Weiter zum Export').click();
+  await button('Weiter zum Kunden-PDF').click();
   await expect(button('PDF herunterladen')).toBeInViewport({ ratio: 1 });
   await screenshot('07-export');
   await page.locator('[data-export-vorschau]').scrollIntoViewIfNeeded();
@@ -168,11 +168,11 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await expect(traufe).toHaveValue('10');
   await expect(sparren).toHaveValue('6');
   await traufe.fill('11');
-  await button('Weiter zum Export').click();
+  await button('Weiter zum Kunden-PDF').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Bleiben', exact: true }).click();
   await expect(traufe).toHaveValue('11');
-  await button('Weiter zum Export').click();
+  await button('Weiter zum Kunden-PDF').click();
   await dialog.getByRole('button', { name: 'Verwerfen', exact: true }).click();
   await button('2. Dach & Belegung').click();
   if (await button('Dachmaße').getAttribute('aria-expanded') !== 'true') await button('Dachmaße').click();
@@ -185,7 +185,7 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await expect(page.getByLabel('Aktive Dachfläche')).toHaveValue('p2');
   await expect(button('Foto hochladen')).toBeInViewport({ ratio: 1 });
   await expect(button('Maße übernehmen')).toHaveCount(0);
-  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await expect(button('Weiter zum Kunden-PDF')).toHaveCount(0);
   await screenshot('08a-zweite-flaeche-foto');
   const leereAuswahl = page.waitForEvent('filechooser'); await button('Foto hochladen').click();
   await (await leereAuswahl).setFiles([]);
@@ -200,11 +200,11 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await expect(traufe).toHaveValue('');
   await expect(sparren).toHaveValue('');
   await expect(button('Maße übernehmen')).toBeInViewport({ ratio: 1 });
-  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await expect(button('Weiter zum Kunden-PDF')).toHaveCount(0);
   await screenshot('08-zweite-flaeche-masse');
   await traufe.fill('8'); await sparren.fill('5');
   await button('Maße übernehmen').click();
-  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await expect(button('Weiter zum Kunden-PDF')).toHaveCount(0);
   await page.getByRole('button', { name: /Überspringen \(/ }).click();
   const zweitesFoto = page.getByRole('img', { name: /im Foto markieren/ });
   await zweitesFoto.hover();
@@ -213,7 +213,7 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
     await zweitesFoto.click({ position: { x: fotoBox.width*x!, y: fotoBox.height*y! } });
   }
   await button('4 Ecken übernehmen').click();
-  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await expect(button('Weiter zum Kunden-PDF')).toHaveCount(0);
   const fotoBox = (await zweitesFoto.boundingBox())!;
   await zweitesFoto.click({ position: { x: fotoBox.width*.3, y: fotoBox.height*.3 } });
   await expect(button('Keine Aussparungen – weiter')).toBeEnabled();
@@ -221,7 +221,7 @@ test('Neues Dach ohne Doppelaktionen bis zum PDF, danach gespeicherte Belegung k
   await screenshot('09-keine-aussparungen-weiter');
   await button('Keine Aussparungen – weiter').click();
   await expect(button('+ Feld zeichnen')).toHaveAttribute('aria-pressed', 'true');
-  await expect(button('Weiter zum Export')).toHaveCount(0);
+  await expect(button('Weiter zum Kunden-PDF')).toHaveCount(0);
   await expect(page.getByTestId('flaechen-status')).toContainText('Dachfläche 2: 0 Module');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.waitForTimeout(550);

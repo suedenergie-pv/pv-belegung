@@ -94,11 +94,11 @@ describe('Projektverwaltung und Einstieg', () => {
     if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '12' } });
     fireEvent.change(ui.getByLabelText(/^Länge auf dem Dach/), { target: { value: '6' } });
-    fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
+    fireEvent.click(ui.getByRole('button', { name: '3. Kunden-PDF' }));
     expect(ui.getByRole('dialog')).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: 'Bleiben' }));
     expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('12');
-    fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
+    fireEvent.click(ui.getByRole('button', { name: '3. Kunden-PDF' }));
     fireEvent.click(ui.getByRole('button', { name: 'Verwerfen' }));
     expect(ui.getByRole('heading', { name: 'Zusammenfassung' })).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
@@ -106,7 +106,7 @@ describe('Projektverwaltung und Einstieg', () => {
     expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
     fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '14' } });
     fireEvent.change(ui.getByLabelText(/^Länge auf dem Dach/), { target: { value: '6' } });
-    fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
+    fireEvent.click(ui.getByRole('button', { name: '3. Kunden-PDF' }));
     fireEvent.click(ui.getByRole('button', { name: 'Übernehmen' }));
     fireEvent.click(ui.getByRole('button', { name: '2. Dach & Belegung' }));
     if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
@@ -121,7 +121,7 @@ describe('Projektverwaltung und Einstieg', () => {
     if (ui.getByRole('button', { name: 'Dachmaße' }).getAttribute('aria-expanded') !== 'true') fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
     fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '12' } });
     fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '' } });
-    fireEvent.click(ui.getByRole('button', { name: '3. Export' }));
+    fireEvent.click(ui.getByRole('button', { name: '3. Kunden-PDF' }));
     fireEvent.click(ui.getByRole('button', { name: 'Übernehmen' }));
     expect(ui.queryByRole('heading', { name: 'Zusammenfassung' })).toBeNull();
     expect(ui.getByRole('alert').textContent).toMatch(/korrigieren/);
@@ -140,7 +140,7 @@ describe('Projektverwaltung und Einstieg', () => {
     const automatisch = await findAllByRole('button', { name: 'Belegung vorschlagen' });
     fireEvent.click(automatisch.at(-1)!);
     expect(getByRole('button', { name: '↶ Rückgängig (1)' })).toBeTruthy();
-    fireEvent.click(getByRole('button', { name: '3. Export' }));
+    fireEvent.click(getByRole('button', { name: '3. Kunden-PDF' }));
     fireEvent.click(getByRole('button', { name: '↶ Rückgängig (1)' }));
     fireEvent.click(getByRole('button', { name: '2. Dach & Belegung' }));
     expect(getByRole('button', { name: 'Bereich selbst zeichnen' })).toBeTruthy();
@@ -158,7 +158,7 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.change(kunde, { target: { value: 'Familie Eins' } });
     fireEvent.blur(kunde);
     expect(getByRole('button', { name: '↶ Rückgängig (1)' })).toBeTruthy();
-    fireEvent.click(getByRole('button', { name: '3. Export' }));
+    fireEvent.click(getByRole('button', { name: '3. Kunden-PDF' }));
     fireEvent.click(getByRole('button', { name: /↶ Rückgängig/ }));
     fireEvent.click(getByRole('button', { name: '1. Projektdaten' }));
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('');
@@ -197,16 +197,16 @@ describe('Projektverwaltung und Einstieg', () => {
     fireEvent.change(getByLabelText('Adresse'), { target: { value: 'Testweg 1' } });
     expect((getByLabelText('Kunde') as HTMLInputElement).value).toBe('Familie Audit');
     expect((getByLabelText('Adresse') as HTMLInputElement).value).toBe('Testweg 1');
-    expect((getByRole('button', { name: 'Weiter →' }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(getByRole('button', { name: 'Weiter →' }));
+    expect((getByRole('button', { name: 'Dach & Belegung öffnen →' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(getByRole('button', { name: 'Dach & Belegung öffnen →' }));
     expect((await findByRole('button', { name: '2. Dach & Belegung' })).getAttribute('aria-current')).toBe('step');
     expect(getByRole('toolbar', { name: 'Werkzeuge für Dachfläche 1' })).toBeTruthy();
     expect(getByTestId('arbeitsbereich-p1').className).not.toContain('lg:grid-cols');
     expect(getByText('Mit Foto oder Maßen starten')).toBeTruthy();
     expect(queryByRole('button', { name: 'Hochkant' })).toBeNull();
     expect(queryByRole('button', { name: 'Belegung vorschlagen' })).toBeNull();
-    fireEvent.click(getByRole('button', { name: '3. Export' }));
-    expect((await findByRole('button', { name: '3. Export' })).getAttribute('aria-current')).toBe('step');
+    fireEvent.click(getByRole('button', { name: '3. Kunden-PDF' }));
+    expect((await findByRole('button', { name: '3. Kunden-PDF' })).getAttribute('aria-current')).toBe('step');
     expect(getByRole('heading', { name: 'Zusammenfassung' })).toBeTruthy();
   });
 

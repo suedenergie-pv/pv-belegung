@@ -30,7 +30,7 @@ async function stand(page:Page):Promise<Projekt>{
  await page.waitForTimeout(700);
  return page.evaluate(()=>{const db=JSON.parse(localStorage.getItem('pv-belegung-projekte-v2')!);return db.projekte.find((x:{id:string})=>x.id===db.aktivId).projekt});
 }
-for(const [typ,label] of [['flachdach','Flachdachgaube · Stehfalz'],['schleppdach','Schleppgaube'],['walmdach','Walmgaube · Dachseite'],['spitzdach','Spitzgaube · Dachseite']] as const){
+for(const [typ,label] of [['flachdach','Flach / leicht geneigt'],['schleppdach','Eine stärker geneigte Dachseite'],['walmdach','Dachseite oben schmaler'],['spitzdach','Dachseite mit Spitze']] as const){
  test(typ+': anlegen, eigene Winkel, Kontur, Kopie und Reload',async({page},info)=>{
   test.setTimeout(100000);page.setDefaultTimeout(12000);
   const out=resolve(process.env.PV_QA_SHOTS??'output/gauben-varianten');mkdirSync(out,{recursive:true});
@@ -41,20 +41,32 @@ for(const [typ,label] of [['flachdach','Flachdachgaube · Stehfalz'],['schleppda
   const b=(name:string)=>page.getByRole('button',{name,exact:true});
   await page.goto('./');await oeffneStartprojekt(page);
   await page.getByRole('group',{name:'Dach bearbeiten'}).getByRole('button',{name:'Gauben',exact:true}).click();
+  await expect(page.getByRole('group',{name:'Gaubentyp'}).getByRole('button')).toHaveCount(2);
+  if(typ!=='flachdach')await page.getByText('Weitere Formen',{exact:true}).click();
   await b(label).click();await b('Aufmaß vorhanden').click();
-  await page.getByLabel('Breite der belegbaren Fläche').fill('6');await page.getByLabel('Länge Traufe bis First').fill('4');
+  const neigung=typ==='flachdach'?7.5:typ==='schleppdach'?15:30;
+  await page.getByLabel(/^Dachneigung der Gaube/).fill(String(neigung));
+  await page.getByLabel('Breite der belegbaren Fläche').fill('6');await page.getByLabel('Tiefe auf dem Gaubendach').fill('4');
   if(typ==='walmdach')await page.getByLabel('Obere Breite der Dachseite').fill('3');
   await b('Im Foto markieren →').click();
   for(const [x,y] of [[.2,.8],[.7,.8],[.7,.2],[.2,.2]])await fotoPunkt(page,x!,y!,info.project.name!=='desktop');
   await page.screenshot({path:resolve(out,info.project.name+'-'+typ+'-markierung.png')});
   await b('Gaube anlegen & fertig').click();
-  const vorher=await stand(page);const f=vorher.flaechen.find(f=>f.gaubenTyp)!;expect(f.gaubenTyp).toBe(typ);expect(f.art).toBe('dach');expect(f.flachdach).toBeUndefined();
+  const vorher=await stand(page);const f=vorher.flaechen.find(f=>f.gaubenTyp)!;expect(f.gaubenTyp).toBe(typ);expect(f.art).toBe('dach');expect(f.flachdach).toBeUndefined();expect(f.neigungDeg).toBe(neigung);
   if(typ==='walmdach'||typ==='spitzdach'){expect(f.fotoBezugsrahmen).toBe(true);expect(f.firstBreiteM).toBe(typ==='spitzdach'?0:3)}
   const card=page.locator('[data-gaubengruppe]').first();
   await card.getByRole('button',{name:'Dachmaße ändern',exact:true}).click();
   await page.getByLabel(/^Neigung der Gaubenseite/).fill('90');await expect(b('Maße übernehmen')).toBeDisabled();
   await page.getByLabel(/^Neigung der Gaubenseite/).fill('42,5');await page.getByLabel(/^Ausrichtung der Gaubenseite/).fill('135');
   await b('Maße übernehmen').click();
+  const aufgaben=page.getByRole('group',{name:'Gaube bearbeiten',exact:true});
+  await expect(aufgaben.getByRole('button',{name:'Maße & Neigung',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByLabel(/^Neigung der Gaubenseite/)).toHaveValue('42.5');
+  await aufgaben.getByRole('button',{name:'Umriss',exact:true}).click();
+  await expect(page.getByRole('button',{name:/^Gaubenpunkt /})).toHaveCount(4);
+  await aufgaben.getByRole('button',{name:'Maße & Neigung',exact:true}).click();
+  await expect(page.getByLabel(/^Neigung der Gaubenseite/)).toHaveValue('42.5');
+  await b('← Alle Gauben').click();
   await card.getByRole('button',{name:'Gaube kopieren',exact:true}).click();
   await b('Gaubenkopie anlegen').click();
   const neu=await stand(page);const kinder=neu.flaechen.filter(f=>f.gaubenTyp);

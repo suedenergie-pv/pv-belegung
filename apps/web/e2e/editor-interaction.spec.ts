@@ -107,7 +107,7 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   await page.getByRole('button', { name: /Wiederherstellen/ }).click();
   expect((await stand(page)).flaechen[0].felder).toEqual(verschoben.flaechen[0].felder);
   await page.getByRole('button', { name: 'Vergrößern', exact: true }).click();
-  await page.getByRole('button', { name: '3. Export', exact: true }).click();
+  await page.getByRole('button', { name: '3. Kunden-PDF', exact: true }).click();
   await expect(page.getByRole('button', { name: 'PDF herunterladen', exact: true })).toBeEnabled();
   await bildBeleg(page, `${testInfo.project.name}-export`);
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
@@ -120,7 +120,7 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   // Dachwerkzeuge sind ohne Menü erreichbar; ein Wechsel schützt offene Punkte.
   const dachWerkzeuge = page.getByRole('group', { name: 'Dach bearbeiten' });
   await page.evaluate(() => scrollTo(0, 0));
-  for (const name of ['Gauben', 'Umriss', 'Aussparungen']) {
+  for (const name of ['Gauben', 'Dachrand', 'Aussparungen']) {
     const knopf = dachWerkzeuge.getByRole('button', { name, exact: true });
     await expect(knopf).toBeInViewport();
     const ziel = (await knopf.boundingBox())!;
@@ -129,13 +129,13 @@ test('Fotoeditor: reale Einrichtung, Zoom, Zwei-Punkt-Feld, Pinch, Korrektur, Ex
   }
   await bildBeleg(page, `${testInfo.project.name}-dachwerkzeuge`);
   await dachWerkzeuge.getByRole('button', { name: 'Gauben', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Satteldachgaube', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zwei Dachseiten', exact: true })).toBeVisible();
   const fotoPosition = await page.getByTestId('editor-viewport').boundingBox();
   await page.getByRole('button', { name: 'Im Foto markieren →', exact: true }).scrollIntoViewIfNeeded();
   expect(await page.getByTestId('editor-viewport').boundingBox()).toEqual(fotoPosition);
-  await page.getByRole('heading', { name: 'Gauben', exact: true }).scrollIntoViewIfNeeded();
+  await page.getByRole('group', { name: 'Gaubentyp', exact: true }).scrollIntoViewIfNeeded();
   await bildBeleg(page, `${testInfo.project.name}-gauben-direkt`, false);
-  await dachWerkzeuge.getByRole('button', { name: 'Umriss', exact: true }).click();
+  await dachWerkzeuge.getByRole('button', { name: 'Dachrand', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Umriss übernehmen', exact: true })).toBeDisabled();
   await bildBeleg(page, `${testInfo.project.name}-umriss-direkt`, false);
   const markierung = page.getByRole('img', { name: /im Foto markieren/ });

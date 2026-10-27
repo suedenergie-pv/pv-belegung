@@ -134,7 +134,7 @@ test('Fadenkreuz: Finger bewegt nur den Cursor, fester Button setzt Punkte, Pinc
   await bestaetigen(page);
   await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Verwerfen', exact: true }).click();
-  await page.getByRole('button', { name: 'Satteldachgaube', exact: true }).click();
+  await page.getByRole('button', { name: 'Zwei Dachseiten', exact: true }).click();
   await page.getByRole('button', { name: 'Im Foto markieren →', exact: true }).click();
   for (const [x, y] of [[.3, .75], [.7, .75], [.7, .35], [.3, .35], [.5, .3], [.5, .8]]) {
     await schiebeKreuz(page, x!, y!, browserName === 'chromium');

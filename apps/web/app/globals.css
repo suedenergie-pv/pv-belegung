@@ -104,3 +104,44 @@ body:has(.editor-seite) .app-inhalt { max-width:none; margin:0; padding:0; }
 .pdf-aktionen h2{font-size:18px}
 .pdf-aktionen .mb-3{margin-bottom:0}
 @media(max-width:600px){.pdf-aktionen>section{padding:10px 12px}.pdf-aktionen h2{font-size:16px}}
+
+/* Touch-Eingaben bleiben mindestens 16 px groß, auch in kompakten Formularen.
+   Die Priorität verhindert, dass Komponentenregeln den Fokus-Zoom zurückbringen. */
+@media(max-width:600px),(pointer:coarse) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  select,
+  textarea { font-size:max(16px, 1em) !important; }
+}
+
+.projekte-kurz { display:none; }
+/* Auf kurzen Handys teilen sich Projektname und Aktionen eine Zeile. */
+@media(max-width:600px) and (max-height:640px) {
+  .editor-seite .projekt-leiste { grid-template-columns:auto minmax(0,1fr) auto; gap:6px; padding:6px; }
+  .editor-seite .projekt-identitaet { grid-column:2; grid-row:1; padding:0; overflow:hidden; }
+  .editor-seite .projekt-identitaet h2 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+  .editor-seite .projekt-adresse { display:none; }
+  .editor-seite .speicher-status { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .editor-seite .projekt-zugaenge { grid-column:3; grid-row:1; }
+  .editor-seite .neues-projekt-lang,.editor-seite .projekte-voll { display:none; }
+  .editor-seite .projekte-kurz { display:inline; }
+  .editor-seite .neues-projekt { padding:0 7px; }
+  .editor-seite .alle-projekte { font-size:13px; padding:0 5px; }
+}
+@media(max-width:360px) and (max-height:640px) {
+  .editor-seite .schritt-leiste button { font-size:11px; padding-inline:2px; }
+}
+
+/* Im kurzen Querformat bleiben Projekt und Ablauf nebeneinander. */
+@media(max-height:500px) and (orientation:landscape) and (min-width:700px) {
+  .workbench-kopf { grid-template-columns:minmax(0,1fr) auto; }
+  .editor-seite .projekt-leiste { gap:6px; padding:4px 8px; }
+  .editor-seite .projekt-identitaet { overflow:hidden; }
+  .editor-seite .projekt-identitaet h2 { font-size:12px; }
+  .editor-seite .projekt-zugaenge { gap:4px; }
+  .editor-seite .neues-projekt { padding:0 8px; font-size:12px; }
+  .editor-seite .neues-projekt-lang,.editor-seite .projekte-voll { display:none; }
+  .editor-seite .projekte-kurz { display:inline; }
+  .editor-seite .alle-projekte { padding:0 6px; font-size:12px; }
+  .editor-seite .ablauf-leiste { border-top:0; padding:0 4px; }
+  .editor-seite .schritt-leiste button { padding:0 6px; font-size:11px; }
+}

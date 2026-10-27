@@ -231,7 +231,7 @@ describe('Belegungsbedienung', () => {
     expect(ui.queryAllByTestId('umriss-griff')).toHaveLength(0);
     expect(ui.getByRole('button', { name: 'Keine Aussparungen – weiter' })).toBeTruthy();
     fireEvent.click(dach.getByRole('button', { name: 'Gauben' }));
-    expect(ui.getByRole('button', { name: 'Satteldachgaube' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Zwei Dachseiten' })).toBeTruthy();
     expect(ui.getByRole('button', { name: 'Im Foto markieren →' })).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(ui.getByRole('button', { name: 'Auswählen' }));
@@ -278,7 +278,7 @@ describe('Belegungsbedienung', () => {
       return <SchrittBelegung projekt={projekt} onChange={setProjekt} onExport={vi.fn()} />;
     }
     const ui = render(<Editor />);
-    expect(ui.getByRole('button', { name: 'Weiter zum Export' })).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Weiter zum Kunden-PDF' })).toBeTruthy();
     if(zugang==='auswahl')fireEvent.change(ui.getByRole('combobox',{name:'Aktive Dachfläche'}),{target:{value:''}});
     else fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
     expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
@@ -287,7 +287,7 @@ describe('Belegungsbedienung', () => {
     expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
     expect((ui.getByLabelText(/^Länge auf dem Dach/) as HTMLInputElement).value).toBe('');
     expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
-    expect(ui.queryByRole('button', { name: 'Weiter zum Export' })).toBeNull();
+    expect(ui.queryByRole('button', { name: 'Weiter zum Kunden-PDF' })).toBeNull();
     expect(ui.getByRole('img', { name: /im Foto markieren/ })).toBeTruthy();
     expect(start.flaechen[0]!.felder).toHaveLength(1);
   });
@@ -782,10 +782,8 @@ describe('Belegungsbedienung', () => {
     }
     const { getByRole, getAllByRole, findByRole } = render(<TestApp />);
     fireEvent.change(getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
-    fireEvent.click(getByRole('button', { name: 'Dachmaße' }));
-    fireEvent.click(getAllByRole('button', { name: 'Perspektive bearbeiten' })[0]!);
+    fireEvent.click(getByRole('button', { name: 'Dachrand' }));
     const editor = await findByRole('img', { name: 'Gaube im Dachfoto markieren' });
-    fireEvent.click(getByRole('button', { name: 'Form korrigieren' }));
     expect(getAllByRole('button', { name: /Gaubenpunkt/ })).toHaveLength(6);
     vi.spyOn(editor, 'getBoundingClientRect').mockReturnValue({
       x: 0, y: 0, top: 0, left: 0, right: 1000, bottom: 600, width: 1000, height: 600,
@@ -833,7 +831,7 @@ describe('Belegungsbedienung', () => {
     expect(ui.getByRole('alert').textContent).toMatch(/First|Gaubenseiten|überlapp/);
     expect(ui.getByTestId('gauben-gruppe').getAttribute('points')).toBe(vorher);
     expect(onChange).not.toHaveBeenCalled();
-    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen verwerfen' }));
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -863,6 +861,38 @@ describe('Belegungsbedienung', () => {
     }
   });
 
+
+  it('öffnet die ausgewählte Gaubenseite direkt und behält sie beim Speichern und Aufgabenwechsel', async () => {
+    const start = projektMitSatteldachgaube();
+    let stand = start;
+    function App() {
+      const [projekt, setProjekt] = useState(start);
+      return <EntwurfNavigationProvider><SchrittBelegung projekt={projekt} onChange={p => { stand = p; setProjekt(p); }} /></EntwurfNavigationProvider>;
+    }
+    const ui = render(<App />);
+    fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
+    fireEvent.click(ui.getByRole('button', { name: 'Gaubenmaße & Neigung' }));
+    const neigung = await ui.findByLabelText(/^Neigung der Gaubenseite/);
+    fireEvent.change(neigung, { target: { value: '12,5' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    await waitFor(() => expect(stand.flaechen[2]!.neigungDeg).toBe(12.5));
+    expect(stand.flaechen[1]).toEqual(start.flaechen[1]);
+    expect((ui.getByLabelText(/^Neigung der Gaubenseite/) as HTMLInputElement).value).toBe('12.5');
+    fireEvent.click(ui.getByRole('button', { name: 'Umriss' }));
+    expect(ui.getAllByRole('button', { name: /Gaubenpunkt/ })).toHaveLength(6);
+    fireEvent.click(ui.getByRole('button', { name: 'Maße & Neigung' }));
+    expect((ui.getByLabelText(/^Neigung der Gaubenseite/) as HTMLInputElement).value).toBe('12.5');
+    fireEvent.change(ui.getByLabelText(/^Neigung der Gaubenseite/), { target: { value: '20' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Umriss' }));
+    expect(ui.getByText('Maßentwurf noch offen')).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Verwerfen', hidden: true }));
+    expect(stand.flaechen[2]!.neigungDeg).toBe(12.5);
+    expect(ui.getAllByRole('button', { name: /Gaubenpunkt/ })).toHaveLength(6);
+    fireEvent.click(ui.getByRole('button', { name: 'Module' }));
+    expect((ui.getByRole('combobox', { name: 'Aktive Dachfläche' }) as HTMLSelectElement).value).toBe(start.flaechen[2]!.id);
+    expect(ui.getByRole('button', { name: 'Gaubenmaße & Neigung' })).toBeTruthy();
+  });
+
   it('löscht von der zweiten Dachseite die ganze Gaubengruppe und stellt sie per Rückgängig wieder her', async () => {
     const start = projektMitSatteldachgaube();
     let letzterStand = start;
@@ -873,8 +903,7 @@ describe('Belegungsbedienung', () => {
     }
     const { getByRole } = render(<TestApp />);
     fireEvent.change(getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[2]!.id } });
-    fireEvent.click(getByRole('button', { name: 'Dachmaße' }));
-    const loeschen = getByRole('button', { name: 'Gaube löschen' });
+    const loeschen = getByRole('button', { name: `Gaube „${start.flaechen[2]!.name}“ entfernen` });
     fireEvent.click(loeschen);
     expect(letzterStand.flaechen).toHaveLength(3);
     expect(bestaetigen.mock.calls[0]![0]).toContain('Beide Dachseiten');

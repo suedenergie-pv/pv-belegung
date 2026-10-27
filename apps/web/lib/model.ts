@@ -1,5 +1,5 @@
 import { gueltigeZiegelMessung, type ZiegelMessung } from './foto-ziegel';
-import { inverseHomographie, projiziere, pruefePerspektive, sortiereEcken, type Ecken, type Punkt } from './foto-geometrie';
+import { homographie, inverseHomographie, projiziere, pruefePerspektive, sortiereEcken, type Ecken, type Punkt } from './foto-geometrie';
 import { gaubenFotoUmriss } from './gauben-umriss';
 import {
   MODULES,
@@ -1392,8 +1392,9 @@ export function migriereProjekt(roh: Projekt): Projekt {
       const seite = (name: GaubenSeite) => fotoZuordnungenVon(gruppe.find((g) => g.gaubenSeite === name) ?? f).find((z) => z.fotoId === zuordnung.fotoId)?.eckenPx;
       const links = gruppe.some((g) => g.gaubenSeite === 'links') ? seite('links') : undefined;
       const rechts = gruppe.some((g) => g.gaubenSeite === 'rechts') ? seite('rechts') : undefined;
-      const flach = gruppe.find((g) => g.gaubenTyp === 'flachdach');
-      const flacheEcken = flach && fotoZuordnungenVon(flach).find((z) => z.fotoId === zuordnung.fotoId)?.eckenPx;
+      // Eine übrig gebliebene Satteldachseite darf nicht als gesamte Gaube gelten.
+      const einzel = gruppe.length === 1 && gruppe[0]!.gaubenTyp && gruppe[0]!.gaubenTyp !== 'satteldach' ? gruppe[0] : undefined;
+      const einzelneEcken = einzel && fotoZuordnungenVon(einzel).find((z) => z.fotoId === zuordnung.fotoId)?.eckenPx;
       // Frühe Stände speicherten nur den Rechteckrahmen am Hauptdach.
       // Die zugehörigen Kindflächen besitzen weiterhin die echte Fotogeometrie.
       const gleich = (p: Punkt, q: Punkt) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-4;
@@ -1401,9 +1402,14 @@ export function migriereProjekt(roh: Projekt): Projekt {
         ...links.filter((p) => !rechts.some((q) => gleich(p, q))),
         ...rechts.filter((p) => !links.some((q) => gleich(p, q))),
       ] : [];
-      const fotoEckenPx = a.fotoEckenPx ?? flacheEcken ?? (aussenPunkte.length === 4 ? sortiereEcken(aussenPunkte as Ecken) : undefined);
+      const fotoEckenPx = a.fotoEckenPx ?? einzelneEcken ?? (aussenPunkte.length === 4 ? sortiereEcken(aussenPunkte as Ecken) : undefined);
       if (!fotoEckenPx) return a;
-      const fotoUmrissPx = a.fotoUmrissPx ?? gaubenFotoUmriss(fotoEckenPx, links && rechts ? { links, rechts } : undefined);
+      // Auch schräge, Walm- und Spitzseiten können einen engeren Umriss als ihren Fotorahmen besitzen.
+      const einzelUmriss = einzel && umrissVon(einzel);
+      const einzelH = einzel && einzelUmriss && homographie(rahmenBreiteVon(einzel), einzel.hoeheM, fotoEckenPx, perspektiveQuelle(einzel));
+      const fotoUmrissPx = a.fotoUmrissPx ?? (einzelUmriss && einzelH
+        ? einzelUmriss.map((p) => projiziere(einzelH, p))
+        : gaubenFotoUmriss(fotoEckenPx, links && rechts ? { links, rechts } : undefined));
       const inv = inverseHomographie(rahmenBreiteVon(f), f.hoeheM, zuordnung.eckenPx, perspektiveQuelle(f));
       if (!inv) return a;
       const umrissM = fotoUmrissPx.map((p) => projiziere(inv, p));

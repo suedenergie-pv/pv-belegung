@@ -5,6 +5,7 @@ import { useEntwurfNavigation, type OffenerEntwurf } from '../lib/entwurf-naviga
 import { fmtDe, patchFlaechenGeometrie, rasterFuer, type Flaeche, type GaubenMessung, type GaubenGeometrie, type modulById } from '../lib/model';
 import { EditorAktionen } from './EditorAktionen';
 import { ToggleButton } from './ui';
+import styles from './GaubenEditor.module.css';
 
 type Eingaben = { breite: string; hoehe: string; quer: string; deck: string; reihen: string; abstand: string; neigung: string; azimut: string; first: string };
 const eingabenVon = (flaeche: Flaeche): Eingaben => ({
@@ -31,6 +32,7 @@ export function GaubenMassEditor({ flaeche, modul, onSpeichern, onAbbrechen }: {
   const formVon = (f: Flaeche) => f.dachform === 'trapez' ? f.firstBreiteM === 0 ? 'dreieck' : 'trapez' : 'rechteck';
   const [form, setForm] = useState(() => formVon(flaeche));
   const [geaendert, setGeaendert] = useState(false);
+  const [rueckmeldung, setRueckmeldung] = useState<string | null>(null);
   const [quelleBestaetigt, setQuelleBestaetigt] = useState(false);
   const alt = flaeche.gaubenMessung;
   const ziegel = quelle === 'ziegel';
@@ -41,7 +43,7 @@ export function GaubenMassEditor({ flaeche, modul, onSpeichern, onAbbrechen }: {
     { key: 'abstand', label: 'Reihenabstand', einheit: 'cm', min: 1 },
   ] : [
     { key: 'breite', label: 'Breite', einheit: 'm', min: 0.1 },
-    { key: 'hoehe', label: 'Traufe bis First', einheit: 'm', min: 0.1 },
+    { key: 'hoehe', label: 'Tiefe auf dem Gaubendach', einheit: 'm', min: 0.1 },
   ];
   const winkelFelder: typeof felder = [
     { key: 'neigung', label: 'Neigung der Gaubenseite', einheit: '°', min: 0, max: 75 },
@@ -82,12 +84,13 @@ export function GaubenMassEditor({ flaeche, modul, onSpeichern, onAbbrechen }: {
       ? alt?.qualitaet ?? 'geschaetzt'
       : quelle === 'aufmass' ? 'bestaetigt' : 'gemessen';
     abmeldenJetzt(); setGeaendert(false);
+    setRueckmeldung('Maße und Neigung übernommen. Du kannst direkt weiterarbeiten.');
     onSpeichern(Math.round(breiteM * 100) / 100, Math.round(hoeheM * 100) / 100, {
       quelle, qualitaet,
       ...(ziegel ? { ziegelQuer: alsZahl(eingaben.quer), deckbreiteCm: alsZahl(eingaben.deck), ziegelReihen: alsZahl(eingaben.reihen), reihenabstandCm: alsZahl(eingaben.abstand) } : {}),
     }, ...(geometrieGeaendert ? [geometrie] : []));
   };
-  const abbrechen = () => { zuruecksetzen(); onAbbrechen(); };
+  const abbrechen = () => { zuruecksetzen(); setRueckmeldung('Nicht übernommene Änderungen verworfen.'); onAbbrechen(); };
   aktionen.current = { name: `${flaeche.name} · Maße`, gueltig, uebernehmen: speichern, verwerfen: zuruecksetzen };
   useEffect(() => {
     if (!geaendert) return;
@@ -100,12 +103,14 @@ export function GaubenMassEditor({ flaeche, modul, onSpeichern, onAbbrechen }: {
   }, [geaendert, flaeche.id, flaeche.name, navigation]);
   useEffect(() => {
     if (!geaendert) { setEingaben(eingabenVon(flaeche)); setForm(formVon(flaeche)); setQuelle(flaeche.gaubenMessung?.quelle ?? 'aufmass'); setQuelleBestaetigt(false); }
-  }, [flaeche.id, flaeche.breiteM, flaeche.hoeheM, flaeche.gaubenMessung]);
+  }, [flaeche.id, flaeche.breiteM, flaeche.hoeheM, flaeche.gaubenMessung, flaeche.neigungDeg, flaeche.azimutDeg, flaeche.dachform, flaeche.firstBreiteM]);
   const vorher = rasterFuer(flaeche, modul).positionen.length;
   const nachher = gueltigeEingaben ? rasterFuer(patchFlaechenGeometrie(flaeche, { breiteM, hoeheM, ...(geometrieGeaendert ? { ...geometrie, ...(formGeaendert ? { umrissM: undefined } : {}) } : {}) }), modul).positionen.length : null;
-  const waehleQuelle = (neu: GaubenMessung['quelle']) => { setQuelle(neu); setQuelleBestaetigt(true); setGeaendert(true); };
+  const entwurfGeaendert = () => { setGeaendert(true); setRueckmeldung(null); };
+  const waehleQuelle = (neu: GaubenMessung['quelle']) => { setQuelle(neu); setQuelleBestaetigt(true); entwurfGeaendert(); };
   return <section ref={formularRef} aria-label="Dachmaße der Gaubenseite" className="space-y-4">
-    <p className="text-sm text-slate-700">Die Maße gelten nur für diese Dachseite. Die andere Gaubenseite bleibt unverändert.</p>
+    <p className="text-sm text-slate-700">{flaeche.gaubenSeite ? `Du bearbeitest die ${flaeche.gaubenSeite === 'links' ? 'linke' : 'rechte'} Dachseite. Die andere Seite bleibt unverändert.` : 'Breite, Tiefe und Neigung dieses Gaubendachs eingeben.'}</p>
+    {rueckmeldung && <p role="status" className="text-sm text-slate-700">{rueckmeldung}</p>}
     <fieldset>
       <legend className="mb-2 text-sm font-semibold text-slate-800">Woher stammen die Maße?</legend>
       <div className="flex flex-wrap gap-2">
@@ -116,24 +121,29 @@ export function GaubenMassEditor({ flaeche, modul, onSpeichern, onAbbrechen }: {
     </fieldset>
     {quelle === 'nachbardach' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Diese Maße sind vom Hauptdach geschätzt. Mit Aufmaß oder Ziegelwerten kannst du sie genauer festlegen.</p>}
     <div className="grid grid-cols-1 gap-3 min-[320px]:grid-cols-2">
-      {felder.map((feld) => <MassEingabe key={feld.key} label={feld.label} einheit={feld.einheit} min={feld.min} value={eingaben[feld.key]} fehler={fehlerVon(feld)} onChange={(value) => { setEingaben((alt) => ({ ...alt, [feld.key]: value })); setGeaendert(true); }} />)}
+      {felder.map((feld) => <MassEingabe key={feld.key} label={feld.label} einheit={feld.einheit} min={feld.min} value={eingaben[feld.key]} fehler={fehlerVon(feld)} onChange={(value) => { setEingaben((alt) => ({ ...alt, [feld.key]: value })); entwurfGeaendert(); }} />)}
     </div>
     <div className="border-t border-slate-200 pt-3">
       <label className="mb-3 block text-sm font-medium text-slate-700">Form dieser Dachseite
         <select aria-label="Form der Gaubenseite" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
-          value={form} onChange={e => { setForm(e.target.value); setGeaendert(true); }}>
-          <option value="rechteck">Rechteck</option><option value="trapez">Trapez / Walmseite</option><option value="dreieck">Dreieck / Spitzseite</option>
+          value={form} onChange={e => { setForm(e.target.value); entwurfGeaendert(); }}>
+          <option value="rechteck">Oben und unten gleich breit</option><option value="trapez">Oben schmaler</option><option value="dreieck">Oben eine Spitze</option>
         </select>
       </label>
-      <div className="grid grid-cols-1 gap-3 min-[320px]:grid-cols-2">
-        {winkelFelder.map(feld => <MassEingabe key={feld.key} label={feld.label} einheit={feld.einheit} min={feld.min} value={eingaben[feld.key]} fehler={fehlerVon(feld)} onChange={value => { setEingaben(alt => ({ ...alt, [feld.key]: value })); setGeaendert(true); }} />)}
+      <div className={styles.formErklaerung}>
+        <svg viewBox="0 0 100 64" aria-hidden="true"><polygon points={form === 'dreieck' ? '12,53 50,11 88,53' : form === 'trapez' ? '12,53 32,13 68,13 88,53' : '14,53 14,13 86,13 86,53'} fill="#edf0f1" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+        <span>Dachseite von oben: {form === 'dreieck' ? 'Die beiden schrägen Ränder treffen sich an der Spitze.' : form === 'trapez' ? 'Die obere Kante ist kürzer. Ihre Breite unten eingeben.' : 'Die seitlichen Ränder verlaufen parallel.'}</span>
       </div>
-      <p className="mt-2 text-sm text-slate-600">Ausrichtung: 0° Nord · 90° Ost · 180° Süd · 270° West. Maße entlang der Dachfläche messen; der Winkel verkleinert die Module nicht.</p>
+      <div className="grid grid-cols-1 gap-3 min-[320px]:grid-cols-2">
+        {winkelFelder.map(feld => <MassEingabe key={feld.key} label={feld.label} einheit={feld.einheit} min={feld.min} value={eingaben[feld.key]} fehler={fehlerVon(feld)} onChange={value => { setEingaben(alt => ({ ...alt, [feld.key]: value })); entwurfGeaendert(); }} />)}
+      </div>
+      <p className="mt-2 text-sm text-slate-600">0° Neigung = waagerecht. Die Module liegen auf dem Gaubendach, ohne Aufständerung. Breite und Tiefe direkt auf der Dachfläche messen.</p>
+      <p className="mt-2 text-sm text-slate-600">Ausrichtung: 0° Nord · 90° Ost · 180° Süd · 270° West.</p>
     </div>
     {gueltigeEingaben && <p className="text-sm font-semibold text-slate-800">{fmtDe(breiteM, 2)} × {fmtDe(hoeheM, 2)} m</p>}
     <p aria-live="polite" className="text-sm text-slate-700">{nachher === null ? 'Vorschau nach Eingabe gültiger Maße.' : `Vorschau: ${vorher} → ${nachher} Module auf dieser Gaubenseite.`}</p>
     <EditorAktionen><div data-foto-abschluss data-gauben-mass-abschluss>
-      <span data-fehler={!gueltigeEingaben}>{gueltigeEingaben ? 'Die neuen Maße werden erst beim Übernehmen gespeichert.' : 'Bitte die markierten Maße korrigieren.'}</span>
+      <span data-fehler={!gueltigeEingaben}>{gueltigeEingaben ? rueckmeldung ?? 'Die neuen Maße werden erst beim Übernehmen gespeichert.' : 'Bitte die markierten Maße korrigieren.'}</span>
       <button type="button" disabled={!gueltigeEingaben} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:opacity-50" onClick={speichern}>Maße übernehmen</button>
       <button type="button" data-sekundaer className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-medium text-slate-800" onClick={abbrechen}>Abbrechen</button>
     </div></EditorAktionen>

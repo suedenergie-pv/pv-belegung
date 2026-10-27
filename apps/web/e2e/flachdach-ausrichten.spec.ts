@@ -77,7 +77,7 @@ test('Flachdach: freie unabhängige Ausrichtung, Korrekturen, Drehgriff und Dach
   expect(nachGroesse.leer).toEqual(vorGroesse.leer); expect(nachGroesse.drehungDeg).toBe(15);
   await b('nach rechts').click();
   expect((await stand(page)).flaechen[0]!.felder![0]!.xM).toBeCloseTo(Math.round((nachGroesse.xM + .1) * 100) / 100, 8);
-  await b('3. Export').click();
+  await b('3. Kunden-PDF').click();
   const pdfLink = page.locator('a[download]').filter({ hasText: 'PDF herunterladen' });
   await expect(pdfLink).toBeVisible({ timeout: 30000 });
   const event = page.waitForEvent('download'); await pdfLink.click(); const pdf = await event;

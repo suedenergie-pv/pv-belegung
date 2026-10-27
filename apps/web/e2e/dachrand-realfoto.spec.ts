@@ -112,7 +112,7 @@ for(const fixture of fixtures)for(const winkel of [0,90,180,270])test(`${fixture
  await page.screenshot({path:resolve(out,`${fixture.id}-${info.project.name}-${winkel}-belegung.png`)});
  const vorher=await stand(page);await page.reload();expect((await stand(page)).flaechen).toEqual(vorher.flaechen);
  if(info.project.name==='desktop' && winkel===0){
-  await page.getByRole('button',{name:'3. Export',exact:true}).click();
+  await page.getByRole('button',{name:'3. Kunden-PDF',exact:true}).click();
   const pdfButton=page.getByRole('button',{name:'PDF herunterladen',exact:true});
   await expect(pdfButton).toBeEnabled({timeout:30000});
   await page.screenshot({path:resolve(out,`${fixture.id}-desktop-export.png`),fullPage:true});

@@ -24,7 +24,7 @@ test('Maßentwurf, Navigation und Sitzungshistorie bleiben auf allen Zielgröße
       if (await page.getByRole('button', { name: 'Dachmaße', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
       await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('');
       await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('12');
-      await page.getByRole('button', { name: '3. Export', exact: true }).click();
+      await page.getByRole('button', { name: '3. Kunden-PDF', exact: true }).click();
       await expect(page.getByRole('dialog', { name: 'Maßentwurf noch offen' })).toBeVisible();
       await page.screenshot({ path: resolve(ordner, `${width}-entwurf-navigation.png`), fullPage: true });
       await page.getByRole('button', { name: 'Bleiben', exact: true }).click();
@@ -32,7 +32,7 @@ test('Maßentwurf, Navigation und Sitzungshistorie bleiben auf allen Zielgröße
       await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
       await expect(page.getByText('Maße: bestätigt', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: /Rückgängig \(2\)/ })).toBeVisible();
-      await page.getByRole('button', { name: '3. Export', exact: true }).click();
+      await page.getByRole('button', { name: '3. Kunden-PDF', exact: true }).click();
       await page.getByRole('button', { name: /Rückgängig \(2\)/ }).click();
       await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
       if (await page.getByRole('button', { name: 'Dachmaße', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
@@ -52,12 +52,12 @@ test('Maßentwurf, Navigation und Sitzungshistorie bleiben auf allen Zielgröße
       await page.getByRole('button', { name: /Wiederherstellen/ }).click();
       if (await page.getByRole('button', { name: 'Dachmaße', exact: true }).getAttribute('aria-expanded') !== 'true') await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
       await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('');
-      await page.getByRole('button', { name: '3. Export', exact: true }).click();
+      await page.getByRole('button', { name: '3. Kunden-PDF', exact: true }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Übernehmen', exact: true }).click();
       await expect(page.locator('[data-geometrie-entwurf]').getByRole('alert')).toContainText('korrigieren');
       await expect(page.getByRole('button', { name: '2. Dach & Belegung', exact: true })).toHaveAttribute('aria-current', 'step');
       await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
-      await page.getByRole('button', { name: '3. Export', exact: true }).click();
+      await page.getByRole('button', { name: '3. Kunden-PDF', exact: true }).click();
       await page.getByRole('button', { name: 'Für Projektleitung markieren', exact: true }).click();
       await expect(page.getByText(/Übergabe steht noch aus – es wurde nichts versendet/)).toBeVisible();
       await expect(page.getByRole('status').filter({ hasText: 'In diesem Browser gespeichert' })).toBeVisible();

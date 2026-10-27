@@ -24,6 +24,7 @@ import {
 } from '../lib/pdf-export';
 import { ProjektFotoSvg } from './GesamtSvg';
 import { Karte, KartenTitel } from './ui';
+import { azimutLabel } from '../lib/richtungs-label';
 
 const PDF_VORBEREITUNG_TIMEOUT_MS = 20_000;
 
@@ -138,7 +139,7 @@ export function SchrittExport({
       <div className="pdf-aktionen">
       <Karte>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <KartenTitel>Belegungsplan (PDF)</KartenTitel>
+          <KartenTitel>Kunden-PDF</KartenTitel>
           {pdfDownload ? (
             <a
               role="button"
@@ -183,6 +184,15 @@ export function SchrittExport({
             </button>
           )}
         </div>
+        {pdfDownload && !pdfDownload.teilen && pdfDownload.href.startsWith('blob:') && (
+          <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <a href={pdfDownload.href} target="_blank" rel="noopener noreferrer"
+              className="inline-flex min-h-12 items-center rounded-lg border border-slate-400 px-4 text-base font-semibold text-slate-800 underline underline-offset-4">
+              PDF ansehen / drucken
+            </a>
+            <p className="max-w-md text-sm text-slate-600">Öffnet den fertigen Ausdruck in einem neuen Tab. Dort kannst du ihn prüfen und drucken.</p>
+          </div>
+        )}
         {pdfDownload?.teilen && (
           <p className="text-sm text-slate-600">Zum Speichern im folgenden Dialog „In Dateien sichern“ wählen.</p>
         )}
@@ -240,7 +250,7 @@ export function SchrittExport({
           </div>
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <dt className="text-slate-600">Wechselrichter</dt>
-            <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : '— (nur Belegung)'}</dd>
+            <dd className="font-medium">{projekt.wrId ? wrById(projekt.wrId).name : 'In dieser Vorplanung noch nicht festgelegt'}</dd>
           </div>
           {projekt.flaechen.map((f, i) => {
             const raster = rasterFuer(f, modul);
@@ -248,10 +258,10 @@ export function SchrittExport({
             return (
               <div key={f.id} className="rounded-lg bg-slate-50 px-3 py-2">
                 <dt className="text-slate-600">
-                  {flaechenTitel(f, i)} · {f.neigungDeg}° · {flaechenAusrichtungsLabel(f)}
+                  {flaechenTitel(f, i)} · {f.flachdach ? `${f.flachdach.winkelDeg}° Gestellneigung` : `${f.neigungDeg}° Dachneigung`} · {f.flachdach ? flaechenAusrichtungsLabel(f) : azimutLabel(f.azimutDeg)}
                 </dt>
                 <dd className="font-medium">
-                  {aktiveModule(f, raster)} Module ({ausrichtungen.bezeichnung}) ·{' '}
+                  {aktiveModule(f, raster)} Module ({ausrichtungen.bezeichnung === 'hoch' ? 'hochkant' : ausrichtungen.bezeichnung === 'quer' ? 'Querformat' : 'hochkant und quer'}) ·{' '}
                   {fmtDe(flaecheM2(f), 1)} m²
                 </dd>
               </div>
@@ -271,6 +281,8 @@ export function SchrittExport({
       </Karte>
 
       <Karte>
+        <KartenTitel>Dachansicht prüfen</KartenTitel>
+        <p className="mb-4 text-sm text-slate-600">Hier siehst du die Belegung. Das vollständige Seitenlayout findest du im Kunden-PDF.</p>
         {projekt.fotos.filter((foto) => fertigeFotoFlaechen(projekt, foto.id).length > 0).map((foto) => (
           <figure key={foto.id} className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50" data-export-vorschau={foto.id}>
             <ProjektFotoSvg projekt={projekt} foto={foto} nurFertige />
@@ -281,9 +293,9 @@ export function SchrittExport({
 
       <Karte>
         <details>
-          <summary className="touch-target flex cursor-pointer list-none items-center gap-3 text-sm font-semibold text-slate-700">
+          <summary className="touch-target cursor-pointer py-3 text-sm font-semibold text-slate-700">
             Technische Daten (JSON)
-            <span className="ml-auto text-xs font-normal text-slate-600">für das Ticketsystem</span>
+            <span className="ml-3 font-normal text-slate-600">für das Ticketsystem</span>
           </summary>
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
             <div className="ml-auto flex gap-2">
@@ -353,7 +365,8 @@ export function SchrittExport({
       </Karte>
 
       <Karte id="export-stringplan">
-        <KartenTitel>Projektleitung</KartenTitel>
+        <details open={projekt.eskaliert || undefined}>
+        <summary className="min-h-12 cursor-pointer py-3 text-base font-semibold text-slate-800">Rückfrage an die Projektleitung (optional)</summary>
         <p className="mb-3 text-sm text-slate-600">
           Bei Klärungsbedarf das Projekt markieren und die Rohdaten sichern.
           Die Übergabe an die Projektleitung erfolgt anschließend durch dich.
@@ -363,8 +376,8 @@ export function SchrittExport({
             className="h-12 flex-1 rounded-xl border border-slate-300 px-3 text-base"
             value={eskalationsgrund}
             onChange={(e) => setEskalationsgrund(e.target.value)}
-            placeholder="Grund, optional"
-            aria-label="Eskalationsgrund"
+            placeholder="Was soll geklärt werden?"
+            aria-label="Grund der Rückfrage"
           />
           <button
             type="button"
@@ -388,7 +401,7 @@ export function SchrittExport({
               `rohdaten-${downloadDateiname(projekt, 'belegung', 'json')}`,
             )}
           >
-            Rohdaten sichern
+            Projektdatei für die Übergabe sichern
           </button>
         </div>
         {projekt.eskaliert && (
@@ -397,6 +410,7 @@ export function SchrittExport({
             {' '}Übergabe steht noch aus – es wurde nichts versendet.
           </p>
         )}
+        </details>
       </Karte>
 
       <div aria-live="polite" className="sr-only">

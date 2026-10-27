@@ -34,7 +34,7 @@ interface GeloeschtesProjekt {
 
 // Der Stringcheck bleibt bis zur PV*SOL-Gegenrechnung aus der Oberfläche entfernt.
 // Gespeicherte Stringdaten und die Engine R1–R12 bleiben für Migration und Export erhalten.
-const SCHRITTE = ['Projektdaten', 'Dach & Belegung', 'Export'] as const;
+const SCHRITTE = ['Projektdaten', 'Dach & Belegung', 'Kunden-PDF'] as const;
 
 export default function Home() {
   return <EntwurfNavigationProvider><ProjektApp /></EntwurfNavigationProvider>;
@@ -360,7 +360,7 @@ function ProjektApp() {
     <div className={projektOffen && schritt === 1 ? 'editor-seite' : 'space-y-5 pb-10 mx-auto max-w-5xl'}>
       <header className={projektOffen && schritt === 1 ? 'workbench-kopf' : 'contents'}>
       {projektOffen && <div className="projekt-leiste">
-        <button type="button" className="alle-projekte" onClick={() => oeffneProjekt(null)}>← Alle Projekte</button>
+        <button type="button" className="alle-projekte" aria-label="← Alle Projekte" onClick={() => oeffneProjekt(null)}><span className="projekte-voll">← Alle Projekte</span><span className="projekte-kurz" aria-hidden="true">← Projekte</span></button>
         <div className="projekt-identitaet">
           <h2 id="projekt-kontext" tabIndex={-1} title={aktiv ? eintragName(aktiv) : 'Projekt'}>{aktiv ? eintragName(aktiv) : 'Projekt'}</h2>
           {projekt.adresse && projekt.adresse !== projekt.kunde && <span className="projekt-adresse">{projekt.adresse}</span>}
@@ -369,7 +369,7 @@ function ProjektApp() {
           </span>
         </div>
         <div className="projekt-zugaenge">
-          <button type="button" className="neues-projekt" onClick={() => navigation.weiter(neuesAnlegen)}>+ Neues Projekt</button>
+          <button type="button" className="neues-projekt" aria-label="+ Neues Projekt" onClick={() => navigation.weiter(neuesAnlegen)}>+ Neu<span className="neues-projekt-lang">es Projekt</span></button>
           <details className="projekt-aktionen group relative" key={aktiv?.id}>
             <summary aria-label="Projektaktionen" title="Projektaktionen">···</summary>
             <div className="absolute right-0 z-30 mt-2 grid min-w-56 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-xl" onClick={(event) => {
@@ -484,7 +484,7 @@ function ProjektApp() {
           onClick={() => setSchritt((s) => Math.max(0, s - 1))}
           className="h-12 rounded-xl border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 disabled:opacity-30"
         >
-          ← Zurück
+          {schritt === 2 ? '← Dach & Belegung' : '← Projektdaten'}
         </button>
         {schritt < SCHRITTE.length - 1 && (
           <button
@@ -492,7 +492,7 @@ function ProjektApp() {
             onClick={() => setSchritt((s) => Math.min(SCHRITTE.length - 1, s + 1))}
             className="h-12 rounded-xl bg-akzent px-8 text-sm font-semibold text-white transition enabled:hover:bg-akzent/90 disabled:opacity-40"
           >
-            Weiter →
+            Dach & Belegung öffnen →
           </button>
         )}
       </div>}

@@ -41,7 +41,7 @@ test('Aussparung verschieben, frei verziehen, Maße, Entwurfsschutz, Undo und Re
   await button('Aussparung 1 bearbeiten').click();
   await page.getByLabel('Breite (m)', { exact:true }).fill('3');
   await button('Aussparung 1 cm nach rechts').click();
-  await button('3. Export').click();
+  await button('3. Kunden-PDF').click();
   await expect(page.getByRole('dialog')).toBeVisible(); await button('Bleiben').click();
   await expect(page.getByLabel('Breite (m)', {exact:true})).toHaveValue('3');
   await button('Änderungen übernehmen').click();

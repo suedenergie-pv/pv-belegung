@@ -49,6 +49,92 @@ const optionen = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('PDF-Generator', () => {
+  it.each([
+    ['hoch', 'Hochkant'], ['quer', 'Querformat'],
+  ] as const)('schreibt das Modulformat %s verständlich als %s aus', async (ausrichtung, label) => {
+    const projekt = projektMitFlaechen();
+    const f = projekt.flaechen[0]!;
+    f.ausrichtung = ausrichtung;
+    f.felder = [vollFeldFuer(f, modulById(projekt.modulId))];
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.flat(2).join('\n');
+    expect(inhalt).toContain(label);
+    expect(inhalt).not.toContain(`\\(${ausrichtung}\\)`);
+  });
+
+  it('hält ausgeschriebene Mischformate innerhalb der Modulspalte und vergrößert die Tabellenzeile', async () => {
+    const projekt = projektMitFlaechen(3);
+    for (const f of projekt.flaechen) {
+      f.felder = [
+        { xM: 0.1, yM: 0.1, breiteM: 3, hoeheM: 5, quer: false },
+        { xM: 4.5, yM: 0.1, breiteM: 4, hoeheM: 4, quer: true },
+      ];
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.flat(2).join('\n');
+    const zellen = [...inhalt.matchAll(/BT([\s\S]*?)ET/g)].map(t => t[1]!).filter(t => t.includes('Hochkant'));
+    expect(zellen).toHaveLength(3);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    const zeilen = zellen.map(zelle => {
+      const position = zelle.match(/([\d.]+) ([\d.]+) Td/)!;
+      const texte = [...zelle.matchAll(/\((.*)\) Tj/g)].map(t => t[1]!.replace(/\\([()\\])/g, '$1'));
+      expect(texte.join(' ')).toMatch(/^\d+ \(Hochkant und Querformat\)$/);
+      expect(texte.length).toBeGreaterThan(1);
+      expect(Number(position[1]) * 25.4 / 72).toBeCloseTo(136, 5);
+      for (const text of texte) expect(doc.getTextWidth(text)).toBeLessThanOrEqual(26);
+      return { y: 297 - Number(position[2]) * 25.4 / 72, anzahl: texte.length };
+    });
+    for (let i = 1; i < zeilen.length; i++) {
+      expect(zeilen[i]!.y - zeilen[i - 1]!.y).toBeGreaterThanOrEqual(zeilen[i - 1]!.anzahl * 3.5 - 0.01);
+    }
+  });
+
+  it('zeigt beim Schrägdach nur die Himmelsrichtung, erhält aber die Dachneigung', async () => {
+    const projekt = projektMitFlaechen();
+    Object.assign(projekt.flaechen[0]!, { azimutDeg: 225, neigungDeg: 35 });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.flat(2).join('\n');
+    expect(inhalt).toContain('(Süd-West)');
+    expect(inhalt).toContain('(35°)');
+    expect(inhalt).not.toContain('225°');
+  });
+
+  it.each(['sued', 'ostwest'] as const)('kennzeichnet nach Foto-Süden ausgerichtete %s-Felder ohne falsche Zusatzdrehung', async aufstaenderung => {
+    const projekt = projektMitFlaechen();
+    const f = projekt.flaechen[0]!;
+    Object.assign(f, { art: 'flachdach', breiteM: 30, hoeheM: 30, neigungDeg: 0,
+      flachdach: { aufstaenderung, winkelDeg: 25, pitchM: 4, richtungSued: 'unten', suedWinkelDeg: 237.5 },
+    });
+    f.felder = [vollFeldFuer(f, modulById(projekt.modulId))];
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.flat(2).join('\n');
+    expect(inhalt).toContain(aufstaenderung === 'sued' ? '(Süd)' : '(Ost / West)');
+    expect(inhalt).toContain('25°');
+    expect(inhalt).not.toContain('Felder:');
+    expect(inhalt).not.toContain('Grundraster');
+    expect(inhalt).not.toContain('unten');
+    expect(inhalt).not.toContain('rechts');
+  });
+
+  it('beschreibt eigenständig gedrehte Montagefelder relativ zum festgelegten Süden', async () => {
+    const projekt = projektMitFlaechen();
+    Object.assign(projekt.flaechen[0]!, { art: 'flachdach', breiteM: 30, hoeheM: 30, neigungDeg: 0,
+      flachdach: { aufstaenderung: 'sued', winkelDeg: 25, pitchM: 4, richtungSued: 'unten', suedWinkelDeg: 237.5 },
+      felder: [{ xM: 10, yM: 10, breiteM: 8, hoeheM: 8, quer: true, drehungDeg: 72.5 }],
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const { doc } = await baueBelegungsPdf(projekt, null, () => svg, optionen);
+    const inhalt = (doc as unknown as { internal: { pages: string[][] } }).internal.pages.flat(2).join('\n');
+    expect(inhalt).toContain('(Grundraster Süd)');
+    expect(inhalt).toContain('(Felder: 15°)');
+    expect(inhalt).not.toContain('72,5°');
+    expect(inhalt).not.toContain('237,5°');
+  });
+
   it('trennt bei gedrehten Flachdachfeldern Grundraster, Feldwinkel und Gestellneigung', async () => {
     const projekt = projektMitFlaechen();
     Object.assign(projekt.flaechen[0]!, { art: 'flachdach', neigungDeg: 0,

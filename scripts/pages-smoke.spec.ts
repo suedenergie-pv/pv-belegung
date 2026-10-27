@@ -21,6 +21,9 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   const response = await page.goto('./', { waitUntil: 'domcontentloaded' });
   await oeffneStartprojekt(page);
   expect(response?.status()).toBe(200);
+  await expect(page.getByText('Ausgewählt', {exact:true})).toHaveCount(1);
+  await expect(page.getByLabel('Ihr Name (Beratung)',{exact:true})).toBeVisible();
+  await expect(page.getByText('Diese Angaben erscheinen im Kunden-PDF. Du kannst sie auch später ergänzen.',{exact:true})).toBeVisible();
   expect(new URL(page.url()).pathname).toBe(`${prefix}/`);
   const origin = new URL(page.url()).origin;
   if (prefix) {
@@ -44,7 +47,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   }
   if (prefix) expect((await request.get(`${origin}${assets[0]!.replace(prefix, '')}`)).status()).toBe(404);
 
-  await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
+  await page.getByRole('button', { name: 'Dach & Belegung öffnen →', exact: true }).click();
   await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
   await page.getByLabel(/^Breite unten/).fill('10');
   await page.getByLabel(/^Länge auf dem Dach/).fill('6');
@@ -81,7 +84,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   await expect(page.getByRole('spinbutton', { name: 'Randabstand cm', exact: true })).toHaveValue('0');
   await page.screenshot({ path: `.release/screenshots/${info.project.name}-editor.png` });
 
-  await page.getByRole('button', { name: '3. Export', exact: true }).click();
+  await page.getByRole('button', { name: '3. Kunden-PDF', exact: true }).click();
   const preview = page.locator('[data-export-vorschau]');
   await expect(preview).toHaveCount(1);
   const decoded = await preview.locator('svg image').first().evaluate((element) => new Promise<boolean>((resolve) => {
@@ -93,6 +96,12 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   await page.screenshot({ path: `.release/screenshots/${info.project.name}-export.png`, fullPage: true });
   const pdfButton = page.getByRole('button', { name: 'PDF herunterladen', exact: true });
   await expect(pdfButton).toBeEnabled({ timeout: 30_000 });
+  const druckLink=page.getByRole('link',{name:'PDF ansehen / drucken',exact:true});
+  await expect(druckLink).toHaveAttribute('href',(await pdfButton.getAttribute('href'))!);
+  await expect(druckLink).toHaveAttribute('target','_blank');
+  const popupEvent=page.waitForEvent('popup');
+  await druckLink.click();
+  const popup=await popupEvent;await expect.poll(()=>popup.url()).toMatch(/^blob:/);await popup.close();
   const downloading = page.waitForEvent('download');
   await pdfButton.click();
   const pdf = await downloading;

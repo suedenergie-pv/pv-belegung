@@ -8,6 +8,13 @@
 .gruppenListe{display:flex;flex-direction:column;gap:18px}.gruppe{min-width:0;border-top:1px solid #d2d9dd;padding-top:14px;display:flex;flex-direction:column;gap:12px}
 .gruppenKopf,.kurzKopf{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}.gruppenKopf strong,.kurzKopf strong{font-size:16px}.gruppenKopf span,.kurzKopf span{color:#53616a}
 .aufgaben{display:flex;flex-wrap:wrap;gap:6px}.aufgaben>button{flex:1 1 110px;white-space:normal}
+.ausgewaehlteGaube{display:flex;flex-direction:column;gap:10px;padding-bottom:12px;border-bottom:1px solid #d2d9dd}
+.aufgabenNavigation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.aufgabenNavigation button{overflow-wrap:anywhere}
+.editor .alleGauben{align-self:flex-start;border:0;padding:4px 0;color:#49565e;background:transparent}
+.formAuswahl{display:flex;flex-direction:column;gap:8px}.formAuswahl>button{display:grid;grid-template-columns:76px minmax(0,1fr);align-items:center;gap:12px;width:100%;white-space:normal}
+.formAuswahl>button>span:last-child{display:flex;flex-direction:column;gap:5px}.formAuswahl strong{font-size:15px}.formAuswahl small,.formAuswahl>button>span:last-child>span{font-size:13px;color:#53616a}.formAuswahl small{display:block;text-align:center;font-size:10px}
+.formSkizze{display:block;width:76px;height:50px;color:#263238}.weitereFormen summary{min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer}.weitereFormen summary::before{content:'▸'}.weitereFormen[open] summary::before{content:'▾'}
+.formErklaerung{display:flex;align-items:center;gap:12px;color:#53616a;font-size:13px}.formErklaerung svg{flex:none;width:72px;height:52px;color:#263238}
 .seiten{display:flex;flex-direction:column;gap:14px}.seiten>div{display:flex;flex-direction:column;gap:5px}.seiten>div>span{font-size:13px;color:#53616a}
 .nebenAktionen{display:flex;flex-wrap:wrap;gap:6px}.nebenAktionen button{background:transparent;color:#49565e;font-size:13px}
 .zweiSpalten{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.zweiSpalten>label{min-width:0}

@@ -94,6 +94,10 @@ describe('Exportfunktionen', () => {
     const pdfLink = getByRole('button', { name: 'PDF herunterladen' });
     expect(pdfLink.getAttribute('href')).toBe('blob:pdf-test');
     expect(pdfLink.getAttribute('download')).toBe('belegungsplan.pdf');
+    const ansehen = getByRole('link', { name: 'PDF ansehen / drucken' });
+    expect(ansehen.getAttribute('href')).toBe(pdfLink.getAttribute('href'));
+    expect(ansehen.getAttribute('target')).toBe('_blank');
+    expect(ansehen.getAttribute('rel')).toContain('noopener');
     fireEvent.click(getByText('Technische Daten (JSON)', { exact: false }));
     fireEvent.click(getByRole('button', { name: 'JSON kopieren' }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1));

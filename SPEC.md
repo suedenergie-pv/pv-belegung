@@ -709,3 +709,40 @@ Die lokal gespeicherten QA-Fotos werden nicht veröffentlicht. Die verwendeten
 Deckmaße und Himmelsrichtungen sind ausdrücklich Testannahmen, kein am Gebäude
 bestätigtes Aufmaß. Tests ersetzen keine persönliche Praxisabnahme durch Nutzer.
 Keine GitHub-Actions-Debugschleife; der geprüfte Abschluss wird gebündelt gepusht.
+
+### Nachtrag: Gaubenablauf und fehlende Bedienhilfen · 27.10.2026
+
+Gauben werden nach sichtbarer Form gewählt: flach/leicht geneigt oder zwei
+Dachseiten, weitere Formen bleiben verfügbar. Die Neigung ist bereits beim
+Anlegen frei einstellbar. Maße/Neigung, Umriss, Verschieben und Module sind in
+derselben ausgewählten Gaube erreichbar. Speichern erhält die gewählte Seite;
+Entwürfe bleiben geschützt. Rückgängig/Wiederherstellen aktualisiert auch die
+sichtbaren Kontrollpunkte. Kleine Gauben lassen sich ohne abfangende Griffbereiche
+fertig markieren; die mobile Bildvergrößerung bleibt beim letzten Punkt erhalten.
+
+Alte reine Rechteck-Aussparungen werden auch bei Schlepp-, Walm- und Spitzgauben
+aus vorhandenen Fotokonturen wiederhergestellt. 29 Regressionen prüfen unter
+anderem Fotodrehungen, Feldrotation, freie Module innerhalb des Rechteckrahmens,
+Kantenberührung, echte Überlappung und unvollständige Satteldachgruppen. Das erklärt
+eine nachgewiesene Fehlerklasse; der konkrete gemeldete Kundenfall ist ohne dessen
+Projektdatei nicht abschließend zugeordnet. Die Kontur ist eine Markierung in der
+Fotoebene, keine Rekonstruktion verdeckter Anschlüsse oder des Gaubenkörpers.
+
+Nachgeholt wurden außerdem verständliche Projekt-/Exportbeschriftungen, ein direkter
+Link zum Ansehen/Drucken derselben Kunden-PDF, ausgeschriebene Modulformate und
+Himmelsrichtungen ohne Kreisgradzahl. Dach- und Gestellneigungen bleiben erhalten.
+Die responsive Kopfzeile und Eingaben wurden auf 320 × 568 und 812 × 375 geprüft.
+Logo, Schriften, Farben und bestehende SüdEnergie-PDF-Komposition bleiben erhalten.
+Die zuvor dokumentierten 47 identischen Schutzdateien beziehen sich auf den ersten
+Transferstand: fünf davon enthalten jetzt gezielt geprüfte Funktionsänderungen
+(globals.css, SchrittExport samt Test, pdf-export samt Test); die übrigen 42
+bleiben bytegleich. LCV erhält nur den Gauben-Nachtrag in seinem eigenen Repository.
+
+Abnahme: 1.325 Webtests, Typecheck und VPS-Build bestanden. Acht Variantenabläufe
+auf Desktop/Mobil, drei vollständige Sattelgaubenabläufe mit Maus/nativen
+Touchgesten, drei echte Gaubenfotoabläufe, der ERLUS-Ablauf mit fünf Dachseiten
+und zwei Release-Smokes bestanden. Die echte Gaubenaufnahme und ihre ausdrücklich
+angenommenen Testmaße sind in `apps/web/e2e/gauben-realfoto.spec.ts` dokumentiert;
+das externe Foto wird nicht ausgeliefert. Die SüdEnergie-PDF wurde gerendert und
+visuell geprüft. Live-Release: `20261027-qol-gauben`; vorheriger Release
+`20261027-dachrand-funktionen` bleibt als Rückfallstand erhalten.

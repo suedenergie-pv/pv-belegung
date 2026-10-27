@@ -48,7 +48,7 @@ async function projektPflichtfelder(page: Page) {
   await page.getByRole('button', { name: '1. Projektdaten' }).click();
   await page.getByLabel('Kunde').fill('Familie Browserprüfung');
   await page.getByLabel('Adresse').fill('Testweg 1, 88299 Leutkirch');
-  await page.getByLabel('Erfasser (Vertrieb)').fill('Genrih');
+  await page.getByLabel('Ihr Name (Beratung)').fill('Genrih');
 }
 
 async function fotoPunkt(page: Page, x: number, y: number) {
@@ -181,7 +181,7 @@ async function zeichneZweiFelderUndVerschiebe(page: Page) {
 
 async function satteldachGaubeAnlegen(page: Page) {
   await page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true }).click();
-  await page.getByRole('button', { name: 'Satteldachgaube' }).click();
+  await page.getByRole('button', { name: 'Zwei Dachseiten', exact: true }).click();
   await page.getByRole('button', { name: 'Im Foto markieren →' }).click();
   const foto = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
   const box = await foto.boundingBox();
@@ -196,7 +196,7 @@ async function satteldachGaubeAnlegen(page: Page) {
   const anlegen = page.getByRole('button', { name: 'Gaube anlegen & fertig' });
   await expect(anlegen).toBeEnabled();
   await anlegen.click();
-  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option')).toHaveCount(3);
+  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option:not([value=""]):not([value="auf-foto"])')).toHaveCount(3);
   await page.getByRole('button', { name: 'Bereich schließen', exact: true }).click();
 }
 
@@ -396,7 +396,7 @@ test('Foto, Kalibrierung, Bereich und Rückgängig funktionieren zusammen', asyn
   await page.getByRole('button', { name: /Rückgängig/ }).click();
   await expect(page.getByTestId('flaechen-status')).toContainText('1 Feld');
 
-  await page.getByRole('button', { name: '3. Export' }).click();
+  await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
   const pdfKnopf = page.getByRole('button', { name: 'PDF herunterladen' });
   await expect(pdfKnopf).toBeEnabled();
   if (testInfo.project.name === 'desktop') {
@@ -441,7 +441,7 @@ test('nackter PDF-Plan bleibt ohne Kunde, Adresse und Erfasser verfügbar', asyn
       fullPage: true,
     });
   }
-  await page.getByRole('button', { name: '3. Export' }).click();
+  await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
   const pdf = page.getByRole('button', { name: 'PDF herunterladen' });
   await expect(pdf).toBeEnabled();
   await expect(page.getByText(/PDF noch gesperrt/)).toHaveCount(0);
@@ -484,7 +484,7 @@ test.describe('PDF-Dateiübergabe an iOS (Schnittstellentest)', () => {
     await oeffneStartprojekt(page);
     await fotoKalibrieren(page);
     await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).filter({ visible: true }).click();
-    await page.getByRole('button', { name: '3. Export' }).click();
+    await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
     await expect(page.getByText(/In Dateien sichern/)).toBeVisible({ timeout: 25_000 });
     await page.screenshot({ path: resolve('.debug-shots', `ios-export-${testInfo.project.name}.png`), fullPage: true });
     await page.getByRole('button', { name: 'PDF herunterladen' }).click();
@@ -526,7 +526,7 @@ test.describe('PDF-Ausgabe auf dem iPad', () => {
     await page
       .getByRole('button', { name: 'Automatisch belegen', exact: true })
       .click();
-    await page.getByRole('button', { name: '3. Export' }).click();
+    await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
 
     await erwarteGueltigenPdfDownload(page);
   });
@@ -553,7 +553,7 @@ test.describe('PDF-Ausgabe in Chrome auf dem iPad', () => {
     await oeffneStartprojekt(page);
     await fotoKalibrieren(page, true, false, { breite: 1600, hoehe: 1200 });
     await zeichneZweiFelderUndVerschiebe(page);
-    await page.getByRole('button', { name: '3. Export' }).click();
+    await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
 
     await erwarteGueltigenPdfDownload(page);
   });
@@ -582,7 +582,7 @@ test.describe('PDF-Ausgabe in der Google-App auf dem iPad', () => {
     await page
       .getByRole('button', { name: 'Automatisch belegen', exact: true })
       .click();
-    await page.getByRole('button', { name: '3. Export' }).click();
+    await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
 
     await erwarteGueltigenPdfDownload(page);
   });
@@ -674,11 +674,19 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await page.getByRole('button', { name: /Rückgängig/ }).click();
 
   await satteldachGaubeAnlegen(page);
-  await page.getByRole('combobox', { name: 'Aktive Dachfläche' }).selectOption({ label: '↳ Satteldachgaube rechts · rechts' });
-  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
-  await page.getByRole('button', { name: 'Perspektive bearbeiten', exact: true }).filter({ visible: true }).click();
+  const gaubenAuswahl = () => page.evaluate(() => {
+    const db = JSON.parse(localStorage.getItem('pv-belegung-projekte-v2')!);
+    const seite = db.projekte.find((p: { id: string }) => p.id === db.aktivId).projekt.flaechen.find((f: { gaubenSeite?: string }) => f.gaubenSeite === 'rechts');
+    return seite ? { id: seite.id as string, gruppeId: seite.gaubenGruppeId as string, elternId: seite.elternFlaecheId as string } : null;
+  });
+  await expect.poll(gaubenAuswahl).not.toBeNull();
+  const rechteGaubenseite = (await gaubenAuswahl())!;
+  await page.getByRole('combobox', { name: 'Aktive Dachfläche' }).selectOption(rechteGaubenseite.id);
+  await page.getByRole('button', { name: 'Gaubenmaße & Neigung', exact: true }).click();
+  const gaubenAufgaben = page.getByRole('group', { name: 'Gaube bearbeiten', exact: true });
+  await expect(gaubenAufgaben.getByRole('button', { name: 'Maße & Neigung', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await gaubenAufgaben.getByRole('button', { name: 'Umriss', exact: true }).click();
   const gaubenSvg = page.getByRole('img', { name: 'Gaube im Dachfoto markieren' });
-  await page.getByRole('button', { name: 'Form korrigieren', exact: true }).click();
   const griffe = page.getByRole('button', { name: /Gaubenpunkt/ });
   await expect(griffe).toHaveCount(6);
   const trefferflaechen = await griffe.evaluateAll((elemente) =>
@@ -714,20 +722,25 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
   await expect(gaubenSvg.locator('[data-modul-darstellung="vorschau"]').first()).toBeVisible();
   await gaubenSvg.press('ArrowRight');
   await page.getByRole('button', { name: 'Änderungen übernehmen' }).click();
+  await expect(gaubenAufgaben.getByRole('button', { name: 'Umriss', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
-  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
-  const loeschen = page.getByRole('button', { name: 'Gaube löschen', exact: true });
+  await page.getByRole('button', { name: '← Alle Gauben', exact: true }).click();
+  const loeschen = page.locator(`[data-gaubengruppe="${rechteGaubenseite.gruppeId}"]`).getByRole('button', { name: 'Entfernen …', exact: true });
   page.once('dialog', (dialog) => dialog.dismiss());
   await loeschen.click();
   await expect(loeschen).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await loeschen.click();
-  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option')).toHaveCount(1);
+  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option:not([value=""]):not([value="auf-foto"])')).toHaveCount(1);
   await page.getByRole('button', { name: /Rückgängig/ }).click();
-  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option')).toHaveCount(3);
-  await expect(page.getByRole('button', { name: 'Gaube löschen', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option:not([value=""]):not([value="auf-foto"])')).toHaveCount(3);
+  const aktiveFlaeche = page.getByRole('combobox', { name: 'Aktive Dachfläche' });
+  if (await aktiveFlaeche.inputValue() !== rechteGaubenseite.elternId) await aktiveFlaeche.selectOption(rechteGaubenseite.elternId);
+  const gaubenWerkzeug = page.getByRole('group', { name: 'Dach bearbeiten' }).getByRole('button', { name: 'Gauben', exact: true });
+  if (await gaubenWerkzeug.getAttribute('aria-expanded') !== 'true') await gaubenWerkzeug.click();
+  await expect(loeschen).toBeVisible();
   if (testInfo.project.name === 'desktop') {
-    await page.getByRole('button', { name: '3. Export' }).click();
+    await page.getByRole('button', { name: '3. Kunden-PDF' }).click();
     const pdf = page.getByRole('button', { name: 'PDF herunterladen' });
     await expect(pdf).toBeEnabled();
     mkdirSync(resolve('.debug-shots'), { recursive: true });

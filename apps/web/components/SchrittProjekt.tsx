@@ -17,6 +17,7 @@ export function SchrittProjekt({
     <div className="space-y-4">
       <Karte>
         <KartenTitel>Projektdaten</KartenTitel>
+        <p className="mb-4 text-sm text-slate-600">Diese Angaben erscheinen im Kunden-PDF. Du kannst sie auch später ergänzen.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Feld label="Kunde">
             <input
@@ -36,13 +37,13 @@ export function SchrittProjekt({
               placeholder="Straße, PLZ Ort"
             />
           </Feld>
-          <Feld label="Erfasser (Vertrieb)">
+          <Feld label="Ihr Name (Beratung)">
             <input
               id="projekt-erfasser"
               className={inputKlasse}
               value={projekt.erfasser ?? ''}
               onChange={(e) => onChange({ ...projekt, erfasser: e.target.value })}
-              placeholder="Dein Name — erscheint im PDF"
+              placeholder="z. B. Walter Schneider"
             />
           </Feld>
         </div>
@@ -73,10 +74,11 @@ export function SchrittProjekt({
                 <div className="mt-2 text-xs text-slate-600">
                   {m.lengthMm} × {m.widthMm} mm
                 </div>
+                {aktiv && <p className="mt-2 text-sm font-semibold text-akzent">Ausgewählt</p>}
                 </div>
               </button>
               <details className="border-t border-slate-200 px-4 pb-2 text-sm text-slate-600">
-                <summary className="cursor-pointer font-medium">Technische Daten</summary>
+                <summary className="flex min-h-11 cursor-pointer items-center font-medium">Technische Daten</summary>
                 <p>{fmtDe(m.weightKg, 1)} kg · {m.cells} Zellen</p>
                 <p>Voc {fmtDe(m.vocV)} V · Isc {fmtDe(m.iscA)} A</p>
               </details>

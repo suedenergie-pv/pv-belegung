@@ -1,5 +1,6 @@
 import { normalisiereFeldDrehung, type StringPlanResult } from '@pv-belegung/engine';
 import { logoPng } from './logo';
+import { azimutLabel } from './richtungs-label';
 import { ladeBildMitTimeout, svgMarkupAlsDataUrl } from './svg-raster';
 import {
   aktiveModule,
@@ -7,6 +8,7 @@ import {
   downloadDateiname,
   flachdachOstRichtung,
   flachdachSuedRichtung,
+  suedFeldDrehung,
   fertigeFotoFlaechen,
   flaechenTitel,
   fmtDe,
@@ -65,15 +67,6 @@ export interface PdfGeneratorOptionen {
   ladeLogo?: () => Promise<Awaited<ReturnType<typeof logoPng>> | null>;
   /** Festes Datum für reproduzierbare Exporttests. */
   jetzt?: Date;
-}
-
-function azimutLabel(deg: number): string {
-  const namen: [number, string][] = [
-    [0, 'Nord'], [45, 'Nord-Ost'], [90, 'Ost'], [135, 'Süd-Ost'],
-    [180, 'Süd'], [225, 'Süd-West'], [270, 'West'], [315, 'Nord-West'], [360, 'Nord'],
-  ];
-  const treffer = namen.find(([d]) => Math.abs(d - deg) <= 22.5);
-  return treffer ? `${treffer[1]} (${deg}°)` : `${deg}°`;
 }
 
 const HINWEIS =
@@ -229,17 +222,25 @@ export async function baueBelegungsPdf(
     for (const [i, f] of projekt.flaechen.entries()) {
       doc.setFontSize(8);
       const titelZeilen = doc.splitTextToSize(flaechenTitel(f, i).replaceAll(' · ', ' - '), 49) as string[];
-      const feldwinkel = [...new Set((f.felder ?? []).map(feld => normalisiereFeldDrehung(feld.drehungDeg)))];
+      const feldwinkel = [...new Set((f.felder ?? []).map(feld => normalisiereFeldDrehung((feld.drehungDeg ?? 0) - suedFeldDrehung(f))))];
       const gedreht = !!f.flachdach && feldwinkel.some(w => w !== 0);
       const richtungKurz = f.flachdach
-        ? f.flachdach.aufstaenderung === 'ostwest'
+        ? f.flachdach.suedWinkelDeg !== undefined
+          ? f.flachdach.aufstaenderung === 'ostwest' ? 'Ost / West' : 'Süd'
+          : f.flachdach.aufstaenderung === 'ostwest'
           ? `O/W: O ${flachdachOstRichtung(f)}`
           : `Süd ${flachdachSuedRichtung(f)}`
         : azimutLabel(f.azimutDeg);
       const richtungZeilen = doc.splitTextToSize(gedreht
         ? `Grundraster ${richtungKurz}\nFelder: ${feldwinkel.map(w => `${fmtDe(w, 1)}°`).join(', ')}`
         : richtungKurz, 38) as string[];
-      const zeilenH = Math.max(5, titelZeilen.length * 3.5, richtungZeilen.length * 3.5);
+      const raster = rasterFuer(f, modul);
+      const n = aktiveModule(f, raster);
+      const ausrichtungen = ausrichtungenVon(f, raster);
+      const format = ausrichtungen.bezeichnung === 'hoch' ? 'Hochkant'
+        : ausrichtungen.bezeichnung === 'quer' ? 'Querformat' : 'Hochkant und Querformat';
+      const modulZeilen = doc.splitTextToSize(`${n} (${format})`, 26) as string[];
+      const zeilenH = Math.max(5, titelZeilen.length * 3.5, richtungZeilen.length * 3.5, modulZeilen.length * 3.5);
       seitenwechselWennNoetig(zeilenH + 2, () => {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
@@ -248,16 +249,13 @@ export async function baueBelegungsPdf(
         y += 6;
         tabellenKopf();
       });
-      const raster = rasterFuer(f, modul);
-      const n = aktiveModule(f, raster);
-      const ausrichtungen = ausrichtungenVon(f, raster);
       // Der UI-Mittelpunkt wird von manchen PDF-Viewern als Kästchen angezeigt.
       // Im Export einen verlässlich darstellbaren ASCII-Trenner verwenden.
       doc.setFontSize(8);
       doc.text(titelZeilen, SPALTEN[0], y, { lineHeightFactor: 1.24 });
       doc.text(richtungZeilen, SPALTEN[1], y, { lineHeightFactor: 1.24 });
       doc.text(f.flachdach ? `${f.flachdach.winkelDeg}° (Gestell)` : `${f.neigungDeg}°`, SPALTEN[2], y);
-      doc.text(`${n} (${ausrichtungen.bezeichnung})`, SPALTEN[3], y);
+      doc.text(modulZeilen, SPALTEN[3], y, { lineHeightFactor: 1.24 });
       doc.text(`${fmtDe((n * modul.pmaxW) / 1000, 2)} kWp`, SPALTEN[4], y);
       y += zeilenH;
     }

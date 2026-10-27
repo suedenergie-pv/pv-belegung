@@ -35,7 +35,7 @@ test('Werkzeuge nach Zweck, direkte Aktionen und sichtbarer Export mit Entwurfss
   await oeffneStartprojekt(page);
   const kompakt = info.project.name.startsWith('mobil');
   await expect(page.getByTestId('flaechen-status')).toContainText('2 Felder');
-  const exportButton = page.getByRole('button', { name: 'Weiter zum Export', exact: true });
+  const exportButton = page.getByRole('button', { name: 'Weiter zum Kunden-PDF', exact: true });
   await expect(exportButton).toBeInViewport({ ratio: 1 });
   const exportLayout = await exportButton.evaluate(b => {
     const r = b.getBoundingClientRect();
