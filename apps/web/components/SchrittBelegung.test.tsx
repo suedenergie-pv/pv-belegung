@@ -222,10 +222,10 @@ describe('Belegungsbedienung', () => {
     const onChange = vi.fn();
     const ui = render(<SchrittBelegung projekt={start} onChange={onChange} />);
     const dach = within(ui.getByRole('group', { name: 'Dach bearbeiten' }));
-    fireEvent.click(dach.getByRole('button', { name: 'Umriss' }));
+    fireEvent.click(dach.getByRole('button', { name: 'Dachrand' }));
     expect(ui.getAllByTestId('umriss-griff')).toHaveLength(4);
     expect((ui.getByRole('button', { name: 'Umriss übernehmen' }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(dach.getByRole('button', { name: 'Umriss' }));
+    fireEvent.click(dach.getByRole('button', { name: 'Dachrand' }));
     expect(ui.getAllByTestId('umriss-griff')).toHaveLength(4);
     fireEvent.click(dach.getByRole('button', { name: 'Aussparungen' }));
     expect(ui.queryAllByTestId('umriss-griff')).toHaveLength(0);
@@ -244,11 +244,11 @@ describe('Belegungsbedienung', () => {
     const onChange = vi.fn();
     const ui = render(<EntwurfNavigationProvider><SchrittBelegung projekt={start} onChange={onChange} /></EntwurfNavigationProvider>);
     fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
-    fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '20' } });
-    const umriss = within(ui.getByRole('group', { name: 'Dach bearbeiten' })).getByRole('button', { name: 'Umriss' });
+    fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '20' } });
+    const umriss = within(ui.getByRole('group', { name: 'Dach bearbeiten' })).getByRole('button', { name: 'Dachrand' });
     fireEvent.click(umriss);
     fireEvent.click(ui.getByRole('button', { name: 'Bleiben', hidden: true }));
-    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('20');
+    expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('20');
     fireEvent.click(umriss);
     fireEvent.click(ui.getByRole('button', { name: 'Verwerfen', hidden: true }));
     expect(ui.getByRole('button', { name: 'Umriss übernehmen' })).toBeTruthy();
@@ -263,7 +263,7 @@ describe('Belegungsbedienung', () => {
     expect(ui.queryByRole('button', { name: 'Markierung & Ziegelmaß' })).toBeNull();
     fireEvent.click(ui.getByRole('button', { name: 'Dachmaße & Dachform' }));
     expect(ui.getByRole('heading', { name: 'Dachmaße & Dachform' })).toBeTruthy();
-    expect(ui.getByLabelText(/^Traufe/)).toBeTruthy();
+    expect(ui.getByLabelText(/^Breite unten/)).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: 'Fotos' }));
     fireEvent.click(ui.getByRole('button', { name: 'Dachumriss bearbeiten' }));
     expect(ui.getByRole('heading', { name: 'Dachumriss nachzeichnen' })).toBeTruthy();
@@ -271,7 +271,7 @@ describe('Belegungsbedienung', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('führt zusätzliche Dachflächen zuerst zum Foto und nach bewusster Fotoauswahl zu leeren Maßen', () => {
+  it.each(['ebenenliste','auswahl'])('%s führt zusätzliche Dachflächen zuerst zum Foto und nach bewusster Fotoauswahl zu leeren Maßen', zugang => {
     const start = projektMitFoto();
     function Editor() {
       const [projekt, setProjekt] = useState(start);
@@ -279,12 +279,13 @@ describe('Belegungsbedienung', () => {
     }
     const ui = render(<Editor />);
     expect(ui.getByRole('button', { name: 'Weiter zum Export' })).toBeTruthy();
-    fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+    if(zugang==='auswahl')fireEvent.change(ui.getByRole('combobox',{name:'Aktive Dachfläche'}),{target:{value:''}});
+    else fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
     expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
     expect(ui.queryByRole('button', { name: 'Maße übernehmen' })).toBeNull();
     fireEvent.change(ui.getByLabelText('Vorhandenes Foto für Dachfläche 2 verwenden'), { target: { value: 'foto-1' } });
-    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
-    expect((ui.getByLabelText(/^Sparrenlänge/) as HTMLInputElement).value).toBe('');
+    expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
+    expect((ui.getByLabelText(/^Länge auf dem Dach/) as HTMLInputElement).value).toBe('');
     expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
     expect(ui.queryByRole('button', { name: 'Weiter zum Export' })).toBeNull();
     expect(ui.getByRole('img', { name: /im Foto markieren/ })).toBeTruthy();
@@ -294,7 +295,7 @@ describe('Belegungsbedienung', () => {
   it('lässt bekannte Maße vor einem Foto weiterhin ausdrücklich eingeben', () => {
     const ui = render(<SchrittBelegung projekt={neuesProjekt()} onChange={vi.fn()} />);
     fireEvent.click(ui.getByRole('button', { name: 'Maße sind bereits bekannt' }));
-    expect((ui.getByLabelText(/^Traufe/) as HTMLInputElement).value).toBe('');
+    expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
     expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
     expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
   });
@@ -353,7 +354,7 @@ describe('Belegungsbedienung', () => {
       return <SchrittBelegung projekt={projekt} onChange={(neu) => { letzterStand = neu; setProjekt(neu); }} />;
     }
     const { getByRole, getAllByRole } = render(<TestApp />);
-    expect(getByRole('button', { name: '+ Belegungsbereich zeichnen' })).toBeTruthy();
+    expect(getByRole('button', { name: 'Bereich selbst zeichnen' })).toBeTruthy();
     const automatisch = getAllByRole('button', { name: 'Automatisch belegen' });
     fireEvent.click(automatisch.at(-1)!);
     await waitFor(() => expect(letzterStand.flaechen[0]!.felder?.length).toBe(1));
@@ -657,7 +658,7 @@ describe('Belegungsbedienung', () => {
     const ui = render(<EntwurfNavigationProvider><SchrittBelegung projekt={start} onChange={onChange} /></EntwurfNavigationProvider>);
     fireEvent.click(ui.getByRole('button', { name: 'Alle auswählen' }));
     fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
-    fireEvent.change(ui.getByLabelText(/^Traufe/), { target: { value: '20' } });
+    fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '20' } });
     const svg = ui.getByRole('img', { name: /^Belegungsfläche/ });
     vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, toJSON: () => ({}) });
     sendePointer(svg, 'pointerdown', 290, 350);

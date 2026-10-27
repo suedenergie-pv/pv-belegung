@@ -1,0 +1,30 @@
+.panel { display:grid; gap:16px; color:#263238; font-size:14px; line-height:1.5; }
+.panel p { margin:0; }
+.panel label { display:grid; gap:6px; font-weight:600; }
+.panel input:not([type=checkbox]), .panel select { width:100%; min-width:0; min-height:44px; border:1px solid #89959c; border-radius:6px; background:white; padding:8px; font:inherit; font-weight:400; }
+.panel button { min-height:44px; border:1px solid #a9b3b9; border-radius:6px; padding:8px 12px; background:white; font:inherit; font-weight:600; }
+.panel button:disabled { opacity:.45; cursor:not-allowed; }
+.panel button:hover:not(:disabled) { border-color:#263238; }
+.panel :is(button,input,select,summary):focus-visible { outline:3px solid #b83d1e; outline-offset:3px; }
+.raster { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.raster label { min-width:0; }
+.hilfe { font-size:13px; color:#526169; }
+.reihenfolge { display:flex; align-items:center; gap:10px; border-block:1px solid #d6dadd; padding:12px 0; }
+.reihenfolge svg { width:140px; flex-shrink:0; }
+.korrekturen { display:grid; gap:8px; }
+.korrekturen span { font-size:13px; color:#526169; }
+.panel summary { min-height:44px; cursor:pointer; padding:8px 0; }
+.panel details p { margin-block:8px 12px; }
+.ergebnis { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.ergebnis dt { font-size:13px; color:#526169; }
+.ergebnis dd { font-size:22px; font-weight:650; font-variant-numeric:tabular-nums; }
+.panel .bestaetigung { display:flex; align-items:flex-start; gap:10px; font-weight:500; }
+.bestaetigung input { width:22px; height:22px; flex-shrink:0; accent-color:#b83d1e; margin-top:1px; }
+.warnung { background:#fff4dc; color:#704410; padding:12px; border-radius:6px; }
+.fehler { color:#a32920; font-weight:600; }
+.panel .primaer { background:#b83d1e; color:#fff; border-color:#b83d1e; }
+.bild { display:block; width:100%; height:100%; touch-action:none; }
+.griff { cursor:move; outline:none; }
+.fokus { display:none; }
+.griff:focus-visible .fokus { display:block; }
+@media(max-width:600px), (max-height:500px) { .panel { gap:12px; } .reihenfolge { padding:6px 0; } .reihenfolge svg { width:110px; } }

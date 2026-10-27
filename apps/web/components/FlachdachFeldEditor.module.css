@@ -14,3 +14,7 @@
 .editor input[aria-invalid=true] { border-color: #a62b20; }
 .editor output { display: block; font-size: .875rem; font-weight: 600; margin-top: .6rem; }
 @media(max-width:600px){.editor .fertig{display:block}.editor h4{margin:0}.kopf{margin-bottom:.5rem}}
+
+.editor button.primaer{background:#b83d1e;color:#fff;border-color:#b83d1e;font-weight:600}
+.editor button.primaer:hover{background:#963115}
+.editor summary{cursor:pointer;min-height:44px;padding:10px 0;font-size:.875rem}

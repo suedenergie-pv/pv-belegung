@@ -1,4 +1,4 @@
-import { oeffneStartprojekt } from '../apps/web/e2e/projekt-einstieg';
+import { oeffneStartprojekt, waehleUntereKante } from '../apps/web/e2e/projekt-einstieg';
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
@@ -46,8 +46,8 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
 
   await page.getByRole('button', { name: '2. Dach & Belegung', exact: true }).click();
   await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
-  await page.getByLabel(/^Traufe/).fill('10');
-  await page.getByLabel(/^Sparrenlänge/).fill('6');
+  await page.getByLabel(/^Breite unten/).fill('10');
+  await page.getByLabel(/^Länge auf dem Dach/).fill('6');
   await page.getByRole('button', { name: 'Maße übernehmen', exact: true }).click();
   // Öffentliche neutrale Laufzeit-Fixture; kein Kundendokument und kein privates Foto.
   const image = await page.evaluate(() => {
@@ -60,7 +60,6 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Foto hinzufügen', exact: true }).click();
   await (await chooser).setFiles({ name: 'pages-smoke.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
-  await page.getByRole('button', { name: /Überspringen \(/ }).click();
   const photo = page.getByRole('img', { name: /im Foto markieren/ });
   await photo.scrollIntoViewIfNeeded();
   const bounds = await photo.boundingBox();
@@ -68,9 +67,10 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   for (const [x, y] of [[.1, .85], [.9, .85], [.9, .15], [.1, .15]]) {
     await photo.click({ position: { x: bounds.width * x!, y: bounds.height * y! } });
   }
+  await waehleUntereKante(page);
   await page.getByRole('button', { name: '4 Ecken übernehmen', exact: true }).click();
   await page.getByRole('button', { name: /Keine Aussparungen – weiter/ }).click();
-  await page.getByRole('button', { name: 'Automatisch belegen', exact: true }).filter({ visible: true }).click();
+  await page.getByRole('button', { name: 'Belegung vorschlagen', exact: true }).click();
   const before = await gespeichertesProjekt(page);
   expect(before.flaechen[0].massStatus).toBe('bestaetigt');
   expect(before.flaechen[0].felder).toHaveLength(1);
@@ -98,6 +98,7 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
   const pdf = await downloading;
   expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
   expect(await pdf.failure()).toBeNull();
+  await pdf.saveAs(`.release/screenshots/${info.project.name}-belegungsplan.pdf`);
   const pdfPath = await pdf.path();
   expect(pdfPath).not.toBeNull();
   const bytes = readFileSync(pdfPath!);

@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { artVon, fmtDe, massFreigabe, modulById, rasterFuer, aktiveModule, type Flaeche, type Projekt, zonenVon } from '../lib/model';
 import { useEntwurfNavigation } from '../lib/entwurf-navigation';
 import { geometrieEntwurfAufStand } from '../lib/geometrie-entwurf';
 import { patchFlaechenGeometrie } from '../lib/model';
 import { SchrittFlaechen } from './SchrittFlaechen';
-import { DachSkizze } from './DachSkizze';
 import { EditorAktionen } from './EditorAktionen';
 import { ZonenBadge } from './ui';
 import styles from './FlaechenInlineEditor.module.css';
@@ -32,7 +31,17 @@ export function FlaechenInlineEditor({
   const basis = useRef(flaeche);
   const [geaendert, setGeaendert] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [pruefung, setPruefung] = useState(0);
+  const [montageHinweis, setMontageHinweis] = useState<string | null>(null);
   const formularRef = useRef<HTMLDivElement>(null);
+  // Nach dem Einblenden der Feldfehler die ganze Beschriftung samt Meldung zeigen.
+  // Nur das Input zu fokussieren lässt den Fehler auf kleinen Displays unter der Fußleiste.
+  useLayoutEffect(() => {
+    if (!pruefung) return;
+    const eingabe = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
+    eingabe?.closest('label')?.scrollIntoView?.({ block: 'center' });
+    eingabe?.focus({ preventScroll: true });
+  }, [pruefung]);
   const navigation = useEntwurfNavigation();
   const entwurfAbmelden = useRef<(() => void) | null>(null);
   const vorschau = useMemo(() => entwurf ? geometrieEntwurfAufStand(basis.current, entwurf, flaeche) : null, [entwurf, flaeche]);
@@ -45,15 +54,15 @@ export function FlaechenInlineEditor({
   const verwerfen = (schliessen = true) => {
     entwurfAbmelden.current?.();
     entwurfAbmelden.current = null;
-    setEntwurf(null); setGeaendert(false); setFehler(null); vorschauCallback.current?.(null);
+    setEntwurf(null); setGeaendert(false); setFehler(null); setPruefung(0); setMontageHinweis(null); vorschauCallback.current?.(null);
     if (schliessen) onSchliessen?.();
   };
   const gueltig = () => {
     const stand = aktuell.current.entwurf;
     const ungueltig = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
     if (stand && (ungueltig || !massFreigabe(stand).gueltig)) {
+      setPruefung((stand) => stand + 1);
       setFehler('Bitte die markierten Angaben korrigieren. Der bisherige Plan bleibt erhalten.');
-      ungueltig?.focus();
       return false;
     }
     return true;
@@ -95,7 +104,7 @@ export function FlaechenInlineEditor({
       {!kompakt && <ZonenBadge label={zonenVon(flaeche, index)} />}
       <div className="min-w-0 flex-1">
         {!kompakt && <strong className="block text-sm text-slate-800">{flaeche.name}</strong>}
-        <span className="text-sm text-slate-600">{artVon(flaeche) === 'flachdach' ? 'Flachdach' : artVon(flaeche) === 'fassade' ? 'Fassade' : 'Schrägdach'}{flaeche.massEingabeOffen && !massFreigabe(flaeche).belegen ? ' · Maße noch eingeben' : ` · ${fmtDe(flaeche.breiteM)} × ${fmtDe(flaeche.hoeheM)} m`}</span>
+        <span className="text-sm text-slate-600">{flaeche.einsatzort === 'freiflaeche' ? 'Freifläche' : flaeche.einsatzort === 'halle' ? 'Hallendach' : artVon(flaeche) === 'flachdach' ? 'Flachdach' : artVon(flaeche) === 'fassade' ? 'Fassade' : 'Schrägdach'}{flaeche.massEingabeOffen && !massFreigabe(flaeche).belegen ? ' · Maße noch eingeben' : ` · ${fmtDe(flaeche.breiteM)} × ${fmtDe(flaeche.hoeheM)} m`}</span>
       </div>
       {!kompakt && <span aria-label={`Leistung ${flaeche.name}: ${fmtDe(flaecheKwp, 2)} kWp`} className="text-sm font-semibold text-slate-800">{vorher} Module · {fmtDe(flaecheKwp, 2)} kWp</span>}
       {!entwurf && <button type="button" onClick={() => { basis.current = flaeche; setEntwurf(flaeche); setFehler(null); }} className="rounded-lg border border-slate-300 px-3 text-sm font-semibold">{freigabe.belegen ? 'Maße & Dachform' : 'Maße bestätigen'}</button>}
@@ -105,17 +114,17 @@ export function FlaechenInlineEditor({
     <p hidden={kompakt && !!entwurf} className="mt-2 text-xs text-slate-600">Maße: {freigabe.status === 'bestaetigt' ? 'von dir bestätigt' : freigabe.status === 'bestand' ? 'aus bestehender Belegung übernommen' : 'Entwurf · noch nicht bestätigt'}</p>
     {entwurf && <div ref={formularRef} className="mt-4 border-t border-slate-200 pt-4" data-geometrie-entwurf onChange={() => setGeaendert(true)}>
       <p hidden={kompakt} className="mb-3 text-sm font-medium text-slate-700">{kompakt ? 'Wahre Maße eingeben und Vorschau prüfen.' : 'Maßentwurf – der bisherige Plan bleibt bis zur Übernahme erhalten.'}</p>
-      {artVon(vorschau ?? flaeche) === 'dach' && <DachSkizze />}
       <SchrittFlaechen projekt={{ ...projekt, flaechen: projekt.flaechen.map((f) => f.id === vorschau!.id ? vorschau! : f) }} onChange={(p) => {
         setEntwurf(p.flaechen.find((f) => f.id === flaeche.id) ?? null);
         setGeaendert(true); setFehler(null);
-      }} nurFlaecheId={flaeche.id} eingebettet entwurfsModus />
+      }} nurFlaecheId={flaeche.id} eingebettet entwurfsModus fehlerAnzeigen={pruefung > 0} onMontageHinweis={setMontageHinweis} />
       <p className="my-3 text-sm font-semibold text-slate-800" aria-live="polite">Vorschau: {vorher} → {nachher} Module</p>
       {neuKalibrieren && <p className="mb-3 text-sm text-amber-900">Nach dem Übernehmen müssen die Dachecken neu bestätigt werden.</p>}
       {fehler && <p role="alert" className="mb-3 text-sm text-red-700">{fehler}</p>}
       <EditorAktionen>
         <button type="button" onClick={() => uebernehmen()} className="rounded-lg bg-akzent px-4 text-sm font-semibold text-white">Maße übernehmen</button>
         <button type="button" onClick={() => verwerfen()} className="rounded-lg border border-slate-300 px-4 text-sm font-semibold">Abbrechen</button>
+        {montageHinweis && <p role="status" className="w-full text-sm leading-snug text-amber-900">{montageHinweis}</p>}
       </EditorAktionen>
       <p className="mt-2 text-xs text-slate-600">Übernehmen bestätigt deine Angaben; es ersetzt keine unabhängige Vermessung.</p>
     </div>}

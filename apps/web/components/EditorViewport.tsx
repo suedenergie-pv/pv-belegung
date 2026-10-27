@@ -263,7 +263,7 @@ export function EditorViewport({ ansicht = STANDARD_ANSICHT, onAnsichtChange, ve
           data-testid="foto-fadenkreuz" data-x={punktSteuerung.punkt[0]} data-y={punktSteuerung.punkt[1]}>
           <path d={`M${punktSteuerung.punkt[0]},0 V${punktSteuerung.hoehePx} M0,${punktSteuerung.punkt[1]} H${punktSteuerung.breitePx}`} fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
           <path d={`M${punktSteuerung.punkt[0]},0 V${punktSteuerung.hoehePx} M0,${punktSteuerung.punkt[1]} H${punktSteuerung.breitePx}`} fill="none" stroke="#0284c7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-          <circle cx={punktSteuerung.punkt[0]} cy={punktSteuerung.punkt[1]} r={punktSteuerung.breitePx * .006} fill="none" stroke="#0284c7" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          <circle cx={punktSteuerung.punkt[0]} cy={punktSteuerung.punkt[1]} r={6 * punktSteuerung.breitePx / Math.max(1, rahmen.bildBreite * sichtbar.zoom)} fill="none" stroke="#0284c7" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
         </svg>}
       </div>
     </div>

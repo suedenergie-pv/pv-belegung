@@ -37,20 +37,29 @@ describe('Belegungs-Check für unterschiedliche Flächenarten', () => {
     expect(belegungsCheck([[0, 0], [0, 0], [100, 100], [0, 100]], 10, 10, 0, undefined).status).toBe('fehler');
   });
 
-  it('misst eine frontal fotografierte Fassade ohne cos(90°)-Explosion', () => {
-    const check = belegungsCheck(quadrat, 10, 10, 90, 10, 1, 'fassade');
-    expect(check.vorschlag).toEqual({ breiteM: 10, hoeheM: 10 });
-    expect(check.status).toBe('ok');
-    expect(check.meldungen.join(' ')).not.toContain('Sparrenlänge');
+  it.each(['dach', 'flachdach', 'fassade'] as const)('leitet auch bei parallelen Bildkanten keine Gesamtmaße aus einer lokalen Strecke ab: %s', art => {
+    const check = belegungsCheck(quadrat, 10, 10, art === 'fassade' ? 90 : 35, 10, 1, art);
+    expect(check.status).toBe('ungeprueft');
+    expect(check.vorschlag).toBeNull();
+    expect(check.meldungen.join(' ')).toContain('Zweipunkt-Maßstab gilt nur an der gezählten Strecke');
+    expect(check.meldungen.join(' ')).not.toContain('Maße plausibel');
   });
 
-  it('verwendet beim Flachdach neutrale Maßbegriffe', () => {
-    const check = belegungsCheck(quadrat, 8, 8, 0, 10, 1, 'flachdach');
-    expect(check.status).toBe('warnung');
-    expect(check.meldungen.join(' ')).toContain('Breite im Foto');
-    expect(check.meldungen.join(' ')).toContain('Tiefe laut Foto');
-    expect(check.meldungen.join(' ')).not.toContain('Traufe');
+  it('verhindert ortsabhängige Dachmaßvorschläge bei perspektivischen Zählstrecken', () => {
+    const foto: Ecken = [[305, 456], [827, 438], [669, 284], [457, 289]];
+    // Dasselbe bekannte 4-m-Stück kann je nach Bildort verschieden lang sein.
+    // Ein einzelner px/m-Wert darf daraus weder ein neues Dachmaß noch eine
+    // positive Maßbestätigung erzeugen; die bekannte 4-Punkt-Geometrie bleibt.
+    for (const pixelProMeter of [20, 36, 37, 80]) {
+      const check = belegungsCheck(foto, 14.6, 4.8, 35, pixelProMeter, 5.8 / 14.6);
+      expect(check.status).toBe('ungeprueft');
+      expect(check.vorschlag).toBeNull();
+    }
+    const h = homographie(14.6, 4.8, foto, [[0,4.8],[14.6,4.8],[10.2,0],[4.4,0]]);
+    expect(h).not.toBeNull();
+    expect(projiziere(h!, [0,4.8])[0]).toBeCloseTo(305, 8);
   });
+
 });
 
 describe('Tablet-Fadenkreuz', () => {

@@ -270,7 +270,9 @@ async function hydriereV2(roh: string): Promise<ProjektDb> {
     workflowVersion: WORKFLOW_VERSION,
     speicherVersion: SPEICHER_VERSION,
   };
-  return normalisiereDb(hydriert, true);
+  // Die Projektübersicht darf nach dem letzten Löschen bewusst leer bleiben.
+  // Ein verwaister Aktivverweis ist dagegen weiterhin ein Reparaturfall.
+  return normalisiereDb(hydriert, true, parsed.aktivId === null && parsed.workflowVersion === WORKFLOW_VERSION);
 }
 
 export async function speichereProjekte(db: ProjektDb): Promise<SpeicherErgebnis> {

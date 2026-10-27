@@ -282,3 +282,49 @@ describe('DachSvg', () => {
     expect(html).toContain('aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight');
   });
 });
+
+
+describe('Aktive Dachkontur aus gemessener Foto-Referenz', () => {
+  it.each<{ name: string; umriss: [number, number][]; erwartetePunkte: [number, number][] }>([
+    { name: 'Dreieck', umriss: [[0, 0], [10, 0], [0, 8]], erwartetePunkte: [[500, 100], [700, 300], [340, 260]] },
+    { name: 'L-Dach', umriss: [[0, 0], [10, 0], [10, 2], [2, 2], [2, 8], [0, 8]], erwartetePunkte: [[500, 100], [700, 300], [660, 340], [500, 180], [380, 300], [340, 260]] },
+  ])('$name zeigt nur seine tatsächlichen Punkte und lässt den PDF-Druck unverändert', ({ umriss, erwartetePunkte }) => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const flaeche: Flaeche = {
+      ...neueFlaeche(1), breiteM: 10, hoeheM: 8, fotoBezugsrahmen: true, umrissM: umriss, felder: [],
+      // x'=500+20(x-y), y'=100+20(x+y); der vierte Rahmenbereich liegt außerhalb des Fotos.
+      foto: { dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', breitePx: 1000, hoehePx: 350, traufePx: null,
+        eckenPx: [[340, 260], [540, 460], [700, 300], [500, 100]], perspektiveBestaetigt: true },
+    };
+    const raster = rasterFuer(flaeche, modul);
+    const html = renderToStaticMarkup(<DachSvg flaeche={flaeche} raster={raster} modul={modul} />);
+    const wert = html.match(/data-testid="dachflaechen-umriss"[^>]*points="([^"]+)"/)![1]!;
+    const punkte = wert.split(' ').map(p => p.split(',').map(Number));
+    expect(punkte).toHaveLength(erwartetePunkte.length);
+    punkte.forEach((p, i) => { expect(p[0]).toBeCloseTo(erwartetePunkte[i]![0], 8); expect(p[1]).toBeCloseTo(erwartetePunkte[i]![1], 8); });
+    expect(html.match(/data-dach-ecke=/g)).toHaveLength(erwartetePunkte.length);
+    expect(html).not.toContain('data-testid="perspektiv-griffe"');
+    const pdf = renderToStaticMarkup(<DachSvg flaeche={flaeche} raster={raster} modul={modul} druck />);
+    expect(pdf).not.toContain('data-testid="dachflaechen-umriss"');
+    expect(pdf).not.toContain('data-dach-ecke=');
+  });
+});
+
+describe('Belegungsrahmen auf Dachkonturen', () => {
+  it('begrenzt ungewählte Rahmen auf den echten Dachrand, erhält ausgewählte Griffe und verändert den Druck nicht', () => {
+    const modul = modulById('jw-hd96n-r2-460');
+    const f: Flaeche = { ...neueFlaeche(1), breiteM: 10, hoeheM: 8, fotoBezugsrahmen: true,
+      umrissM: [[0, 8], [10, 8], [5, 0]],
+      foto: { dataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', breitePx: 1000, hoehePx: 900, traufePx: null, eckenPx: [[0, 800], [1000, 800], [1000, 0], [0, 0]] } };
+    const rect = { xM: 0, yM: 0, breiteM: 10, hoeheM: 8, quer: false };
+    const render = (ausgewaehlt: boolean, druck = false, flaeche = f) => renderToStaticMarkup(<DachSvg flaeche={flaeche} raster={rasterFuer(flaeche, modul)} modul={modul} felderAnzeige={[{ rect, ausgewaehlt }]} druck={druck} />);
+    const ungewählt = render(false), gewählt = render(true);
+    expect(ungewählt).toContain('data-feld-dachclip="true"');
+    expect(ungewählt).toMatch(/clipPathUnits="userSpaceOnUse"/);
+    expect(gewählt).not.toContain('data-feld-dachclip="true"');
+    expect(gewählt.match(/data-feld-griff=/g)).toHaveLength(8);
+    expect(render(false, false, { ...f, fotoBezugsrahmen: undefined })).not.toContain('data-feld-dachclip="true"');
+    expect(render(false, true)).not.toContain('feld-dachkontur');
+    expect(render(false, true)).toBe(render(true, true));
+  });
+});

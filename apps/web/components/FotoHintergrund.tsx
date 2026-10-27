@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { hindernisUmriss, punktInPolygon, type HindernisM } from '@pv-belegung/engine';
 import { aussparungEcke, aussparungFehler, skaliereAussparung, verschiebeAussparung } from '../lib/aussparung-geometrie';
 import { dateiZuBild } from '../lib/bild';
@@ -131,8 +131,10 @@ export function FotoHintergrund({
   renderArbeitsbereich,
   kompakt = false,
   initialWerkzeug,
+  ansichtZoom = 1,
   cancelRevision,
   onMasseBearbeiten,
+  onReferenzBearbeiten,
   fotoOverlay,
 }: {
   flaeche: Flaeche;
@@ -149,14 +151,34 @@ export function FotoHintergrund({
   kompakt?: boolean;
   /** Direkteinstieg; der Aufrufer löst offene Entwürfe vor dem Wechsel auf. */
   initialWerkzeug?: 'umriss' | 'hindernis';
+  /** Ansichtszoom ändert nur die Bildschirmgröße der Griffe, nie die Geometrie. */
+  ansichtZoom?: number;
   cancelRevision?: number;
   onMasseBearbeiten?: () => void;
+  onReferenzBearbeiten?: () => void;
   /** Bereits belegte andere Ebenen desselben Fotos, im identischen Bildraum. */
   fotoOverlay?: (clipIdPrefix: string) => React.ReactNode;
 }) {
   const overlayId = useId().replace(/:/g, '');
   const [fotoEntwurf, setFotoEntwurf] = useState<DachFoto | null>(null);
   const foto = fotoEntwurf ?? flaeche.foto;
+  const [bildSvg, setBildSvg] = useState<SVGSVGElement | null>(null);
+  const [einheitenProPixel, setEinheitenProPixel] = useState(1);
+  useLayoutEffect(() => {
+    if (!bildSvg || !foto) return;
+    const messen = () => {
+      const matrix = bildSvg.getScreenCTM?.();
+      const rect = bildSvg.getBoundingClientRect();
+      const skala = matrix ? Math.hypot(matrix.a, matrix.b) : Math.min(rect.width / foto.breitePx, rect.height / foto.hoehePx);
+      if (Number.isFinite(skala) && skala > 0) setEinheitenProPixel(1 / skala);
+    };
+    messen();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(messen);
+    observer?.observe(bildSvg);
+    window.addEventListener('resize', messen);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', messen); };
+  }, [bildSvg, foto?.breitePx, foto?.hoehePx, ansichtZoom]);
+  const bildschirmPx = (pixel: number) => pixel * einheitenProPixel;
   const navigation = useEntwurfNavigation();
   const massCheck = massFreigabe(flaeche);
   const flaechenArt = artVon(flaeche);
@@ -167,7 +189,8 @@ export function FotoHintergrund({
   const [punkte, setPunkte] = useState<Punkt[]>([]);
   const [eckenOrientiert, setEckenOrientiert] = useState(false);
   const [umrissBearbeiten, setUmrissBearbeiten] = useState(false);
-  const [modus, setModus] = useState<Modus>('first');
+  const [modus, setModus] = useState<Modus>(kompakt ? 'perspektive' : 'first');
+  const [unterkanteBestaetigt, setUnterkanteBestaetigt] = useState(false);
   const [anzahlZiegel, setAnzahlZiegel] = useState(10);
   const [deckbreiteCm, setDeckbreiteCm] = useState<number | null>(null);
   const [mausPx, setMausPx] = useState<Punkt | null>(null);
@@ -196,6 +219,7 @@ export function FotoHintergrund({
   }, [flaeche.hindernisse, entwurfGeaendert]);
   const gestenBasis = useRef<{ punkte: Punkt[]; firstLinie: [Punkt, Punkt] | null; geaendert: boolean; aussparung: typeof aussparung } | null>(null);
   const gesteGesperrt = useRef(false);
+  const praeziserZeiger = useRef<{ x: number; y: number; zeit: number } | null>(null);
   const touchSwipeRef = useRef<{
     pointerId: number;
     clientX: number;
@@ -204,6 +228,7 @@ export function FotoHintergrund({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const gesteAbbrechen = () => {
+    praeziserZeiger.current = null;
     if (gestenBasis.current) {
       setPunkte(gestenBasis.current.punkte);
       setFirstLinie(gestenBasis.current.firstLinie);
@@ -244,7 +269,7 @@ export function FotoHintergrund({
     ziehtRef.current = null;
     setGreift(false);
     touchSwipeRef.current = null;
-    wechsleModus(foto?.eckenPx ? initialWerkzeug ?? 'hindernis' : 'first');
+    wechsleModus(foto?.eckenPx ? initialWerkzeug ?? 'hindernis' : kompakt ? 'perspektive' : 'first');
   }, [foto?.dataUrl, zustandsKey, initialWerkzeug]);
   useEffect(() => { setFotoEntwurf(null); }, [zustandsKey, flaeche.foto?.dataUrl]);
   useEffect(() => {
@@ -296,6 +321,20 @@ export function FotoHintergrund({
     const vier = [punkte[0]!, punkte[1]!, punkte[2]!, punkte[3]!] as [Punkt, Punkt, Punkt, Punkt];
     return eckenOrientiert ? vier : firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
   })();
+  const waehleUnterkante = (index: number) => {
+    if (!perspektivVorschau) return;
+    setPunkte(perspektivVorschau.map((_, i) => [...perspektivVorschau[(i + index) % 4]!] as Punkt));
+    setEckenOrientiert(true); setUnterkanteBestaetigt(true); setEntwurfGeaendert(true); setMarkierungsFehler(null);
+  };
+  const kanteBeiPunkt = (k: Punkt) => {
+    if (!perspektivVorschau) return -1;
+    const kanten = perspektivVorschau.map((a, i) => {
+      const b = perspektivVorschau[(i+1)%4]!, dx=b[0]-a[0], dy=b[1]-a[1];
+      const t = Math.max(0,Math.min(1,((k[0]-a[0])*dx+(k[1]-a[1])*dy)/(dx*dx+dy*dy || 1)));
+      return {i, abstand:Math.hypot(k[0]-a[0]-t*dx,k[1]-a[1]-t*dy)};
+    }).sort((a,b)=>a.abstand-b.abstand);
+    return kanten[0]!.abstand <= bildschirmPx(22) ? kanten[0]!.i : -1;
+  };
   const vorschauCheck = perspektivVorschau
     ? pruefePerspektive(rahmenB, H, perspektivVorschau, quelle)
     : null;
@@ -315,6 +354,7 @@ export function FotoHintergrund({
   const wechsleModus = (m: Modus) => {
     setAussparung(null);
     setModus(m);
+    setUnterkanteBestaetigt(m === 'perspektive' && !!foto?.eckenPx);
     setEckenOrientiert(m === 'perspektive' && !!foto?.eckenPx);
     setUmrissBearbeiten(m === 'umriss' && !!hom && !!flaeche.umrissM);
     setPunkte(
@@ -334,6 +374,7 @@ export function FotoHintergrund({
 
   const perspektiveAbschliessen = (pts: Punkt[]) => {
     if (!foto || pts.length < 4) return;
+    if (kompakt && !unterkanteBestaetigt) { setMarkierungsFehler('Wähle im Foto die untere Kante der Fläche, beim Dach die Dachrinne.'); return; }
     const vier: [Punkt, Punkt, Punkt, Punkt] = [pts[0]!, pts[1]!, pts[2]!, pts[3]!];
     // Firstlinie (falls gezogen) legt die Traufe-Achse fest; sonst alter Heuristik-Fallback
     const ecken = eckenOrientiert ? vier : firstLinie ? orientiereEcken(vier, firstLinie) : sortiereEcken(vier);
@@ -376,7 +417,7 @@ export function FotoHintergrund({
   };
 
   const umrissEntfernen = () => {
-    if (!flaeche.umrissM) return;
+    if (!flaeche.umrissM || flaeche.fotoBezugsrahmen) return;
     onPatch({ umrissM: undefined, inaktiv: [] });
     setPunkte([]);
     setUmrissBearbeiten(false);
@@ -394,9 +435,13 @@ export function FotoHintergrund({
     if (!foto) return null;
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
+    // Chromium rundet MouseEvent/Click, PointerEvents behalten Bruchteile.
+    // Nur die unmittelbar zugehörige Position verwenden; synthetische/Keyboard-Klicks bleiben unabhängig.
+    const z = praeziserZeiger.current;
+    const praezise = z && Date.now() - z.zeit < 200 && Math.abs(z.x - e.clientX) < 2 && Math.abs(z.y - e.clientY) < 2;
     return [
-      ((e.clientX - rect.left) / rect.width) * foto.breitePx,
-      ((e.clientY - rect.top) / rect.height) * foto.hoehePx,
+      (((praezise ? z.x : e.clientX) - rect.left) / rect.width) * foto.breitePx,
+      (((praezise ? z.y : e.clientY) - rect.top) / rect.height) * foto.hoehePx,
     ];
   };
 
@@ -428,7 +473,7 @@ export function FotoHintergrund({
   };
 
   const naheHandle = (k: Punkt) => {
-    const schwelle = foto ? foto.breitePx * 0.022 : 0;
+    const schwelle = bildschirmPx(touchGeraet ? 22 : 12);
     const griff = handles().sort((a, b) => Math.hypot(a.x-k[0], a.y-k[1]) - Math.hypot(b.x-k[0], b.y-k[1])).find((h) => Math.hypot(h.x - k[0], h.y - k[1]) <= schwelle);
     if (griff) return griff;
     if (modus !== 'hindernis' || !inv || punkte.length) return;
@@ -518,7 +563,10 @@ export function FotoHintergrund({
     if (modus === 'perspektive') {
       // Sind die 4 Ecken schon gesetzt, fügt ein Klick KEINE neue an — man justiert
       // dann nur noch per Ziehen. Neu setzen geht über „Ecken neu".
-      if (punkte.length >= 4) return;
+      if (punkte.length >= 4) {
+        if (kompakt) { const i = kanteBeiPunkt(k); if (i >= 0) waehleUnterkante(i); else if (!unterkanteBestaetigt) setMarkierungsFehler('Wähle die untere Kante direkt am Rand der Fläche.'); }
+        return;
+      }
       const neu: Punkt[] = [...punkte, [x, y]];
       return setPunkte(neu);
     }
@@ -564,6 +612,7 @@ export function FotoHintergrund({
       setTouchGriff(null);
       return;
     }
+    if (kompakt && modus === 'perspektive' && punkte.length === 4 && !unterkanteBestaetigt) { verarbeitePunkt(touchCursorPx); return; }
     const griff = naheHandle(touchCursorPx);
     if (griff) {
       if (griff.z.art === 'aussparung' || griff.z.art === 'aussparung-ecke') {
@@ -580,7 +629,8 @@ export function FotoHintergrund({
     setPunkte([]);
     setEckenOrientiert(false);
     setFirstLinie(null);
-    setModus('first');
+    setModus(kompakt ? 'perspektive' : 'first');
+    setUnterkanteBestaetigt(false);
     setEntwurfGeaendert(false);
   };
 
@@ -593,11 +643,12 @@ export function FotoHintergrund({
     setMarkierungsFehler(null);
     setEntwurfGeaendert(false);
     setUmrissBearbeiten(false);
-    setModus(flaeche.foto?.eckenPx ? 'hindernis' : 'first');
+    setModus(flaeche.foto?.eckenPx ? 'hindernis' : kompakt ? 'perspektive' : 'first');
+    setUnterkanteBestaetigt(!!flaeche.foto?.eckenPx);
   };
   const entwurfGueltig = () => {
     if (modus === 'hindernis' && aussparung) return !aussparungProblem;
-    if (modus === 'perspektive' && perspektivVorschau && vorschauCheck?.status !== 'fehler') return true;
+    if (modus === 'perspektive' && perspektivVorschau && vorschauCheck?.status !== 'fehler' && (!kompakt || unterkanteBestaetigt)) return true;
     if (modus === 'umriss' && umrissVorschauPruefung?.ok) return true;
     setMarkierungsFehler('Bitte die Markierung abschließen oder den Entwurf verwerfen. Der bisherige Plan bleibt erhalten.');
     return false;
@@ -638,6 +689,7 @@ export function FotoHintergrund({
     onPatch({ markierungFertig: true });
   };
   const werkzeugWaehlen = (m: Modus) => {
+    if (foto?.referenzMessung && (m === 'first' || m === 'perspektive')) { if (onReferenzBearbeiten) navigation.weiter(onReferenzBearbeiten); return; }
     if (entwurfGeaendert) navigation.weiter(() => wechsleModus(m));
     else wechsleModus(m);
   };
@@ -656,41 +708,44 @@ export function FotoHintergrund({
     }
   };
 
-  const px = (v: number) => (foto ? foto.breitePx * v : 0);
+  // Overlay-Maße in Bildschirmpixeln, unabhängig von Fotoauflösung und Zoom.
+  const px = (v: number) => bildschirmPx(v * 1000);
+  const eckRadius = bildschirmPx(Math.max(3.5, 5 / Math.pow(Math.max(1, ansichtZoom), .15)));
   const letzter = punkte[punkte.length - 1];
   const kreuzPx = fadenkreuzAktiv ? touchCursorPx : mausPx;
   const griffAmKreuz = touchCursorPx ? naheHandle(touchCursorPx) : undefined;
   const griffAnvisieren = !!aussparung && !touchGriff && !griffAmKreuz;
-  const griffAktion = touchGriff ? touchGriff.art === 'aussparung' ? 'Aussparung hier ablegen' : 'Ecke hier ablegen' : griffAmKreuz ? griffAmKreuz.z.art === 'aussparung' ? 'Aussparung greifen' : 'Ecke greifen' : griffAnvisieren ? 'Griff anvisieren' : 'Punkt setzen';
+  const unterkanteOffen = kompakt && modus === 'perspektive' && punkte.length === 4 && !unterkanteBestaetigt;
+  const griffAktion = unterkanteOffen ? 'Untere Kante wählen' : touchGriff ? touchGriff.art === 'aussparung' ? 'Aussparung hier ablegen' : 'Ecke hier ablegen' : griffAmKreuz ? griffAmKreuz.z.art === 'aussparung' ? 'Aussparung greifen' : 'Ecke greifen' : griffAnvisieren ? 'Griff anvisieren' : 'Punkt setzen';
 
   const gesteBeginnen = () => {
     gesteGesperrt.current = false;
     gestenBasis.current = { punkte: punkte.map((p) => [...p] as Punkt), firstLinie: firstLinie ? firstLinie.map((p) => [...p] as Punkt) as [Punkt, Punkt] : null, geaendert: entwurfGeaendert, aussparung };
   };
 
-  const einrichtungsSchritt = !massCheck.belegen ? 1 : modus === 'first' ? 2 : modus === 'perspektive' ? 3 : 4;
+  const einrichtungsSchritt = !massCheck.belegen ? 1 : modus === 'first' || modus === 'perspektive' ? 2 : 3;
   const zusatzWerkzeug = massCheck.belegen && (modus === 'umriss' || modus === 'ziegel');
   const einrichtungsAufgabe = {
-    phase: zusatzWerkzeug ? 'Zusätzliche Bearbeitung' : `Schritt ${einrichtungsSchritt} von 4 · ${flaechenName} einrichten`,
+    phase: zusatzWerkzeug ? 'Zusätzliche Bearbeitung' : `Schritt ${einrichtungsSchritt} von 3 · ${flaechenName} einrichten`,
     titel: !massCheck.belegen ? flaechenArt === 'fassade' ? 'Fassadenmaße festlegen' : 'Dachmaße festlegen'
       : modus === 'first' ? istSchraegdach ? 'Dachkante markieren' : `${kantenName} markieren`
-      : modus === 'perspektive' ? flaechenArt === 'fassade' ? 'Fassadenecken markieren' : 'Dachecken markieren' : modus === 'hindernis' ? aussparung ? `Aussparung ${aussparung.i+1} bearbeiten` : 'Aussparungen markieren'
+      : modus === 'perspektive' ? kompakt && perspektivVorschau?.length === 4 ? unterkanteBestaetigt ? 'Ecken und Kante prüfen' : 'Wo ist die untere Kante?' : flaechenArt === 'fassade' ? 'Fassadenecken markieren' : 'Dachecken markieren' : modus === 'hindernis' ? aussparung ? `Aussparung ${aussparung.i+1} bearbeiten` : 'Aussparungen markieren'
       : modus === 'umriss' ? flaechenArt === 'fassade' ? 'Fassadenumriss nachzeichnen' : 'Dachumriss nachzeichnen' : 'Foto-Maßstab prüfen',
   };
   const zielPunkte = modus === 'perspektive' ? 4 : modus === 'umriss' ? 0 : 2;
   const perspektivFehler = modus === 'perspektive' && vorschauCheck?.status === 'fehler' ? vorschauCheck.meldungen.join(' ') : null;
   const perspektivFehlerText = perspektivFehler?.includes('konvexes') ? 'Die vier Punkte bilden kein Viereck.' : perspektivFehler;
-  const punktZurueck = () => { setPunkte(punkte.slice(0, -1)); setEntwurfGeaendert(true); };
+  const punktZurueck = () => { setUnterkanteBestaetigt(false); setEckenOrientiert(false); setPunkte(punkte.slice(0, -1)); setEntwurfGeaendert(true); };
   const anweisung = !massCheck.belegen ? 'Trage die gemessene Breite und Länge der Dachfläche ein.'
     : modus === 'first' ? `Markiere Anfang und Ende der ${istSchraegdach ? 'unteren Dachkante' : kantenName} im Foto${istSchraegdach ? ' (Traufe)' : ''}.`
-    : modus === 'perspektive' ? flaechenArt === 'fassade' ? 'Markiere die vier äußeren Ecken der Fassade im Foto. Die Reihenfolge ist egal.' : parametrisch ? 'Markiere die vier äußeren Dachecken im Foto. Die Reihenfolge ist egal.'
+    : modus === 'perspektive' ? kompakt && perspektivVorschau?.length === 4 ? unterkanteBestaetigt ? 'Prüfe die vier Ecken und die grün markierte untere Kante. Passt alles, übernimm die Markierung.' : 'Klicke die untere Kante direkt im Foto an – beim Dach ist das die Dachrinne.' : flaechenArt === 'fassade' ? 'Markiere die vier äußeren Ecken der Fassade im Foto. Die Reihenfolge ist egal.' : parametrisch ? 'Markiere die vier äußeren Dachecken im Foto. Die Reihenfolge ist egal.'
       : 'Markiere die vier Ecken des umschließenden Dachrechtecks im Foto. Ausschnitte folgen danach.'
     : modus === 'hindernis' ? aussparung ? 'Verschiebe die Aussparung oder ziehe ihre Eckgriffe auf die gewünschte Kontur.' : 'Neue Aussparung: zwei gegenüberliegende Punkte setzen. Bestehende Aussparung: im Foto auswählen.'
     : modus === 'umriss' ? 'Zeichne den tatsächlichen Dachrand im Foto nach. Setze einen Punkt an jeder Ecke.'
     : `Markiere eine Strecke über ${anzahlZiegel} Ziegel mit bekannter Deckbreite.`;
   const naechsteAktion = modus === 'perspektive' ? punkte.length < 4
-    ? `Jetzt im Foto: ${punkte.length + 1}. Eckpunkt setzen.` : 'Alle vier Punkte gesetzt. Prüfe die Lage im Foto.'
-    : modus === 'hindernis' ? punkte.length ? 'Jetzt im Foto: die gegenüberliegende Ecke setzen.' : 'Keine Aussparung nötig? Du kannst direkt weiter.'
+    ? `Jetzt im Foto: ${punkte.length + 1}. Eckpunkt setzen.` : kompakt && !unterkanteBestaetigt ? 'Jetzt im Foto die untere Kante wählen – beim Dach die Dachrinne.' : 'Untere Kante markiert. Prüfe die Ecken und übernimm die Fläche.'
+    : modus === 'hindernis' ? punkte.length ? 'Jetzt im Foto: die gegenüberliegende Ecke setzen.' : flaeche.hindernisse?.length ? 'Fenster oder Hindernis gespeichert. Weitere markieren oder zur Belegung weitergehen.' : 'Keine Fenster oder Hindernisse? Du kannst direkt weiter.'
     : modus === 'first' ? punkte.length ? 'Jetzt im Foto: das andere Ende der Kante setzen.' : 'Jetzt im Foto: den Anfang der Kante setzen.'
     : modus === 'umriss' ? punkte.length < 3 ? 'Mindestens drei Punkte im Foto setzen.' : 'Dachrand prüfen und übernehmen.'
     : 'Anfang und Ende der Ziegelstrecke im Foto setzen.';
@@ -732,7 +787,7 @@ export function FotoHintergrund({
         </div></EditorAktionen>
       </> : <>
         {!aussparung && <div className={styles.fortschritt} role="status" aria-live="polite" aria-atomic="true" data-testid="markierungs-fortschritt">
-          <strong>{modus === 'perspektive' ? `${punkte.length} von 4 Eckpunkten gesetzt` : modus === 'hindernis' ? `${(flaeche.hindernisse ?? []).length} Aussparungen markiert` : modus === 'umriss' ? `${punkte.length} Eckpunkte gesetzt` : `${punkte.length} von 2 Punkten gesetzt`}</strong>
+          <strong>{modus === 'perspektive' ? `${punkte.length} von 4 Eckpunkten gesetzt` : modus === 'hindernis' ? `${(flaeche.hindernisse ?? []).length} ${(flaeche.hindernisse ?? []).length === 1 ? 'Aussparung markiert' : 'Aussparungen markiert'}` : modus === 'umriss' ? `${punkte.length} Eckpunkte gesetzt` : `${punkte.length} von 2 Punkten gesetzt`}</strong>
           {!!zielPunkte && !aussparung && <ol className={styles.punkte} aria-label="Punkte im Foto">
             {Array.from({ length: zielPunkte }, (_, i) => <li key={i} data-fehler={!!perspektivFehler} data-gesetzt={i < punkte.length} data-aktuell={i === punkte.length} aria-label={`Punkt ${i + 1}: ${perspektivFehler ? 'Markierung ungültig' : i < punkte.length ? 'gesetzt' : i === punkte.length ? 'als Nächstes' : 'offen'}`}>{i < punkte.length && !perspektivFehler ? '✓' : i + 1}</li>)}
           </ol>}
@@ -745,16 +800,17 @@ export function FotoHintergrund({
             : modus === 'umriss' ? punkte.length < 3 ? 'Noch mindestens drei Eckpunkte erforderlich.' : 'Dachumriss prüfen und bestätigen.'
             : 'Nach zwei Punkten wird der Foto-Maßstab übernommen.'}</span>
           {modus === 'first' && <button type="button" data-sekundaer onClick={() => { setPunkte([]); setEntwurfGeaendert(false); wechsleModus('perspektive'); }}>Überspringen ({kantenName} unten)</button>}
-          {modus === 'perspektive' && (perspektivFehler ? <div data-foto-fehleraktionen><button type="button" onClick={punktZurueck}>Punkt zurück</button><button type="button" disabled>4 Ecken übernehmen</button></div> : <button type="button" disabled={punkte.length !== 4} onClick={() => perspektiveAbschliessen(punkte)}>4 Ecken übernehmen <span aria-hidden="true">→</span></button>)}
+          {modus === 'perspektive' && (perspektivFehler ? <div data-foto-fehleraktionen><button type="button" onClick={punktZurueck}>Punkt zurück</button><button type="button" disabled>4 Ecken übernehmen</button></div> : <button type="button" disabled={punkte.length !== 4 || (kompakt && !unterkanteBestaetigt)} onClick={() => perspektiveAbschliessen(punkte)}>4 Ecken übernehmen <span aria-hidden="true">→</span></button>)}
           {modus === 'umriss' && <button type="button" disabled={punkte.length < 3 || !!umrissVorschauFehler} onClick={() => umrissAbschliessen(punkte)}>Umriss übernehmen</button>}
           {modus === 'hindernis' && (aussparung ? <><button type="button" data-sekundaer onClick={entwurfVerwerfen}>{entwurfGeaendert ? 'Änderungen verwerfen' : 'Bearbeitung schließen'}</button><button type="button" disabled={!entwurfGeaendert || !!aussparungProblem} onClick={aussparungUebernehmen}>Änderungen übernehmen</button></> : <button type="button" disabled={!belegenFreigegeben || !!fotoEntwurf || (!ohneAussparungen && entwurfGeaendert)} onClick={ohneAussparungen ? ohneAussparungenWeiter : belegen}>{ohneAussparungen ? 'Keine Aussparungen – weiter' : 'Weiter zur Modulplatzierung'} <span aria-hidden="true">→</span></button>)}
         </div></EditorAktionen>
         <div className={styles.korrekturen}>
           {punkte.length > 0 && !perspektivFehler && <button type="button" className={knopfKlasse} onClick={punktZurueck}>Punkt zurück</button>}
           {!aussparung && (entwurfGeaendert || fotoEntwurf) && <button type="button" className={knopfKlasse} onClick={entwurfVerwerfen}>Entwurf verwerfen</button>}
-          {modus === 'perspektive' && punkte.length === 4 && <button type="button" className={knopfKlasse} onClick={() => { setPunkte(traufeWechseln((perspektivVorschau ?? punkte) as Ecken)); setEckenOrientiert(true); setEntwurfGeaendert(true); }}>↻ {kantenName} wechseln</button>}
+          {!kompakt && modus === 'perspektive' && punkte.length === 4 && <button type="button" className={knopfKlasse} onClick={() => { setPunkte(traufeWechseln((perspektivVorschau ?? punkte) as Ecken)); setEckenOrientiert(true); setUnterkanteBestaetigt(true); setEntwurfGeaendert(true); }}>↻ {kantenName} wechseln</button>}
           {modus === 'perspektive' && !!foto.eckenPx && <button type="button" className={knopfKlasse} onClick={() => { setPunkte([]); setEckenOrientiert(false); setEntwurfGeaendert(true); }}>Ecken neu</button>}
-          {modus === 'umriss' && !!flaeche.umrissM && <button type="button" className={knopfKlasse} onClick={umrissEntfernen}>Manuellen Umriss entfernen</button>}
+          {modus === 'umriss' && flaeche.fotoBezugsrahmen && onReferenzBearbeiten && <p>Der Rahmen folgt dem Aufmaß. Für eine größere oder anders ausgerichtete Dachfläche <button type="button" onClick={onReferenzBearbeiten}>Referenz und Dachrand neu prüfen</button>.</p>}
+          {modus === 'umriss' && !!flaeche.umrissM && !flaeche.fotoBezugsrahmen && <button type="button" className={knopfKlasse} onClick={umrissEntfernen}>Manuellen Umriss entfernen</button>}
         </div>
         {aussparungListe}
         {touchGeraet && !renderArbeitsbereich && <div className="flex flex-wrap gap-2">
@@ -762,10 +818,10 @@ export function FotoHintergrund({
           {fadenkreuzAktiv && <button type="button" disabled={griffAnvisieren} className={knopfKlasse} onClick={fadenkreuzAktion}>{griffAktion}</button>}
         </div>}
         <details className={styles.zusatz}><summary>Einrichtung korrigieren</summary><div role="toolbar" aria-label="Werkzeuge für die Foto-Markierung" className="flex flex-wrap gap-2">
-          <button type="button" className={modusKnopfKlasse(modus === 'first')} aria-pressed={modus === 'first'} onClick={() => werkzeugWaehlen('first')}>{kantenName}</button>
-          <button type="button" className={modusKnopfKlasse(modus === 'perspektive')} aria-pressed={modus === 'perspektive'} onClick={() => werkzeugWaehlen('perspektive')}>Dachecken</button>
+          {!foto.referenzMessung && <button type="button" className={modusKnopfKlasse(modus === 'first')} aria-pressed={modus === 'first'} onClick={() => werkzeugWaehlen('first')}>{kantenName}</button>}
+          {foto.referenzMessung && onReferenzBearbeiten ? <button type="button" className={knopfKlasse} onClick={onReferenzBearbeiten}>Referenz und Dachrand neu prüfen</button> : <button type="button" className={modusKnopfKlasse(modus === 'perspektive')} aria-pressed={modus === 'perspektive'} onClick={() => werkzeugWaehlen('perspektive')}>Dachecken</button>}
           <button type="button" className={modusKnopfKlasse(modus === 'hindernis')} aria-pressed={modus === 'hindernis'} disabled={!foto.eckenPx || !!fotoEntwurf} onClick={() => werkzeugWaehlen('hindernis')}>Aussparungen</button>
-          <button type="button" className={modusKnopfKlasse(modus === 'umriss')} aria-pressed={modus === 'umriss'} disabled={!foto.eckenPx || !!fotoEntwurf} onClick={() => werkzeugWaehlen('umriss')}>Umriss</button>
+          <button type="button" className={modusKnopfKlasse(modus === 'umriss')} aria-pressed={modus === 'umriss'} disabled={!foto.eckenPx || !!fotoEntwurf} onClick={() => werkzeugWaehlen('umriss')}>Dachrand</button>
         </div></details>
         {modus === 'ziegel' && <div className="flex flex-wrap gap-2">
           <label>Ziegelanzahl<input type="number" min={2} max={100} value={anzahlZiegel} onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n) && n >= 2) setAnzahlZiegel(n); }} className="block min-h-11 w-24 rounded-lg border border-slate-300 px-2" /></label>
@@ -786,6 +842,7 @@ export function FotoHintergrund({
 
   const bild = foto && (inMarkierung || renderArbeitsbereich) ? (
             <svg
+              ref={setBildSvg}
               viewBox={`0 0 ${foto.breitePx} ${foto.hoehePx}`}
               tabIndex={0}
               role="img"
@@ -837,6 +894,7 @@ export function FotoHintergrund({
               }}
               onClick={klick}
               onMouseDown={(e) => {
+                if (unterkanteOffen) { aufHandle.current = false; return; }
                 if (kompakt && !massCheck.belegen) return;
                 if (e.button !== 0) return;
                 if (fadenkreuzAktiv) return;
@@ -874,6 +932,8 @@ export function FotoHintergrund({
                 setGreift(false);
               }}
               onPointerDown={(e) => {
+                if (e.pointerType === 'mouse') praeziserZeiger.current = { x: e.clientX, y: e.clientY, zeit: Date.now() };
+                if (unterkanteOffen && !fadenkreuzAktiv) { aufHandle.current = false; return; }
                 if (kompakt && !massCheck.belegen) return;
                 if (e.button !== 0) return;
                 gesteBeginnen();
@@ -908,6 +968,7 @@ export function FotoHintergrund({
                 }
               }}
               onPointerMove={(e) => {
+                if (e.pointerType === 'mouse') praeziserZeiger.current = { x: e.clientX, y: e.clientY, zeit: Date.now() };
                 if (gesteGesperrt.current) return;
                 if (!fadenkreuzAktiv && e.pointerType !== 'mouse') {
                   const k = svgKoord(e);
@@ -944,6 +1005,7 @@ export function FotoHintergrund({
                 };
               }}
               onPointerUp={(e) => {
+                if (e.pointerType === 'mouse') praeziserZeiger.current = { x: e.clientX, y: e.clientY, zeit: Date.now() };
                 if (touchSwipeRef.current?.pointerId === e.pointerId) touchSwipeRef.current = null;
                 ziehtRef.current = null;
                 gestenBasis.current = null;
@@ -1001,6 +1063,21 @@ export function FotoHintergrund({
                 />
               )}
 
+              {kompakt && perspektivVorschau && perspektivVorschau.map((a,i) => {
+                const b=perspektivVorschau[(i+1)%4]!, gewaehlt=unterkanteBestaetigt && i===0;
+                return <g key={`kante-${i}`} role="button" tabIndex={0} aria-label={`Kante ${i+1} als untere Kante wählen`} aria-pressed={gewaehlt}
+                  onPointerDown={e=>e.stopPropagation()} onClick={e=>{
+                    e.stopPropagation();
+                    const r=e.currentTarget.ownerSVGElement!.getBoundingClientRect();
+                    const k=kanteBeiPunkt([(e.clientX-r.left)/r.width*foto.breitePx,(e.clientY-r.top)/r.height*foto.hoehePx]);
+                    if(k>=0) waehleUnterkante(k);
+                  }}
+                  onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();waehleUnterkante(i);}}} style={{cursor:'pointer'}}>
+                  <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="transparent" strokeWidth={bildschirmPx(44)} />
+                  <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={gewaehlt?'#b83d1e':'#0284c7'} strokeWidth={bildschirmPx(gewaehlt?4:2)} pointerEvents="none" />
+                  {gewaehlt && <text x={(a[0]+b[0])/2} y={(a[1]+b[1])/2-bildschirmPx(10)} textAnchor="middle" fontSize={bildschirmPx(14)} fill="#263238" stroke="white" strokeWidth={bildschirmPx(3)} paintOrder="stroke" pointerEvents="none">Untere Kante · {fmtDe(B,2)} m</text>}
+                </g>;
+              })}
               {/* Ziehbare Ecken-Griffe: nur im Perspektive-Modus, zum exakten Nachjustieren */}
               {modus === 'perspektive' &&
                 (punkte.length === 4 ? punkte : foto.eckenPx)?.map((p, i) => (
@@ -1031,14 +1108,21 @@ export function FotoHintergrund({
                       .map((p) => projiziere(hom, p as Punkt))
                       .map(([qx, qy]) => `${qx.toFixed(1)},${qy.toFixed(1)}`)
                       .join(' ')}
-                    fill={aussparung?.i === i ? 'rgba(234,88,12,0.22)' : 'rgba(239,68,68,0.4)'}
+                    fill={aussparung?.i === i ? 'rgba(234,88,12,0.06)' : 'rgba(239,68,68,0.12)'}
                     stroke={aussparung?.i === i ? '#9a3412' : '#ef4444'}
-                    strokeWidth={px(aussparung?.i === i ? 0.0035 : 0.002)}
+                    strokeWidth={bildschirmPx(aussparung?.i === i ? 1.5 : 1)}
                   />
                 ); })}
               {modus === 'hindernis' && aussparung && handles().map((h, i) => <g key={i} data-testid={h.z.art === 'aussparung' ? 'aussparung-mitte' : 'aussparung-griff'} style={{ cursor: h.z.art === 'aussparung' ? 'move' : 'grab' }}>
-                <circle cx={h.x} cy={h.y} r={px(.022)} fill="transparent" />
-                {h.z.art === 'aussparung' ? <g pointerEvents="none" stroke="#fff" strokeWidth={px(.0025)}><circle cx={h.x} cy={h.y} r={px(.013)} fill="#9a3412" /><path d={`M${h.x-px(.008)},${h.y}h${px(.016)}M${h.x},${h.y-px(.008)}v${px(.016)}`} /></g> : <><circle cx={h.x} cy={h.y} r={px(.01)} fill="#9a3412" stroke="#fff" strokeWidth={px(.0025)} /><text x={h.x} y={h.y} dominantBaseline="central" textAnchor="middle" fill="white" fontSize={px(.009)} pointerEvents="none">{i+1}</text></>}
+                <title>{h.z.art === 'aussparung' ? 'Aussparung verschieben' : `Ecke ${i + 1} verschieben`}</title>
+                <circle data-griff-ziel cx={h.x} cy={h.y} r={bildschirmPx(22)} fill="transparent" />
+                {h.z.art === 'aussparung' ? <g pointerEvents="none" fill="none" strokeLinecap="round">
+                  <path d={`M${h.x-bildschirmPx(4)},${h.y}h${bildschirmPx(8)}M${h.x},${h.y-bildschirmPx(4)}v${bildschirmPx(8)}`} stroke="#fff" strokeWidth={bildschirmPx(3)} />
+                  <path d={`M${h.x-bildschirmPx(4)},${h.y}h${bildschirmPx(8)}M${h.x},${h.y-bildschirmPx(4)}v${bildschirmPx(8)}`} stroke="#9a3412" strokeWidth={bildschirmPx(1.5)} />
+                </g> : <g pointerEvents="none">
+                  <circle data-griff-sichtbar cx={h.x} cy={h.y} r={eckRadius} fill="rgba(255,255,255,.2)" stroke="#fff" strokeWidth={bildschirmPx(3)} />
+                  <circle cx={h.x} cy={h.y} r={eckRadius} fill="none" stroke="#9a3412" strokeWidth={bildschirmPx(1.5)} />
+                </g>}
               </g>)}
 
               {/* Feines Fadenkreuz: Strichbreite bleibt auch bei großen Fotos konstant. */}
@@ -1141,7 +1225,7 @@ export function FotoHintergrund({
               : modus === 'perspektive'
               ? punkte.length < 4
                 ? `Ecke ${punkte.length + 1} von 4 ${punktAktionText} (${flaechenName}).`
-                : perspektivFehler ? `Markierung ungültig: Eckpunkte ${eckeAktionText} oder „Punkt zurück“ wählen.` : `Vorschau prüfen, einzelne Punkte bei Bedarf ${eckeAktionText} und dann „4 Ecken übernehmen".`
+                : perspektivFehler ? `Markierung ungültig: Eckpunkte ${eckeAktionText} oder „Punkt zurück“ wählen.` : kompakt && !unterkanteBestaetigt ? 'Wähle die untere Dachkante im Foto (Dachrinne).' : `Vorschau prüfen, einzelne Punkte bei Bedarf ${eckeAktionText} und dann „4 Ecken übernehmen".`
               : modus === 'umriss'
                 ? flaeche.umrissM && punkte.length >= 3
                   ? umrissVorschauFehler
@@ -1151,7 +1235,7 @@ export function FotoHintergrund({
                   ? kompakt ? 'Im Foto entlang des Dachrands Eckpunkte setzen (mindestens 3).' : `Ecke ${punkte.length + 1} ${punktAktionText} (mind. 3) — oder „${flaechenName} belegen“ für ein Rechteck.`
                   : kompakt ? 'Dachrand prüfen und „Umriss übernehmen“ wählen.' : 'Weitere Ecken — oder ersten Punkt / „Umriss fertig" zum Schließen.'
                 : modus === 'hindernis'
-                  ? aussparung ? 'Aussparung bearbeiten: Mitte verschieben, nummerierte Ecken verziehen.' : punkte.length === 0
+                  ? aussparung ? 'Aussparung bearbeiten: Mitte verschieben, Eckgriffe verziehen.' : punkte.length === 0
                     ? `Erste Ecke des Hindernisses ${punktAktionText}.`
                     : `Gegenüberliegende Ecke ${punktAktionText}.`
                   : punkte.length === 0
@@ -1418,7 +1502,7 @@ export function FotoHintergrund({
                 >
                   ↶ Punkt zurück
                 </button>
-                {flaeche.umrissM && (
+                {flaeche.umrissM && !flaeche.fotoBezugsrahmen && (
                   <button
                     type="button"
                     className="touch-target h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:border-red-300"
@@ -1624,7 +1708,7 @@ export function FotoHintergrund({
       breitePx: foto.breitePx, hoehePx: foto.hoehePx,
       onBewegen: setTouchCursorPx, onBestaetigen: fadenkreuzAktion,
       aktion: griffAktion,
-      deaktiviert: !massCheck.belegen || griffAnvisieren || (modus === 'perspektive' && punkte.length >= 4 && !touchGriff && !griffAmKreuz),
+      deaktiviert: !massCheck.belegen || (unterkanteOffen ? !touchCursorPx || kanteBeiPunkt(touchCursorPx) < 0 : griffAnvisieren || (modus === 'perspektive' && punkte.length >= 4 && !touchGriff && !griffAmKreuz)),
     } : undefined,
   })}</>;
   return <>{steuerung}{bild && foto && <div

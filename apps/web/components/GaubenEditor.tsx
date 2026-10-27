@@ -5,6 +5,7 @@ import { useTouchBedienung } from '../lib/touch-bedienung';
 import type { FotoPunktSteuerung } from './EditorViewport';
 import {
   gaubenAussparungAusFoto,
+  gaubenSeitenKontur,
   gaubenMasseAusElternfoto,
   rekonstruiereGaubenPunkte,
   pruefeGaubenTopologie,
@@ -26,8 +27,11 @@ import {
 } from '../lib/foto-geometrie';
 import {
   fmtDe,
+  GAUBEN_NAMEN,
+  type GaubenGeometrie,
   fotoZuordnungenVon,
   modulById,
+  neueGaubenFlaeche,
   perspektiveQuelle,
   type Flaeche,
   type GaubenMessung,
@@ -44,6 +48,8 @@ import { useEntwurfNavigation, type OffenerEntwurf } from '../lib/entwurf-naviga
 
 export interface NeueGaubeAusFoto {
   typ: GaubenTyp;
+  geometrie?: GaubenGeometrie;
+  seitenGeometrie?: Partial<Record<'links' | 'rechts', GaubenGeometrie>>;
   aussen: Ecken;
   seiten?: { links: Ecken; rechts: Ecken };
   seitenMasse?: { links: GaubenSeitenMass; rechts: GaubenSeitenMass };
@@ -62,21 +68,24 @@ function ZahlenEingabe({
   onChange,
   einheit,
   min = 0.1,
+  max,
 }: {
   label: string;
   value: number;
   onChange: (wert: number) => void;
   einheit: string;
   min?: number;
+  max?: number;
 }) {
   const [eingabe, setEingabe] = useState(String(value));
   const fehlerId = useId();
   useEffect(() => setEingabe(Number.isFinite(value) ? String(value) : ''), [value]);
   const pruefe = (roh: string): { wert?: number; fehler?: string } => {
     if (!roh.trim()) return { fehler: `${label} ist erforderlich.` };
-    const wert = Number(roh);
+    const wert = Number(roh.replace(',', '.'));
     if (!Number.isFinite(wert)) return { fehler: `${label} muss eine Zahl sein.` };
     if (wert < min) return { fehler: `${label} muss mindestens ${min} sein.` };
+    if (max !== undefined && wert > max) return { fehler: `${label} darf höchstens ${max} sein.` };
     return { wert };
   };
   const ergebnis = pruefe(eingabe);
@@ -85,7 +94,7 @@ function ZahlenEingabe({
       <span className="mb-1 block font-medium">{label}</span>
       <span className="flex items-center gap-1.5">
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
           min={min}
           step={einheit === 'm' ? 0.1 : 1}
@@ -147,6 +156,7 @@ export function GaubenEditor({
     breiteM: number,
     hoeheM: number,
     messung: GaubenMessung,
+    geometrie?: GaubenGeometrie,
   ) => void;
   onMarkierungAendern: (
     gruppenId: string,
@@ -163,6 +173,7 @@ export function GaubenEditor({
   const [quelle, setQuelle] = useState<GaubenMessung['quelle']>('nachbardach');
   const [breiteM, setBreiteM] = useState(3);
   const [hoeheM, setHoeheM] = useState(2.5);
+  const [firstBreiteM, setFirstBreiteM] = useState(1.5);
   const [ziegelQuer, setZiegelQuer] = useState(10);
   const [deckbreiteCm, setDeckbreiteCm] = useState(30);
   const [ziegelReihen, setZiegelReihen] = useState(8);
@@ -402,9 +413,7 @@ export function GaubenEditor({
           breiteM: (seitenSchaetzung.links.breiteM + seitenSchaetzung.rechts.breiteM) / 2,
           hoeheM: (seitenSchaetzung.links.hoeheM + seitenSchaetzung.rechts.hoeheM) / 2,
         }
-      : typ === 'flachdach'
-        ? schaetzung
-        : null;
+      : schaetzung;
 
   const reset = () => {
     setModuleZeigen(true);
@@ -504,8 +513,14 @@ export function GaubenEditor({
           : { breiteM, hoeheM };
     if (!masse || masse.breiteM <= 0 || masse.hoeheM <= 0) return;
 
+    const kopie = kopieVon ? gauben.find(f => (f.gaubenGruppeId ?? f.id) === kopieVon) : undefined;
+    const geometrieVon = (f: Flaeche): GaubenGeometrie => ({ neigungDeg: f.neigungDeg, azimutDeg: f.azimutDeg, dachform: f.dachform, firstBreiteM: f.firstBreiteM, fotoBezugsrahmen: f.fotoBezugsrahmen });
+    if (!kopie && typ === 'walmdach' && firstBreiteM > masse.breiteM) { setSpeicherFehler('Die obere Breite darf nicht größer als die untere Breite sein. Bitte Maße korrigieren.'); return; }
     onErstellen({
       typ,
+      ...(kopie ? { geometrie: geometrieVon(kopie), seitenGeometrie: Object.fromEntries(gauben.filter(f => (f.gaubenGruppeId ?? f.id) === kopieVon && f.gaubenSeite).map(f => [f.gaubenSeite!, geometrieVon(f)])) }
+        : typ === 'walmdach' || typ === 'spitzdach' ? { geometrie: { neigungDeg: 30, azimutDeg: eltern.azimutDeg, dachform: 'trapez', fotoBezugsrahmen: true, firstBreiteM: typ === 'spitzdach' ? 0 : firstBreiteM } } : {}),
+
       aussen,
       ...(seiten ? { seiten } : {}),
       ...(kopieVon && typ === 'satteldach' ? { seitenMasse: Object.fromEntries(gauben.filter(f => (f.gaubenGruppeId ?? f.id) === kopieVon && f.gaubenSeite).map(f => [f.gaubenSeite!, { breiteM: f.breiteM, hoeheM: f.hoeheM }])) as { links: GaubenSeitenMass; rechts: GaubenSeitenMass } } : quelle === 'nachbardach' && seitenSchaetzung ? { seitenMasse: seitenSchaetzung } : {}),
@@ -618,7 +633,12 @@ export function GaubenEditor({
     }
   };
   const oeffneMasse = (id: string) => navigation.weiter(() => { reset(); setMassId(id); });
-  const kontur = markierungVorschau ? gaubenFotoUmriss(markierungVorschau.aussen, markierungVorschau.seiten) : punkte.slice(0, 4);
+  const konturFlaeche = (bearbeiteId || kopieVon) ? gauben.find(f => (f.gaubenGruppeId ?? f.id) === (bearbeiteId ?? kopieVon)) :
+    (typ === 'walmdach' || typ === 'spitzdach') ? { ...neueGaubenFlaeche(0, '', typ), breiteM, hoeheM,
+      dachform: 'trapez' as const, firstBreiteM: typ === 'spitzdach' ? 0 : firstBreiteM, fotoBezugsrahmen: true } : undefined;
+  const kontur = markierungVorschau
+    ? konturFlaeche && typ !== 'satteldach' ? gaubenSeitenKontur(konturFlaeche, markierungVorschau.aussen) : gaubenFotoUmriss(markierungVorschau.aussen, markierungVorschau.seiten)
+    : punkte.slice(0, 4);
   const modulProjekt = moduleZeigen ? vorschauProjekt : { ...vorschauProjekt, flaechen: vorschauProjekt.flaechen.map(f => ({ ...f, felder: [] })) };
   const hintergrund = <>
     <defs><ModulAsset id={`gauben-modul-${svgInstanzId}`} modul={modul} /></defs>
@@ -733,16 +753,21 @@ export function GaubenEditor({
   const steuerung = <section ref={formularRef} data-gauben-steuerung className={styles.editor}>
     {massFlaeche ? <>
       <div className={styles.kurzKopf}><strong>{`Gaube ${gruppen.findIndex(([id]) => id === massGruppe?.[0]) + 1}`}</strong><span>{massFlaeche.gaubenTyp === 'satteldach' ? massFlaeche.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite' : 'Gaubendach'}</span></div>
-      <GaubenMassEditor key={massFlaeche.id} flaeche={massFlaeche} modul={modul} onSpeichern={(b, h, messung) => { onMasseAendern(massFlaeche.gaubenGruppeId ?? massFlaeche.id, massFlaeche.id, b, h, messung); setMassId(null); }} onAbbrechen={() => setMassId(null)} />
+      <GaubenMassEditor key={massFlaeche.id} flaeche={massFlaeche} modul={modul} onSpeichern={(b, h, messung, geometrie) => { onMasseAendern(massFlaeche.gaubenGruppeId ?? massFlaeche.id, massFlaeche.id, b, h, messung, geometrie); setMassId(null); }} onAbbrechen={() => setMassId(null)} />
       {massGruppe && massGruppe[1].length > 1 && <div className={styles.nebenAktionen}>{massGruppe[1].filter(f => f.id !== massFlaeche.id).map(f => <button type="button" key={f.id} onClick={() => oeffneMasse(f.id)}>{f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachseite bearbeiten</button>)}</div>}
     </> : markieren ? <>
-      <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{typ === 'satteldach' ? 'Satteldachgaube' : 'Flachdachgaube · Stehfalz'}</span></div>
+      <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{GAUBEN_NAMEN[typ]}</span></div>
       {korrektur}
     </> : offen ? <>
       <div className={styles.aufgaben} role="group" aria-label="Gaubentyp">
         <ToggleButton aktiv={typ === 'flachdach'} onClick={() => setTyp('flachdach')}>Flachdachgaube · Stehfalz</ToggleButton>
+        <ToggleButton aktiv={typ === 'schleppdach'} onClick={() => setTyp('schleppdach')}>Schleppgaube</ToggleButton>
         <ToggleButton aktiv={typ === 'satteldach'} onClick={() => setTyp('satteldach')}>Satteldachgaube</ToggleButton>
+        <ToggleButton aktiv={typ === 'walmdach'} onClick={() => { setTyp('walmdach'); setQuelle('aufmass'); }}>Walmgaube · Dachseite</ToggleButton>
+        <ToggleButton aktiv={typ === 'spitzdach'} onClick={() => { setTyp('spitzdach'); setQuelle('aufmass'); }}>Spitzgaube · Dachseite</ToggleButton>
       </div>
+      {(typ === 'walmdach' || typ === 'spitzdach') && <p className={styles.nebenhinweis}>Jede ebene Dachseite einzeln anlegen. Im Foto vier Ecken des umschließenden Rechtecks als Bezug setzen; die tatsächliche Fläche wird als {typ === 'spitzdach' ? 'Dreieck' : 'Trapez'} ausgeschnitten. Weitere Seiten danach ergänzen. Rundungen sind keine ebene Dachfläche.</p>}
+      {typ === 'walmdach' && <ZahlenEingabe label="Obere Breite der Dachseite" value={firstBreiteM} onChange={setFirstBreiteM} einheit="m" min={0} max={quelle === 'ziegel' ? ziegelQuer * deckbreiteCm / 100 : breiteM} />}
       <p>Wie kommen die Maße zustande?</p>
       <div className={styles.aufgaben} role="group" aria-label="Messquelle">
         <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => setQuelle('aufmass')}>Aufmaß vorhanden</ToggleButton>
@@ -758,15 +783,15 @@ export function GaubenEditor({
     </> : <>
       <p>{gruppen.length ? `${gruppen.length} ${gruppen.length === 1 ? 'Gaube angelegt' : 'Gauben angelegt'}. Im Foto oder hier auswählen.` : 'Gaube im selben Foto anlegen. Die Aussparung im Hauptdach wird automatisch mitgeführt.'}</p>
       <div className={styles.gruppenListe}>{gruppen.map(([id, fs], index) => <div key={id} className={styles.gruppe} data-gaubengruppe={id}>
-        <div className={styles.gruppenKopf}><strong>Gaube {index + 1}</strong><span>{fs[0]!.gaubenTyp === 'satteldach' ? 'Satteldach' : 'Flachdach · Stehfalz'}</span></div>
+        <div className={styles.gruppenKopf}><strong>Gaube {index + 1}</strong><span>{GAUBEN_NAMEN[fs[0]!.gaubenTyp!]}</span></div>
         <div className={styles.aufgaben}>
           <button type="button" onClick={() => navigation.weiter(() => bearbeitungStarten(id, fs, 'position'))}>Position ändern</button>
           <button type="button" onClick={() => navigation.weiter(() => bearbeitungStarten(id, fs, 'form'))}>Form korrigieren</button>
         </div>
         <div className={styles.seiten}>{fs.map(f => <div key={f.id}>
           <strong>{fs.length > 1 ? f.gaubenSeite === 'links' ? 'Linke Dachseite' : 'Rechte Dachseite' : 'Gaubendach'}</strong>
-          <span>{fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m · {f.gaubenMessung?.qualitaet === 'bestaetigt' ? 'Aufmaß bestätigt' : f.gaubenMessung?.qualitaet === 'gemessen' ? 'Ziegel gemessen' : f.gaubenMessung?.qualitaet === 'geschaetzt' ? 'geschätzt' : 'Maße aus Altprojekt'}</span>
-          <div className={styles.aufgaben}><button type="button" onClick={() => oeffneMasse(f.id)} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachmaße ändern` : 'Dachmaße ändern'}>Dachmaße ändern</button>
+          <span>{fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m · {fmtDe(f.neigungDeg, 1)}° Neigung · {f.gaubenMessung?.qualitaet === 'bestaetigt' ? 'Aufmaß bestätigt' : f.gaubenMessung?.qualitaet === 'gemessen' ? 'Ziegel gemessen' : f.gaubenMessung?.qualitaet === 'geschaetzt' ? 'geschätzt' : 'Maße aus Altprojekt'}</span>
+          <div className={styles.aufgaben}><button type="button" onClick={() => oeffneMasse(f.id)} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Dachmaße ändern` : 'Dachmaße ändern'}>Maße & Winkel ändern</button>
           <button type="button" onClick={() => navigation.weiter(() => onBelegungOeffnen ? onBelegungOeffnen(f.id) : belegungOeffnen(id))} aria-label={fs.length > 1 ? `${f.gaubenSeite === 'links' ? 'Linke' : 'Rechte'} Module bearbeiten` : 'Module bearbeiten'}>Module bearbeiten</button></div>
         </div>)}</div>
         <div className={styles.nebenAktionen}><button type="button" onClick={() => navigation.weiter(() => kopiereGaube(id, fs))}>Gaube kopieren</button><button type="button" onClick={() => navigation.weiter(() => onLoeschen(id))}>Entfernen …</button></div>

@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import styles from './FlachdachFeldEditor.module.css';
 
 /** Auswahlbezogene Drehung; Montage-Neigung und Dachkompass bleiben getrennt. */
-export function FlachdachFeldEditor({ winkel, anzahl, module, onWinkel, onDrehen, onFertig }: {
+export function FlachdachFeldEditor({ winkel, anzahl, module, onWinkel, onDrehen, onFertig, suedWinkel = 0, suedBestaetigt = true, onSuedFestlegen }: {
   winkel: number | null; anzahl: number; module: number;
   onWinkel: (grad: number) => void; onDrehen: (delta: number) => void;
-  onFertig?: () => void;
+  onFertig?: () => void; suedWinkel?: number; suedBestaetigt?: boolean; onSuedFestlegen?: () => void;
 }) {
   const [eingabe, setEingabe] = useState(winkel === null ? '' : String(Math.round(winkel * 10) / 10));
   const [fehler, setFehler] = useState(false);
@@ -33,10 +33,10 @@ export function FlachdachFeldEditor({ winkel, anzahl, module, onWinkel, onDrehen
     <div className={styles.aktionen}>
       <button type="button" onClick={() => onDrehen(-5)} aria-label="Feld 5 Grad nach links drehen">↶ 5°</button>
       <button type="button" onClick={() => onDrehen(5)} aria-label="Feld 5 Grad nach rechts drehen">↷ 5°</button>
-      <button type="button" onClick={() => onWinkel(0)}>Auf 0° stellen</button>
+      <button type="button" onClick={() => suedBestaetigt ? onWinkel(suedWinkel) : onSuedFestlegen?.()}>{suedBestaetigt ? 'Am Kompass ausrichten' : 'Zuerst Süden festlegen'}</button>
     </div>
-    <p>Am runden Griff frei drehen. 0° folgt dem Dachplan. Gedrehte Module weichen von Ost/West bzw. Süd ab.</p>
+    <p>Am runden Griff frei drehen. Der Winkel bezieht sich auf den Flächenplan. „Am Kompass ausrichten“ übernimmt die festgelegte Süd- bzw. Ost-West-Richtung.</p>
     <output aria-live="polite">{module} Module in der Auswahl</output>
-    {module === 0 && <p>Kein Modul passt innerhalb von Dachrand und Aussparungen. Feld verschieben, vergrößern oder auf 0° stellen.</p>}
+    {module === 0 && <p>Kein Modul passt innerhalb von Dachrand und Aussparungen. Feld verschieben, vergrößern oder am Kompass ausrichten.</p>}
   </section>;
 }

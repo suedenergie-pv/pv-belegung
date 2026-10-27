@@ -21,7 +21,7 @@ import {
 } from '../lib/modul-assets';
 import {
   DACHFARBEN,
-  flachdachSuedRichtung,
+  suedWinkelVon,
   fmtDe,
   hindernisseVon,
   perspektiveQuelle,
@@ -67,7 +67,7 @@ export interface FeldAnzeige {
  * damit man vor dem Loslassen sieht, was hineinpasst.
  */
 export interface FeldVorschau {
-  rect: RechteckM;
+  rect: FeldGeometrie;
   anzahl: number;
 }
 
@@ -489,6 +489,8 @@ export function DachSvg({
   fotoOverlay,
   maxHoehe,
   cancelRevision,
+  suedPfeil,
+  suedSetzen = false,
 }: {
   flaeche: Flaeche;
   raster: BelegungRaster;
@@ -512,6 +514,8 @@ export function DachSvg({
   /** Zeiger-Gesten (Feld aufziehen/verschieben). Schließt `zeichnen` aus. */
   pointer?: PointerProps;
   cancelRevision?: number;
+  suedPfeil?: [PunktM, PunktM];
+  suedSetzen?: boolean;
   /** Während einer Zieh-Geste genügen leichte Modulkonturen. */
   modulDarstellung?: FotoModulDarstellung;
   tastatur?: TastaturProps;
@@ -594,6 +598,8 @@ export function DachSvg({
     if (e.key === 'Enter' && zeichnen?.aktiv) {
       e.preventDefault();
       zeichnen.onKlickM(tastaturCursorM);
+    } else if (e.key === 'Enter' && suedSetzen && pointer) {
+      e.preventDefault(); pointer.onUpM(tastaturCursorM, false);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       tastatur?.onEscape?.();
@@ -794,6 +800,23 @@ export function DachSvg({
     );
   };
 
+  const renderSuedPfeil = (proj: (p: PunktM) => PunktM, breite: number) => {
+    if (druck || !suedSetzen || (!suedPfeil && flaeche.flachdach?.suedWinkelDeg === undefined)) return null;
+    const grad = suedWinkelVon(flaeche) * Math.PI / 180;
+    const mitte: PunktM = [B/2,H/2], laenge = Math.min(B,H)*.25;
+    const punkte = suedPfeil ?? [mitte, [mitte[0]+Math.sin(grad)*laenge,mitte[1]-Math.cos(grad)*laenge] as PunktM];
+    const a = proj(punkte[0]!), b = proj(punkte[1]!);
+    const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy),r=breite*.012;
+    const ux=len ? dx/len : 0,uy=len ? dy/len : 0;
+    return <g data-testid="sued-pfeil" aria-label="Pfeil zeigt nach Süden" style={{pointerEvents:'none'}}>
+      <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#263238" strokeWidth={r*.65} />
+      <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#ffb494" strokeWidth={r*.35} />
+      <circle cx={a[0]} cy={a[1]} r={r*.55} fill="#ffb494" stroke="#263238" strokeWidth={r*.15} />
+      {len>r && <><path d={`M${b[0]-ux*r*2-uy*r} ${b[1]-uy*r*2+ux*r}L${b[0]} ${b[1]}L${b[0]-ux*r*2+uy*r} ${b[1]-uy*r*2-ux*r}`} fill="none" stroke="#ffb494" strokeWidth={r*.4} />
+        <text x={b[0]+r} y={b[1]-r} fontSize={r*1.8} fill="#263238" stroke="white" strokeWidth={r*.3} paintOrder="stroke" fontWeight="700">Süden</text></>}
+    </g>;
+  };
+
   /** Overlay in Flächen-Koordinaten (Meter) — gilt für Draufsicht UND Alt-Foto-Ansicht */
   const overlayM = (
     <>
@@ -920,19 +943,16 @@ export function DachSvg({
       ))}
       {feldVorschau && (
         <g style={{ pointerEvents: 'none' }}>
-          <rect
-            x={feldVorschau.rect.xM}
-            y={feldVorschau.rect.yM}
-            width={feldVorschau.rect.breiteM}
-            height={feldVorschau.rect.hoeheM}
+          <polygon
+            points={feldEcken(feldVorschau.rect).map(p => p.join(',')).join(' ')}
             fill="rgba(2,132,199,0.15)"
             stroke="#0284c7"
             strokeWidth={0.06}
             strokeDasharray="0.15 0.1"
           />
           <text
-            x={feldVorschau.rect.xM + feldVorschau.rect.breiteM / 2}
-            y={feldVorschau.rect.yM + feldVorschau.rect.hoeheM / 2}
+            x={feldPunkt(feldVorschau.rect, [feldVorschau.rect.breiteM / 2, feldVorschau.rect.hoeheM / 2])[0]}
+            y={feldPunkt(feldVorschau.rect, [feldVorschau.rect.breiteM / 2, feldVorschau.rect.hoeheM / 2])[1]}
             fontSize={0.4}
             textAnchor="middle"
             dominantBaseline="central"
@@ -1064,6 +1084,10 @@ export function DachSvg({
         ? (e: React.MouseEvent<SVGSVGElement>) => zeichnen.onMoveM!(eventZuM(e))
         : undefined;
       const zeiger = pointer ? pointerHandler(pointer, eventZuMRoh, feldZeigerGeste) : undefined;
+      // Der automatische Rasterrahmen darf rechnerisch größer als die Dachkontur
+      // sein. Ungewählt darf er aber keine Belegung auf einer Nachbarseite suggerieren.
+      const feldClip = flaeche.fotoBezugsrahmen && umriss ? projPfad(h, umriss.map(p => [p[0], p[1]] as Punkt)) : null;
+      const feldClipId = `${svgInstanzId}-feld-dachkontur`;
       const felderFoto = !druck ? (
         <g data-testid="belegungsfeld-overlays">
           {feldEbenen.map(({ fa, i, griffe }) => {
@@ -1075,6 +1099,8 @@ export function DachSvg({
             return <g key={`${i}-${griffe}`} data-feld-ebene={griffe ? 'griffe' : 'flaeche'} data-feld-index={i}>
               {!griffe && <path
                 d={pfad.d}
+                clipPath={!fa.ausgewaehlt && feldClip?.ok ? `url(#${feldClipId})` : undefined}
+                data-feld-dachclip={!fa.ausgewaehlt && feldClip?.ok ? true : undefined}
                 fill="rgba(2,132,199,0.06)"
                 stroke="#0284c7"
                 strokeWidth={foto.breitePx * (fa.ausgewaehlt ? 0.004 : 0.002)}
@@ -1126,12 +1152,7 @@ export function DachSvg({
           {feldVorschau && (() => {
             const pfad = projPfad(
               h,
-              rechteck(
-                feldVorschau.rect.xM,
-                feldVorschau.rect.yM,
-                feldVorschau.rect.breiteM,
-                feldVorschau.rect.hoeheM,
-              ),
+              feldEcken(feldVorschau.rect).map(([x,y]) => [x,y]),
             );
             if (!pfad.ok) return null;
             return <g style={{ pointerEvents: 'none' }}>
@@ -1143,10 +1164,7 @@ export function DachSvg({
                 strokeDasharray={`${foto.breitePx * 0.008} ${foto.breitePx * 0.005}`}
               />
               {(() => {
-                const [mx, my] = projiziere(h, [
-                  feldVorschau.rect.xM + feldVorschau.rect.breiteM / 2,
-                  feldVorschau.rect.yM + feldVorschau.rect.hoeheM / 2,
-                ]);
+                const [mx, my] = projiziere(h, feldPunkt(feldVorschau.rect, [feldVorschau.rect.breiteM / 2, feldVorschau.rect.hoeheM / 2]));
                 return (
                   <text
                     x={mx}
@@ -1190,6 +1208,7 @@ export function DachSvg({
           >
             <defs>
               <ModulAsset id={assetId} modul={modul} />
+              {!druck && feldClip?.ok && <clipPath id={feldClipId} clipPathUnits="userSpaceOnUse"><path d={feldClip.d} /></clipPath>}
             </defs>
             <image href={foto.dataUrl} width={foto.breitePx} height={foto.hoehePx} />
             {hatTastaturFokus && interaktiv && (() => {
@@ -1291,11 +1310,11 @@ export function DachSvg({
               })}
             {/* Belegungsfelder und Griffe liegen bewusst ÜBER Hindernissen. */}
             {felderFoto}
-            {/* Der orange Perspektivrahmen aus den vier gesetzten Foto-Ecken bleibt
-                über Modulfeld und Hindernissen sichtbar. So ist die äußere Dachgrenze
-                beim Einzeichnen eindeutig; im PDF bleibt sie weg. */}
+            {/* Echte Dachgrenze über Modulfeldern und Hindernissen. Fotoecken
+                können lediglich einen virtuellen Bezugsrahmen beschreiben; dessen
+                Hilfsgriffe erscheinen nur in der expliziten Perspektivbearbeitung. */}
             {!druck && (() => {
-              const ecken = foto.eckenPx!;
+              const ecken = umriss ? umriss.map(p => projiziere(h, p)) : foto.eckenPx!;
               const punkte = ecken.map(([x, y]) => `${x},${y}`).join(' ');
               return (
                 <g aria-label="Umriss der festgelegten Dachfläche" style={{ pointerEvents: 'none' }}>
@@ -1330,10 +1349,11 @@ export function DachSvg({
             })()}
             {!druck && masse && renderMasse(foto.breitePx * 0.02, (p) => projiziere(h, [p[0], p[1]]))}
             {!druck && perspektivGriffe}
-            {!druck && flaeche.art === 'flachdach' && (() => {
+            {renderSuedPfeil(p => projiziere(h, p), foto.breitePx)}
+            {!druck && flaeche.art === 'flachdach' && flaeche.flachdach?.suedWinkelDeg !== undefined && (() => {
               // Richtung auf der Dach-Ebene projizieren; „unten“ ist keine Foto-Pixelachse.
-              const sued = flachdachSuedRichtung(flaeche);
-              const v: PunktM = sued === 'unten' ? [0, 1] : sued === 'oben' ? [0, -1] : sued === 'links' ? [-1, 0] : [1, 0];
+              const winkel = suedWinkelVon(flaeche) * Math.PI / 180;
+              const v: PunktM = [Math.sin(winkel), -Math.cos(winkel)];
               const mitte: PunktM = [B / 2, H / 2];
               const mp = projiziere(h, mitte);
               const richtungen: Array<[string, PunktM]> = [['S', v], ['N', [-v[0], -v[1]]], ['O', [v[1], -v[0]]], ['W', [-v[1], v[0]]]];
@@ -1457,6 +1477,7 @@ export function DachSvg({
         )}
         {renderBelegung()}
         {!druck && masse && renderMasse(0.3, (p) => p)}
+        {renderSuedPfeil(p => p, B)}
       </svg>
     </div>
   );

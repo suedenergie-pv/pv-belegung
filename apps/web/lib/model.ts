@@ -1,3 +1,4 @@
+import { gueltigeZiegelMessung, type ZiegelMessung } from './foto-ziegel';
 import { inverseHomographie, projiziere, pruefePerspektive, sortiereEcken, type Ecken, type Punkt } from './foto-geometrie';
 import { gaubenFotoUmriss } from './gauben-umriss';
 import {
@@ -10,7 +11,9 @@ import {
   schraegGeometrie,
   skaliereFeldRahmen,
   trapezUmriss,
-  vollFeld,
+  vorschlagsFeld,
+  dreheFeld,
+  normalisiereFeldDrehung,
   type BelegungRaster,
   type BelegungsFeldM,
   type FelderInput,
@@ -49,7 +52,12 @@ export type FlaechenArt = 'dach' | 'flachdach' | 'fassade';
 export type FlachdachSuedRichtung = 'unten' | 'links' | 'oben' | 'rechts';
 
 /** Gauben sind eigene Ebenen, aber KEINE aufgeständerten Flachdächer. */
-export type GaubenTyp = 'flachdach' | 'satteldach';
+export type GaubenTyp = 'flachdach' | 'schleppdach' | 'satteldach' | 'walmdach' | 'spitzdach';
+export const GAUBEN_NAMEN: Record<GaubenTyp, string> = {
+  flachdach: 'Flachdachgaube', schleppdach: 'Schleppgaube', satteldach: 'Satteldachgaube',
+  walmdach: 'Walmgaube · Dachseite', spitzdach: 'Spitzgaube · Dachseite',
+};
+export type GaubenGeometrie = Pick<Flaeche, 'neigungDeg' | 'azimutDeg' | 'dachform' | 'firstBreiteM' | 'fotoBezugsrahmen'>;
 export type GaubenSeite = 'links' | 'rechts';
 export type GaubenMassQuelle = 'aufmass' | 'ziegel' | 'nachbardach';
 export type GaubenMassQualitaet = 'bestaetigt' | 'gemessen' | 'geschaetzt';
@@ -96,7 +104,50 @@ export function farbenFuer(art: FlaechenArt): Dachfarbe[] {
  * Maßstab über Referenzstrecke: die Traufkante im Foto wird angeklickt, ihr
  * wahres Maß ist breiteM (Aufmaß aus Schritt Dachflächen) → px/m + Rotation.
  */
+/** Ursprüngliches Aufmaß. Bei späterer Maß-/Perspektivkorrektur bleibt diese Herkunft unverändert. */
+export interface ReferenzMessung {
+  /** Reproduzierbare Zählung und bestätigte verlegte Deckmaße; kein Produktmaß. */
+  ziegel?: ZiegelMessung;
+  breiteM: number;
+  hoeheM: number;
+  eckenPx: Ecken;
+  umrissPx: PunktM[];
+  rahmenBreiteM: number;
+  rahmenHoeheM: number;
+  rahmenEckenPx: Ecken;
+}
+
+/** Optionales Aufmaß aus Importen darf weder Anzeige noch Korrekturwerkzeug beschädigen. */
+function bereinigteReferenzMessung(wert: unknown): ReferenzMessung | undefined {
+  if (!wert || typeof wert !== 'object' || Array.isArray(wert)) return undefined;
+  const m = wert as Partial<ReferenzMessung>;
+  const positiv = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  const punkt = (p: unknown): p is Punkt => Array.isArray(p) && p.length === 2
+    && p.every(n => typeof n === 'number' && Number.isFinite(n));
+  const vierEcken = (p: unknown): p is Ecken => Array.isArray(p) && p.length === 4 && p.every(punkt);
+  if (!positiv(m.breiteM) || !positiv(m.hoeheM)
+    || !positiv(m.rahmenBreiteM) || !positiv(m.rahmenHoeheM)
+    || !vierEcken(m.eckenPx) || !vierEcken(m.rahmenEckenPx)
+    || !Array.isArray(m.umrissPx) || m.umrissPx.length < 3 || !m.umrissPx.every(punkt)) return undefined;
+  if (pruefePerspektive(m.breiteM, m.hoeheM, m.eckenPx).status === 'fehler'
+    || pruefePerspektive(m.rahmenBreiteM, m.rahmenHoeheM, m.rahmenEckenPx).status === 'fehler') return undefined;
+  // Herkunft bleibt ein eigenständiger Snapshot. Spätere Änderungen an der
+  // aktiven Dachgeometrie dürfen diese ursprünglichen Messpunkte nicht verändern.
+  return {
+    breiteM: m.breiteM, hoeheM: m.hoeheM,
+    ...(gueltigeZiegelMessung(m.ziegel)
+      && Math.abs(m.ziegel.spalten * m.ziegel.deckbreiteCm / 100 - m.breiteM) < 1e-8
+      && Math.abs(m.ziegel.reihen * m.ziegel.decklaengeCm / 100 - m.hoeheM) < 1e-8
+      ? { ziegel: { ...m.ziegel } } : {}),
+    eckenPx: m.eckenPx.map(([x, y]) => [x, y]) as Ecken,
+    umrissPx: m.umrissPx.map(([x, y]) => [x, y]),
+    rahmenBreiteM: m.rahmenBreiteM, rahmenHoeheM: m.rahmenHoeheM,
+    rahmenEckenPx: m.rahmenEckenPx.map(([x, y]) => [x, y]) as Ecken,
+  };
+}
+
 export interface DachFoto {
+  referenzMessung?: ReferenzMessung;
   /** Bild als Data-URL (beim Upload auf max. 1600 px verkleinert, JPEG) */
   dataUrl: string;
   breitePx: number;
@@ -140,12 +191,15 @@ export interface GesamtFoto {
  * flächenspezifische Perspektive liegt in FotoZuordnung.
  */
 export interface ProjektFoto extends GesamtFoto {
+  /** Schematischer Maßplan statt Aufnahme; erzeugt aus bestätigten Flächenmaßen. */
+  massplanFlaecheId?: string;
   id: string;
   name: string;
 }
 
 /** Lage genau einer Fläche auf genau einem Belegungsfoto. */
 export interface FotoZuordnung {
+  referenzMessung?: ReferenzMessung;
   fotoId: string;
   eckenPx?: Ecken;
   /** Vier Ecken wurden nach sichtbarer Vorschau ausdrücklich übernommen. */
@@ -176,12 +230,16 @@ export interface Flaeche {
    * geometrisch identisch zum Schrägdach, Foto frontal statt von oben.
    */
   art?: FlaechenArt;
+  /** Vertriebs-Kontext; die Rechenebene bleibt unabhängig davon. */
+  einsatzort?: 'gebaeude' | 'halle' | 'freiflaeche';
   /**
    * Gaubenfläche mit eigener Perspektive/Neigung. Eine Flachdachgaube wird trotz
    * geringer Neigung als normale Dachfläche gerechnet: dachparallel auf Stehfalz,
    * niemals mit der PROFINESS-Aufständerung aus `art: 'flachdach'`.
    */
   gaubenTyp?: GaubenTyp;
+  /** Fotoecken referenzieren das umschließende Rechteck, Umriss ist separate Maske. */
+  fotoBezugsrahmen?: boolean;
   /** Zugehöriges Hauptdach; rein semantisch, kein 3D-Solver. */
   elternFlaecheId?: string;
   /** Bei einer Satteldachgaube werden zwei eigenständige Ebenen angelegt. */
@@ -201,8 +259,13 @@ export interface Flaeche {
     aufstaenderung: 'sued' | 'ostwest';
     winkelDeg: number;
     pitchM?: number;
+    modulAusrichtung?: 'hoch' | 'quer';
+    moduleInNeigung?: number;
+    firstspaltM?: number;
     /** Lage von Süden in Draufsicht/Foto; daraus folgen Ost und West eindeutig. */
     richtungSued?: FlachdachSuedRichtung;
+    /** Tatsächliche Südrichtung, ab Plan-oben im Uhrzeigersinn. Legacy-Rasterbasis bleibt separat. */
+    suedWinkelDeg?: number;
   };
   /** Traufkante, Meter (Flachdach: waagerechte Planausdehnung; Fassade: Wandbreite) */
   breiteM: number;
@@ -327,6 +390,7 @@ export function rahmenBreiteVon(f: Flaeche): number {
  * ist nur die Belegungsmaske innerhalb desselben stabilen Koordinatensystems.
  */
 export function perspektiveQuelle(f: Flaeche): Ecken | undefined {
+  if (f.fotoBezugsrahmen) return undefined;
   if (f.dachform === 'schief') {
     const e = schraegGeoVon(f).ecken;
     return [
@@ -339,7 +403,10 @@ export function perspektiveQuelle(f: Flaeche): Ecken | undefined {
   if (f.dachform === 'trapez') {
     const B = f.breiteM;
     const H = f.hoeheM;
-    const fb = Math.max(B * 0.05, Math.min(f.firstBreiteM ?? B * 0.6, B));
+    // Eine echte Dachspitze hat keine vierte unabhängige Dach-Ecke. Nicht mit
+    // einer erfundenen Mindest-Firstbreite kalibrieren: Die Perspektivprüfung
+    // sperrt die doppelte Spitze, bis ein real gemessener Bezugsrahmen vorliegt.
+    const fb = Math.max(0, Math.min(f.firstBreiteM ?? B * 0.6, B));
     const inset = (B - fb) / 2;
     return [[0, H], [B, H], [B - inset, 0], [inset, 0]];
   }
@@ -377,6 +444,23 @@ export function flachdachSuedRichtung(f: Flaeche): FlachdachSuedRichtung {
   return f.flachdach?.richtungSued ?? 'unten';
 }
 
+export function suedWinkelVon(f: Flaeche): number {
+  return normalisiereFeldDrehung(f.flachdach?.suedWinkelDeg ?? { oben: 0, rechts: 90, unten: 180, links: 270 }[flachdachSuedRichtung(f)]);
+}
+
+/** Feldwinkel, der die bestehende Rasterbasis auf die kalibrierte Südrichtung ausrichtet. */
+export function suedFeldDrehung(f: Flaeche): number {
+  if (artVon(f) !== 'flachdach') return 0;
+  return normalisiereFeldDrehung(suedWinkelVon(f) - { oben: 0, rechts: 90, unten: 180, links: 270 }[flachdachSuedRichtung(f)]);
+}
+
+export function mitSuedRichtung(f: Flaeche, winkel: number, mitdrehen: boolean): Flaeche {
+  if (!f.flachdach || !Number.isFinite(winkel)) return f;
+  const delta = winkel - suedWinkelVon(f);
+  return { ...f, flachdach: { ...f.flachdach, suedWinkelDeg: normalisiereFeldDrehung(winkel) },
+    felder: mitdrehen ? f.felder?.map(feld => dreheFeld(feld, (feld.drehungDeg ?? 0) + delta)) : f.felder };
+}
+
 /** Richtung von Osten in der Draufsicht, abgeleitet aus der gewählten Südrichtung. */
 export function flachdachOstRichtung(f: Flaeche): FlachdachSuedRichtung {
   const ostVonSued: Record<FlachdachSuedRichtung, FlachdachSuedRichtung> = {
@@ -389,6 +473,7 @@ export function flachdachOstRichtung(f: Flaeche): FlachdachSuedRichtung {
 }
 
 export function flachdachRichtungsLabel(f: Flaeche): string {
+  if (f.flachdach?.suedWinkelDeg !== undefined) return f.flachdach.aufstaenderung === 'ostwest' ? 'Ost / West · Kompass festgelegt' : 'Süd · Kompass festgelegt';
   const sued = flachdachSuedRichtung(f);
   if (f.flachdach?.aufstaenderung === 'ostwest') {
     const ost = flachdachOstRichtung(f);
@@ -511,7 +596,7 @@ export function neueGaubenFlaeche(
   const flach = typ === 'flachdach';
   return {
     ...neueFlaeche(nr, zone),
-    name: flach ? 'Flachdachgaube' : `Satteldachgaube${seite ? ` ${seite}` : ''}`,
+    name: `${GAUBEN_NAMEN[typ]}${seite ? ` ${seite}` : ''}`,
     art: 'dach',
     gaubenTyp: typ,
     elternFlaecheId,
@@ -519,7 +604,7 @@ export function neueGaubenFlaeche(
     gaubenGruppeId: gruppeId,
     breiteM: 3,
     hoeheM: 2.5,
-    neigungDeg: flach ? 5 : 30,
+    neigungDeg: flach ? 5 : typ === 'schleppdach' ? 15 : 30,
     dachfarbe: flach ? 'grau' : 'anthrazit',
     dachform: 'rechteck',
     grunddatenFertig: true,
@@ -568,8 +653,12 @@ export function massFreigabe(f: Flaeche): MassFreigabe {
     fehler = 'Der Randabstand muss ein gültiger Wert ab 0 m sein.';
   } else if (
     f.art === 'flachdach' && f.flachdach &&
-    ((!Number.isFinite(f.flachdach.winkelDeg) || f.flachdach.winkelDeg < 0 || f.flachdach.winkelDeg >= 90) ||
-      (f.flachdach.pitchM !== undefined && !positiv(f.flachdach.pitchM)))
+    ((!Number.isFinite(f.flachdach.winkelDeg) || f.flachdach.winkelDeg < 0 || f.flachdach.winkelDeg > 75) ||
+      (f.flachdach.pitchM !== undefined && !positiv(f.flachdach.pitchM)) ||
+      (f.flachdach.suedWinkelDeg !== undefined && !Number.isFinite(f.flachdach.suedWinkelDeg)) ||
+      !!f.felder?.some(feld => feld.freieGasseM !== undefined && (!Number.isFinite(feld.freieGasseM) || feld.freieGasseM < 0 || feld.freieGasseM > 50)) ||
+      (f.flachdach.moduleInNeigung !== undefined && (!Number.isInteger(f.flachdach.moduleInNeigung) || f.flachdach.moduleInNeigung < 1 || f.flachdach.moduleInNeigung > 6)) ||
+      (f.flachdach.firstspaltM !== undefined && (!Number.isFinite(f.flachdach.firstspaltM) || f.flachdach.firstspaltM < 0)))
   ) {
     fehler = 'Winkel und Reihenabstand der Aufständerung müssen gültig sein.';
   }
@@ -632,6 +721,7 @@ export function dachFotoVon(p: Projekt, f: Flaeche, fotoId?: string): DachFoto |
       ? { perspektiveBestaetigt: z.perspektiveBestaetigt }
       : {}),
     ...(z.pxProM !== undefined ? { pxProM: z.pxProM } : {}),
+    ...(z.referenzMessung ? { referenzMessung: z.referenzMessung } : {}),
   };
 }
 
@@ -660,6 +750,7 @@ export function felderInput(f: Flaeche, modul: ModuleType): FelderInput {
   };
   if (artVon(f) === 'flachdach' && f.flachdach) {
     basis.montage = {
+      ...f.flachdach,
       aufstaenderung: f.flachdach.aufstaenderung,
       winkelDeg: f.flachdach.winkelDeg,
       richtungSued: flachdachSuedRichtung(f),
@@ -688,9 +779,9 @@ export function rasterFuer(f: Flaeche, modul: ModuleType): BelegungRaster {
   return berechneFelderRaster(felderInput(f, modul), f.felder ?? []);
 }
 
-/** Zentriertes Voll-Feld über der Nutzfläche („Automatisch füllen"). */
+/** Initialer Feldvorschlag aus der Engine; vorhandene Felder bleiben unverändert. */
 export function vollFeldFuer(f: Flaeche, modul: ModuleType): BelegungsFeldM {
-  return vollFeld({ ...felderInput(f, modul), ausrichtung: f.ausrichtung });
+  return vorschlagsFeld({ ...felderInput(f, modul), ausrichtung: f.ausrichtung }, suedFeldDrehung(f));
 }
 
 /**
@@ -808,7 +899,9 @@ export function ausrichtungenVon(
     };
   }
   if (artVon(f) === 'flachdach') {
-    return { hochkant: 0, quer: positionen.length, bezeichnung: 'quer' };
+    return f.flachdach?.modulAusrichtung === 'hoch'
+      ? { hochkant: positionen.length, quer: 0, bezeichnung: 'hoch' }
+      : { hochkant: 0, quer: positionen.length, bezeichnung: 'quer' };
   }
   const quer = positionen.filter((p) => p.quer).length;
   const hochkant = positionen.length - quer;
@@ -832,13 +925,15 @@ export function flaecheM2(f: Flaeche): number {
   return Math.abs(doppelteFlaeche) / 2;
 }
 
+/** Erst in Watt summieren, damit z. B. 485-W-Module an Rundungsgrenzen exakt bleiben. */
+function leistungGesamtW(p: Projekt): number {
+  const modul = modulById(p.modulId);
+  return p.flaechen.reduce((sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)), 0) * modul.pmaxW;
+}
+
 /** kWp = Σ aktive Module × Pmax (SPEC §9) */
 export function kwpGesamt(p: Projekt): number {
-  const modul = modulById(p.modulId);
-  return (
-    p.flaechen.reduce((sum, f) => sum + aktiveModule(f, rasterFuer(f, modul)), 0) *
-    (modul.pmaxW / 1000)
-  );
+  return leistungGesamtW(p) / 1000;
 }
 
 /** Einheitlicher, Windows-sicherer Downloadname mit gut sichtbarer Anlagenleistung. */
@@ -1160,6 +1255,8 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
           return true;
         })
         .map((z) => {
+          const { referenzMessung: rohMessung, ...zuordnung } = z;
+          const referenzMessung = bereinigteReferenzMessung(rohMessung);
           const gueltig = z.eckenPx
             ? pruefePerspektive(
                 rahmenBreiteVon(rest),
@@ -1169,7 +1266,8 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
               ).status !== 'fehler'
             : false;
           return {
-            ...z,
+            ...zuordnung,
+            ...(referenzMessung ? { referenzMessung } : {}),
             perspektiveBestaetigt:
               z.perspektiveBestaetigt !== undefined
                 ? z.perspektiveBestaetigt && gueltig
@@ -1240,6 +1338,8 @@ function migriereFotoModell(roh: Projekt, projekt: Projekt): void {
         zuordnung.markierungFertig = gueltig && (f.markierungFertig ?? true);
       }
       if (f.foto.pxProM !== undefined) zuordnung.pxProM = f.foto.pxProM;
+      const referenzMessung = bereinigteReferenzMessung(f.foto.referenzMessung);
+      if (referenzMessung) zuordnung.referenzMessung = referenzMessung;
     } else if (gesamtId && f.gesamtEckenPx) {
       zuordnung = {
         fotoId: gesamtId,
@@ -1395,7 +1495,7 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
           ? 'gaube_flachdach'
           : f.gaubenTyp === 'satteldach'
             ? 'gaube_satteldach'
-            : 'hauptflaeche';
+            : f.gaubenTyp ? `gaube_${f.gaubenTyp}` : 'hauptflaeche';
       return {
         id: f.id,
         zone: f.zone ?? '',
@@ -1417,11 +1517,12 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
         montage:
           f.gaubenTyp === 'flachdach'
             ? 'gaube_stehfalz_dachparallel'
-            : f.gaubenTyp === 'satteldach'
+            : f.gaubenTyp
               ? 'gaube_dachparallel'
               : artVon(f) === 'flachdach' && f.flachdach
             ? `flachdach_${f.flachdach.aufstaenderung}_${f.flachdach.winkelDeg}`
             : artVon(f),
+        einsatzort: f.einsatzort ?? 'gebaeude',
         eindeckung: f.dachfarbe,
         neigung_deg: f.neigungDeg,
         azimut_deg: f.azimutDeg,
@@ -1430,10 +1531,15 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
             ? {
                 aufstaenderung: f.flachdach.aufstaenderung,
                 winkel_deg: f.flachdach.winkelDeg,
+                modul_ausrichtung: f.flachdach.modulAusrichtung ?? 'quer',
+                module_in_neigung: f.flachdach.moduleInNeigung ?? 1,
+                firstspalt_m: f.flachdach.firstspaltM ?? 0.05,
                 pitch_m:
                   f.flachdach.pitchM ??
                   flachdachPitchDefault(f.flachdach.aufstaenderung, f.flachdach.winkelDeg),
                 sued_richtung_im_plan: flachdachSuedRichtung(f),
+                sued_winkel_deg: suedWinkelVon(f),
+                sued_bestaetigt: f.flachdach.suedWinkelDeg !== undefined,
                 ost_richtung_im_plan: flachdachOstRichtung(f),
               }
             : null,
@@ -1441,6 +1547,7 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
         belegungsfelder: (f.felder ?? []).map((feld) => ({
           x_m: feld.xM, y_m: feld.yM, breite_m: feld.breiteM, hoehe_m: feld.hoeheM,
           drehung_deg: feld.drehungDeg ?? 0, leere_zellen: feld.leer ?? [],
+          ...(feld.freieGasseM !== undefined ? { freie_gasse_m: feld.freieGasseM } : {}),
         })),
         module: {
           typ: modul.id,
@@ -1463,7 +1570,7 @@ export function bauePayload(p: Projekt, result: StringPlanResult | null): object
           vmp_hot_v: Math.round(s.vmpHotV * 10) / 10,
         }))
       : [],
-    kwp: Math.round(kwpGesamt(p) * 100) / 100,
+    kwp: Math.round(leistungGesamtW(p) / 10) / 100,
     regel_pruefung: result ? { bestanden: result.valid, regeln: result.regeln } : null,
     flags: projektFlags(p),
     eskaliert: !!p.eskaliert,

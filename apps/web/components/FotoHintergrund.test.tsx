@@ -29,7 +29,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     const flaeche = { ...neueFlaeche(1, 'A'), breiteM: 10, hoeheM: 6, massStatus: 'bestaetigt' as const,
       foto: { dataUrl: 'data:image/png;base64,eA==', breitePx: 1000, hoehePx: 600, traufePx: null } };
     const ui = render(<FotoHintergrund flaeche={flaeche} onPatch={onPatch} fotoVerwalten={false} kompakt />);
-    fireEvent.click(await ui.findByRole('button', { name: /Überspringen/ }));
+    expect(ui.queryByRole('button', { name: /Überspringen/ })).toBeNull();
     expect(ui.getByRole('heading', { name: 'Dachecken markieren' })).toBeTruthy();
     const bestaetigen = ui.getByRole('button', { name: '4 Ecken übernehmen' }) as HTMLButtonElement;
     expect(bestaetigen.disabled).toBe(true);
@@ -41,9 +41,11 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     for (let i = 0; i < 4; i++) {
       fireEvent.click(svg, { clientX: ecken[i]![0], clientY: ecken[i]![1] });
       expect(ui.getByTestId('markierungs-fortschritt').textContent).toContain(`${i + 1} von 4 Eckpunkten gesetzt`);
-      expect(bestaetigen.disabled).toBe(i < 3);
+      expect(bestaetigen.disabled).toBe(true);
       expect(onPatch).not.toHaveBeenCalled();
     }
+    fireEvent.keyDown(ui.getByRole('button', {name:'Kante 1 als untere Kante wählen'}), {key:'Enter'});
+    expect(bestaetigen.disabled).toBe(false);
     fireEvent.click(bestaetigen);
     expect(onPatch).toHaveBeenCalledOnce();
     expect(onPatch.mock.calls[0]![0].foto.perspektiveBestaetigt).toBe(true);
@@ -140,11 +142,11 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     expect(onPatch).toHaveBeenCalledWith({ markierungFertig: true });
   });
 
-  it('übergibt Foto-Maße als Entwurf und verändert den bestätigten Stand nicht', () => {
+  it('bietet aus einem alten Zweipunkt-Maßstab keinen irreführenden Dachmaß-Entwurf an', () => {
     vi.stubGlobal('matchMedia', matchMedia(false));
     const onPatch = vi.fn();
     const onMassVorschlag = vi.fn();
-    const { getByRole } = render(
+    const { queryByRole } = render(
       <FotoHintergrund
         flaeche={{ ...flaeche, massStatus: 'bestand', foto: { ...flaeche.foto!, pxProM: 100 } }}
         onPatch={onPatch}
@@ -152,8 +154,8 @@ describe('Foto-Markierung auf Tablet und PC', () => {
         fotoVerwalten={false}
       />,
     );
-    fireEvent.click(getByRole('button', { name: /Maße aus Foto prüfen/ }));
-    expect(onMassVorschlag).toHaveBeenCalledWith({ breiteM: 10, hoeheM: 7.3 });
+    expect(queryByRole('button', { name: /Maße aus Foto prüfen/ })).toBeNull();
+    expect(onMassVorschlag).not.toHaveBeenCalled();
     expect(onPatch).not.toHaveBeenCalled();
   });
 
@@ -378,7 +380,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     const onPatch = vi.fn();
     const ui = render(<FotoHintergrund flaeche={{ ...flaeche, massStatus: 'bestaetigt' }} onPatch={onPatch} fotoVerwalten={false} kompakt />);
     fireEvent.click(ui.getByRole('button', { name: 'Dachecken' }));
-    fireEvent.click(ui.getByRole('button', { name: '↻ Traufe wechseln' }));
+    fireEvent.keyDown(ui.getByRole('button', { name: 'Kante 4 als untere Kante wählen' }), {key:'Enter'});
     expect(onPatch).not.toHaveBeenCalled();
     fireEvent.click(ui.getByRole('button', { name: '4 Ecken übernehmen' }));
     expect(onPatch.mock.calls[0]![0].foto.eckenPx[0]).toEqual(flaeche.foto!.eckenPx![3]);
@@ -391,7 +393,7 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     function Weiter() { const navigation = useEntwurfNavigation(); return <button onClick={() => navigation.weiter(weiter)}>Zum Export</button>; }
     const ui = render(<EntwurfNavigationProvider><FotoHintergrund flaeche={{ ...flaeche, massStatus: 'bestaetigt' }} onPatch={onPatch} fotoVerwalten={false} kompakt /><Weiter /></EntwurfNavigationProvider>);
     fireEvent.click(ui.getByRole('button', { name: 'Dachecken' }));
-    fireEvent.click(ui.getByRole('button', { name: '↻ Traufe wechseln' }));
+    fireEvent.keyDown(ui.getByRole('button', { name: 'Kante 4 als untere Kante wählen' }), {key:'Enter'});
     fireEvent.click(ui.getByRole('button', { name: 'Zum Export' }));
     expect(weiter).not.toHaveBeenCalled();
     fireEvent.click(ui.getByRole('button', { name: 'Bleiben', hidden: true }));
@@ -423,5 +425,109 @@ describe('Foto-Markierung auf Tablet und PC', () => {
     expect(ui.container.querySelectorAll('svg image')).toHaveLength(1);
     expect(ui.getByTestId('andere-flaeche').closest('svg')).toBe(ui.container.querySelector('svg'));
     expect(ui.getByTestId('andere-flaeche').parentElement?.getAttribute('pointer-events')).toBe('none');
+  });
+});
+
+
+describe('Präzise Mausereignisse und geschützte Referenzkonturen', () => {
+  const basis = (): Flaeche => ({
+    ...neueFlaeche(1,'A'),breiteM:10,hoeheM:6,massStatus:'bestaetigt',grunddatenFertig:true,
+    foto:{dataUrl:'data:image/png;base64,eA==',breitePx:1000,hoehePx:600,traufePx:null,eckenPx:[[0,600],[1000,600],[1000,0],[0,0]],perspektiveBestaetigt:true},
+    markierungFertig:false,
+  });
+  const pointer = (svg: Element, art: string, x:number, y:number) => {
+    const event=new MouseEvent(art,{bubbles:true,clientX:x,clientY:y,button:0});
+    Object.defineProperties(event,{pointerId:{value:71},pointerType:{value:'mouse'}});
+    fireEvent(svg,event);
+  };
+  const mausklick = (svg: Element, x:number,y:number) => {
+    pointer(svg,'pointerdown',x,y);
+    fireEvent.mouseDown(svg,{clientX:Math.round(x),clientY:Math.round(y),button:0});
+    pointer(svg,'pointerup',x,y);
+    fireEvent.mouseUp(svg,{clientX:Math.round(x),clientY:Math.round(y),button:0});
+    fireEvent.click(svg,{clientX:Math.round(x),clientY:Math.round(y),button:0});
+  };
+  function editor() {
+    vi.stubGlobal('React',React);
+    vi.stubGlobal('matchMedia',matchMedia(false));
+    const onPatch=vi.fn();
+    const ui=render(<FotoHintergrund flaeche={basis()} onPatch={onPatch} fotoVerwalten={false} kompakt
+      renderArbeitsbereich={({bild,steuerung,abbrechen})=><>{bild}{steuerung}<button onClick={abbrechen}>Pan beginnt</button></>} />);
+    const svg=ui.container.querySelector('svg')!;
+    vi.spyOn(svg,'getBoundingClientRect').mockReturnValue({x:0,y:0,left:0,top:0,right:1000,bottom:600,width:1000,height:600,toJSON:()=>({})});
+    return {...ui,svg,onPatch};
+  }
+  it('übernimmt für Aussparungen die Pointer-Bruchteile statt gerundeter Mouse-/Clickwerte',()=>{
+    const ui=editor();
+    mausklick(ui.svg,220.375,180.625);
+    expect(ui.onPatch).not.toHaveBeenCalled();
+    mausklick(ui.svg,310.875,270.125);
+    expect(ui.onPatch).toHaveBeenCalledOnce();
+    const h=ui.onPatch.mock.calls[0]![0].hindernisse[0];
+    expect(h.xM).toBeCloseTo(2.20375,8);
+    expect(h.yM).toBeCloseTo(1.80625,8);
+    expect(h.breiteM).toBeCloseTo(.905,8);
+    expect(h.hoeheM).toBeCloseTo(.895,8);
+  });
+  it('akzeptiert zwei schnelle vollständige Mausklicks ohne Zeitfenster, das die zweite Ecke verschluckt',()=>{
+    const ui=editor();
+    const now=vi.spyOn(Date,'now').mockReturnValue(10000);
+    try {
+      mausklick(ui.svg,200.25,200.75);
+      mausklick(ui.svg,400.75,400.25);
+      expect(ui.onPatch).toHaveBeenCalledOnce();
+      const h=ui.onPatch.mock.calls[0]![0].hindernisse[0];
+      expect(h.breiteM).toBeCloseTo(2.005,8);
+      expect(h.hoeheM).toBeCloseTo(1.995,8);
+    } finally {now.mockRestore();}
+  });
+  for(const abbruch of ['pointercancel','pan'] as const) it(`setzt nach ${abbruch} weder einen Punkt noch eine Phantom-Aussparung`,()=>{
+    const ui=editor();
+    pointer(ui.svg,'pointerdown',100.375,100.625);
+    fireEvent.mouseDown(ui.svg,{clientX:100,clientY:101,button:0});
+    if(abbruch==='pointercancel') pointer(ui.svg,'pointercancel',180.5,200.5);
+    else fireEvent.click(ui.getByRole('button',{name:'Pan beginnt'}));
+    pointer(ui.svg,'pointerup',180.5,200.5);
+    fireEvent.mouseUp(ui.svg,{clientX:181,clientY:201,button:0});
+    fireEvent.click(ui.svg,{clientX:181,clientY:201,button:0});
+    expect(ui.onPatch).not.toHaveBeenCalled();
+    mausklick(ui.svg,300.25,300.75);
+    expect(ui.onPatch).not.toHaveBeenCalled();
+    mausklick(ui.svg,400.75,400.25);
+    expect(ui.onPatch).toHaveBeenCalledOnce();
+    const h=ui.onPatch.mock.calls[0]![0].hindernisse[0];
+    expect(h.xM).toBeCloseTo(3.0025,8);
+    expect(h.yM).toBeCloseTo(3.0075,8);
+  });
+  const referenzDreieck=():Flaeche=>{
+    const f=basis();
+    return {...f,fotoBezugsrahmen:true,umrissM:[[0,6],[10,6],[5,0]],foto:{...f.foto!,referenzMessung:{breiteM:4,hoeheM:2,eckenPx:[[300,500],[700,500],[700,300],[300,300]],umrissPx:[[0,600],[1000,600],[500,0]],rahmenBreiteM:10,rahmenHoeheM:6,rahmenEckenPx:f.foto!.eckenPx!}}};
+  };
+  for(const kompakt of [true,false]) it(`bietet für eine Referenz-Dreieckskontur kein Entfernen der Belegungsmaske an (${kompakt?'kompakt':'vollständig'})`,()=>{
+    vi.stubGlobal('React',React);vi.stubGlobal('matchMedia',matchMedia(false));
+    const onPatch=vi.fn();
+    const ui=render(<FotoHintergrund flaeche={referenzDreieck()} onPatch={onPatch} onReferenzBearbeiten={vi.fn()} fotoVerwalten={false} kompakt={kompakt} />);
+    fireEvent.click(ui.getByRole('button',{name:kompakt?'Dachrand':/Dachumriss/}));
+    expect(ui.queryByRole('button',{name:'Manuellen Umriss entfernen'})).toBeNull();
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+  it('führt die alten First-/Dachecken-Einstiege bei vorhandener Messung zur Referenzbearbeitung',()=>{
+    vi.stubGlobal('React',React);vi.stubGlobal('matchMedia',matchMedia(false));
+    const onReferenzBearbeiten=vi.fn(),onPatch=vi.fn();
+    const ui=render(<FotoHintergrund flaeche={referenzDreieck()} onPatch={onPatch} onReferenzBearbeiten={onReferenzBearbeiten} fotoVerwalten={false} />);
+    fireEvent.click(ui.getByRole('button',{name:/Ausrichtung/}));
+    expect(onReferenzBearbeiten).toHaveBeenCalledTimes(1);
+    fireEvent.click(ui.getByRole('button',{name:/②.*Perspektivrahmen/}));
+    expect(onReferenzBearbeiten).toHaveBeenCalledTimes(2);
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+  it('ersetzt in der kompakten Referenzansicht First und Dachecken durch einen eindeutigen Referenzzugang',()=>{
+    vi.stubGlobal('React',React);vi.stubGlobal('matchMedia',matchMedia(false));
+    const onReferenzBearbeiten=vi.fn();
+    const ui=render(<FotoHintergrund flaeche={referenzDreieck()} onPatch={vi.fn()} onReferenzBearbeiten={onReferenzBearbeiten} fotoVerwalten={false} kompakt />);
+    expect(ui.queryByRole('button',{name:'Dachecken'})).toBeNull();
+    expect(ui.queryByRole('button',{name:'First'})).toBeNull();
+    fireEvent.click(ui.getByRole('button',{name:'Referenz und Dachrand neu prüfen'}));
+    expect(onReferenzBearbeiten).toHaveBeenCalledOnce();
   });
 });

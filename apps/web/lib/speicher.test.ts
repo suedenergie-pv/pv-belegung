@@ -40,6 +40,18 @@ beforeEach(() => browserSpeicher());
 afterEach(() => vi.unstubAllGlobals());
 
 describe('versionierter Projekt- und Fotospeicher', () => {
+  it('lädt eine bewusst geleerte Projektübersicht nach dem letzten Löschen wieder', async () => {
+    const db: ProjektDb = { aktivId: null, projekte: [], workflowVersion: 2 };
+    expect((await speichereProjekte(db)).status).toBe('erfolg');
+    expect(await ladeProjekte()).toEqual({ status: 'erfolg', db });
+  });
+  it('behandelt eine leere Liste mit verwaistem Aktivverweis weiterhin als Reparaturfall', async () => {
+    const roh = JSON.stringify({ speicherVersion: 2, workflowVersion: 2, aktivId: 'verloren', projekte: [] });
+    const { localStorage } = browserSpeicher({ [SPEICHER_SCHLUESSEL.aktuell]: roh });
+    expect(await ladeProjekte()).toMatchObject({ status: 'reparatur', rohdaten: roh });
+    expect(localStorage.setItem).not.toHaveBeenCalled();
+  });
+
   it('speichert Foto-Blobs in IndexedDB und nur Metadaten in localStorage', async () => {
     const { daten } = browserSpeicher();
     const db = dbMitFoto();

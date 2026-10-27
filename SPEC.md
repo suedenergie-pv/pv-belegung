@@ -644,3 +644,68 @@ Zusätzlich blockierend:
 - Reihenfolge: Katalog-Datenmodell → String-Engine + Tests → Kalibrierung (§14) → Geometrie-Import → Belegung → Renderer → Export → UI-Politur
 - Engine-Code ohne Tests wird nicht gemerged; jede Regel R1–R11 hat mindestens einen Pass- und einen Fail-Testfall
 - Bei Widerspruch zwischen Chat-Verlauf und dieser SPEC gilt die SPEC. Bei Lücken: fragen, nicht raten.
+
+## Funktionsübernahme 27.10.2026: Dachbedienung, Gauben und Montage
+
+Nutzerauftrag: die lokal geprüften Bedienfunktionen der eigenständigen LCV-Variante
+auf SüdEnergie übertragen. SüdEnergie-Logo, Farben, Schriften, Layout der
+Kundenunterlagen und vorhandene Speicherbereiche bleiben erhalten. Keine Übernahme
+von Anmeldung, Kontenverwaltung oder fremden Projektdaten.
+
+- Dachmaße direkt an einer Maßskizze eingeben: unten, oben und Länge auf dem Dach;
+  keine vorgeschaltete Auswahl geometrischer Fachbegriffe. Gerade Seite oder Spitze
+  ausdrücklich wählen. Die Firstbreite richtet sich nach der tatsächlichen Traufe.
+- Vierseitige Dächer über echte Ecken und Aufmaß erfassen. Für drei oder mehr Ecken
+  zuerst den echten Dachrand nachzeichnen; sichtbare Ziegelabstände in zwei
+  Richtungen mit bekannten verlegten Deckmaßen kalibrieren die Ebene. Keine
+  erfundene vierte Dreiecksecke und keine automatische Vermessung aus dem Foto.
+  Zählung und Deckmaße werden als Herkunft gespeichert. Gemessene Rechtecke bleiben
+  ein freiwilliges Spezialwerkzeug. Ohne Foto ist ein schematischer Maßplan möglich.
+- Jede anders geneigte Dachseite bleibt eine unabhängige Ebene. Flach-, Schlepp-,
+  Sattel-, Walm- und Spitzgauben werden mit eigenen Maßen und Konturen gepflegt.
+  Bereits belegte Nachbarflächen und bestehende Fotos bleiben bei Bearbeitung erhalten.
+- Gebäude, Halle und Freifläche verwenden dieselbe geprüfte Feldbelegung. Süd und
+  Ost-West erhalten frei einstellbare Gestellneigung 0–75°, Hoch-/Querformat und
+  1–6 Module pro Tischseite. Fußabdrücke entstehen aus den wirklichen Modulmaßen.
+- Süden wird ausdrücklich im Bild oder im Flächenplan festgelegt; bestehende
+  Feldrotationen bleiben erhalten, sofern Mitdrehen nicht gewählt wird. Jedes Feld
+  kann einen eigenen freien Reihenabstand haben. Export erhält die Zusatzwerte.
+- Kleine Aussparungen erhalten bildschirmbezogene Griffe; die Markierung darf das
+  Fenster nicht verdecken. Mobile Fotoarbeit kann das Bild vorübergehend vergrößern.
+  Rückgängig, Entwürfe, Abbrechen und erreichbare Abschlussaktionen bleiben erhalten.
+- Der erste Belegungsvorschlag prüft bei freien ungedrehten Dachkonturen begrenzt
+  mehrere Lagen des gesamten Rasters. Er übernimmt nur Verbesserungen bei gleicher
+  Modulgröße und Ausrichtung; vorhandene Felder, Aufständerungen und gedrehte Raster
+  behalten ihre Lage. Die Suche garantiert kein globales Kapazitätsmaximum.
+
+Die Übernahme ändert keine elektrischen Katalogwerte, Stringregeln, Modul-Assets
+oder SüdEnergie-PDF-Gestaltung. Prüfungen laufen lokal; keine neue CI-Ausführung
+oder automatische Veröffentlichung gehört zur Codeübernahme.
+
+### Funktionsübernahme und Abnahme · 27.10.2026
+
+Die selektive Übernahme basiert auf SüdEnergie ae99dc9. Übernommen wurden die
+Dachrand-/Ziegelbedienung, unabhängige Teilflächen, Südzuordnung und Feldabstände,
+Gauben- und Aufständerungsbedienung sowie die Korrekturen für kleine Aussparungen,
+Firstmaße und erreichbare Abschlussaktionen. Keine Übernahme von fremdem
+Branding, Login oder Kontenspeicher. 47 geschützte Marken-, Druck-, Layout-,
+Schrift-, Modulasset- und Katalogdateien sind bytegleich zum Ausgangsstand.
+
+Lokale Abschlussprüfung: 1.474 Engine- und 1.257 Webtests bestanden; Typecheck
+und VPS-Build erfolgreich. Echte Fotoabläufe: 26 Drehungs-/Viewportfälle sowie
+26 zusätzliche Fälle zu Gauben, Aufständerung, Süden, Feldabständen, Zoom und
+Maßeingaben bestanden. Nach letzter Raster-/Toolbar-Korrektur vier Fotoabläufe
+und zwei Release-Smokes erneut bestanden. Mobile Werkzeuge mit nativen
+Finger-Wisch- und Tippgesten geprüft. ERLUS- und Tapio-PDF gerendert und geöffnet.
+
+Live-Release `20261027-dachrand-funktionen` unter
+https://belegung.suedenergie-pv.de/ aktiviert. Vier echte Fotoabläufe auf Desktop
+und Smartphone inklusive Reload und Desktop-PDF bestanden. Der bisherige Release
+`20261022-pdf-suedenergie-final` bleibt als Rückfallstand erhalten.
+
+Die echten Bildquellen und numerischen Beobachtungen stehen in
+`apps/web/e2e/dachrand-realfoto.spec.ts` und `apps/web/lib/foto-realfoto.test.ts`.
+Die lokal gespeicherten QA-Fotos werden nicht veröffentlicht. Die verwendeten
+Deckmaße und Himmelsrichtungen sind ausdrücklich Testannahmen, kein am Gebäude
+bestätigtes Aufmaß. Tests ersetzen keine persönliche Praxisabnahme durch Nutzer.
+Keine GitHub-Actions-Debugschleife; der geprüfte Abschluss wird gebündelt gepusht.

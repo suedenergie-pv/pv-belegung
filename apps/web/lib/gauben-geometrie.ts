@@ -1,5 +1,6 @@
 import {
   inverseHomographie,
+  homographie,
   eckenPlausibel,
   projiziere,
   pruefePerspektive,
@@ -13,6 +14,7 @@ import {
   fotoZuordnungenVon,
   perspektiveQuelle,
   rahmenBreiteVon,
+  umrissVon,
   type Flaeche,
   type FotoZuordnung,
   type GaubenAussparung,
@@ -237,7 +239,7 @@ export function rekonstruiereGaubenPunkte(
     ? aussparung?.fotoEckenPx
     : undefined;
 
-  if (erste.gaubenTyp === 'flachdach') {
+  if (erste.gaubenTyp !== 'satteldach') {
     const ecken = gespeichertesAussen ?? fotoZuordnungenVon(erste).find((z) => !quellFotoId || z.fotoId === quellFotoId)?.eckenPx;
     return ecken
       ? { ok: true, punkte: ecken.map(([x, y]) => [x, y]) }
@@ -314,8 +316,8 @@ export function wendeGaubenMarkierungAn(
   )) {
     return { ok: false, grund: 'Die Satteldachgaube benötigt eine linke und eine rechte Dachseite.' };
   }
-  if (gruppe[0]!.gaubenTyp === 'flachdach' && (gruppe.length !== 1 || markierung.seiten)) {
-    return { ok: false, grund: 'Eine Flachdachgaube hat genau eine Dachfläche.' };
+  if (gruppe[0]!.gaubenTyp !== 'satteldach' && (gruppe.length !== 1 || markierung.seiten)) {
+    return { ok: false, grund: 'Diese Gaubenmarkierung gehört zu genau einer Dachseite.' };
   }
   const topologieFehler = pruefeGaubenTopologie(markierung.aussen, markierung.seiten);
   if (topologieFehler) return { ok: false, grund: topologieFehler };
@@ -328,6 +330,12 @@ export function wendeGaubenMarkierungAn(
     }
   }
 
+  const kontur = gruppe[0]!.gaubenTyp === 'satteldach'
+    ? gaubenFotoUmriss(markierung.aussen, markierung.seiten)
+    : gaubenSeitenKontur(gruppe[0]!, markierung.aussen);
+  const parentFoto = fotoZuordnungenVon(eltern).find(z => z.fotoId === fotoId)!;
+  const parentMitFoto = { ...eltern, foto: { ...projekt.fotos.find(f => f.id === fotoId)!, ...parentFoto } };
+  const aussparung = gaubenAussparungAusFoto(parentMitFoto, kontur) ?? markierung.aussparung;
   return {
     ok: true,
     projekt: {
@@ -341,14 +349,14 @@ export function wendeGaubenMarkierungAn(
             gaubenAussparungen: vorhanden
               ? bisher.map((a) =>
                   a.gaubenGruppeId === gruppenId
-                    ? { ...a, rechteck: markierung.aussparung, fotoEckenPx: markierung.aussen, fotoId, fotoUmrissPx: gaubenFotoUmriss(markierung.aussen, markierung.seiten) }
+                    ? { ...a, rechteck: aussparung, fotoEckenPx: markierung.aussen, fotoId, fotoUmrissPx: kontur }
                     : a,
                 )
               : [...bisher, {
                   gaubenGruppeId: gruppenId,
-                  rechteck: markierung.aussparung,
+                  rechteck: aussparung,
                   fotoEckenPx: markierung.aussen,
-                  fotoId, fotoUmrissPx: gaubenFotoUmriss(markierung.aussen, markierung.seiten),
+                  fotoId, fotoUmrissPx: kontur,
                 }],
           };
         }
@@ -455,4 +463,31 @@ export function satteldachMasseAusElternfoto(
   const links = jeSeite(seiten.links);
   const rechts = jeSeite(seiten.rechts);
   return links && rechts ? { links, rechts } : null;
+}
+
+/** Echte Kontur einer einzelnen ebenen Gaubenseite im rechteckigen Foto-Bezugsrahmen. */
+export function gaubenSeitenKontur(f: Flaeche, ecken: Ecken): Punkt[] {
+  const umriss = umrissVon(f);
+  if (!umriss) return ecken.map(p => [...p]);
+  const h = homographie(rahmenBreiteVon(f), f.hoeheM, ecken, perspektiveQuelle(f));
+  return h ? umriss.map(p => projiziere(h, p)) : ecken.map(p => [...p]);
+}
+
+/** Nach Maß-/Formänderung oder Anlage: einzelne Dachseite und Eltern-Aussparung synchron halten. */
+export function synchronisiereGaubenKontur(projekt: Projekt, gruppenId: string): Projekt {
+  const gruppe = projekt.flaechen.filter(f => (f.gaubenGruppeId ?? f.id) === gruppenId && f.gaubenTyp);
+  if (gruppe.length !== 1 || gruppe[0]!.gaubenTyp === 'satteldach') return projekt;
+  const kind = gruppe[0]!;
+  return { ...projekt, flaechen: projekt.flaechen.map(eltern => {
+    if (eltern.id !== kind.elternFlaecheId) return eltern;
+    return { ...eltern, gaubenAussparungen: eltern.gaubenAussparungen?.map(a => {
+      if (a.gaubenGruppeId !== gruppenId || !a.fotoEckenPx) return a;
+      const foto = projekt.fotos.find(f => f.id === a.fotoId);
+      const zuordnung = fotoZuordnungenVon(eltern).find(z => z.fotoId === a.fotoId);
+      if (!foto || !zuordnung) return a;
+      const fotoUmrissPx = gaubenSeitenKontur(kind, a.fotoEckenPx);
+      const rechteck = gaubenAussparungAusFoto({ ...eltern, foto: { ...foto, ...zuordnung } }, fotoUmrissPx);
+      return rechteck ? { ...a, rechteck, fotoUmrissPx } : a;
+    }) };
+  }) };
 }

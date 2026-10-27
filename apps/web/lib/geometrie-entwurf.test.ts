@@ -1,3 +1,4 @@
+import { neueFlaeche } from './model';
 import { describe, expect, it } from 'vitest';
 import { dreheFeld, feldPunkt } from '@pv-belegung/engine';
 import { geometrieEntwurfAufStand } from './geometrie-entwurf';
@@ -51,4 +52,12 @@ describe('Geometrieentwurf auf aktuellem Stand', () => {
     const neu = geometrieEntwurfAufStand(basis, { ...basis, dachform: 'trapez', firstBreiteM: 6 }, aktuell);
     expect(neu.fotoZuordnungen).toEqual([{ fotoId: 'neues-bild', traufePx: null, perspektiveBestaetigt: false, markierungFertig: false }]);
   });
+});
+
+it('übernimmt Einsatzort und automatisch passenden Namen zusammen mit der Montage', () => {
+  const basis = neueFlaeche(1, 'A');
+  const entwurf = { ...basis, art: 'flachdach' as const, einsatzort: 'freiflaeche' as const, name: 'Freifläche 1', flachdach: { aufstaenderung: 'sued' as const, winkelDeg: 25, moduleInNeigung: 2, modulAusrichtung: 'hoch' as const } };
+  const neu = geometrieEntwurfAufStand(basis, entwurf, basis);
+  expect(neu.einsatzort).toBe('freiflaeche');expect(neu.name).toBe('Freifläche 1');
+  expect(neu.flachdach).toEqual(entwurf.flachdach);
 });

@@ -546,6 +546,8 @@ export interface BelegungsFeldM {
   drehungDeg?: number;
   /** true = Module quer. Wird beim Anlegen aus der Flächen-Ausrichtung gesetzt. */
   quer: boolean;
+  /** Freier horizontaler Abstand zwischen Tischreihen/-paaren, nur für dieses Feld. */
+  freieGasseM?: number;
   /**
    * Dauerhaft leere Zellen als "row-col" (FELD-lokale Zellkoordinaten). Weil die
    * Identität an der ZELLE hängt und nicht an einer Dach-Koordinate, wandern die
@@ -647,25 +649,94 @@ export function feldDrehwinkel(feld: FeldGeometrie, start: PunktM, aktuell: Punk
  */
 export interface FlachdachMontage {
   aufstaenderung: 'sued' | 'ostwest';
-  /** Modulmontagewinkel, Grad (PROFINESS: Süd 10/15, Ost-West 10) */
+  /** Modulmontagewinkel, Grad; geometrische Vorplanung, keine Systemfreigabe. */
   winkelDeg: number;
   /** Gestell-Pitch in Kipprichtung, Meter (Süd: Reihen-Pitch; O/W: Paar-Pitch) */
   pitchM: number;
+  /** Standard quer; hoch für z.B. Freiflächen-Modultische. */
+  modulAusrichtung?: 'hoch' | 'quer';
+  /** Module übereinander entlang EINER geneigten Tischseite (1–6). */
+  moduleInNeigung?: number;
   /** Spalt am Zeltfirst zwischen den beiden Modulen eines O/W-Paars, Meter (Optik) */
   firstspaltM?: number;
   /** Wo Süden in der Draufsicht liegt. Default für Altprojekte: unten. */
   richtungSued?: 'unten' | 'links' | 'oben' | 'rechts';
 }
 
+/**
+ * Einzige Quelle der Aufständerungsgeometrie. Grundriss, keine Schatten-/Statikprüfung.
+ * Die Klemmfuge entlang der Tischneigung wird wie das Modul auf den Boden projiziert.
+ */
+export function montageGeometrie(
+  module: ModuleType,
+  montage: Pick<FlachdachMontage, 'aufstaenderung' | 'winkelDeg' | 'firstspaltM' | 'modulAusrichtung' | 'moduleInNeigung'>,
+  fugeM = DEFAULT_FUGE_M,
+) {
+  const n = montage.moduleInNeigung ?? 1;
+  const hoch = montage.modulAusrichtung === 'hoch';
+  const cos = Math.cos(montage.winkelDeg * Math.PI / 180);
+  const sin = Math.sin(montage.winkelDeg * Math.PI / 180);
+  const laengeM = (hoch ? module.lengthMm : module.widthMm) / 1000;
+  const querM = (hoch ? module.widthMm : module.lengthMm) / 1000;
+  const spaltM = montage.firstspaltM ?? 0.05;
+  const gueltig = [module.lengthMm, module.widthMm, montage.winkelDeg, fugeM, spaltM].every(Number.isFinite)
+    && module.lengthMm > 0 && module.widthMm > 0 && fugeM >= 0 && spaltM >= 0
+    && montage.winkelDeg >= 0 && montage.winkelDeg <= 75 && Number.isInteger(n) && n >= 1 && n <= 6;
+  const modulTiefeM = gueltig ? laengeM * cos : NaN;
+  const schrittM = (laengeM + fugeM) * cos;
+  const tischTiefeM = n * modulTiefeM + (n - 1) * fugeM * cos;
+  const footprintM = montage.aufstaenderung === 'ostwest' ? 2 * tischTiefeM + spaltM : tischTiefeM;
+  return { gueltig, n, querM, modulTiefeM, schrittM, tischTiefeM, footprintM, spaltM,
+    modulHoeheM: laengeM * sin, schrittHoeheM: (laengeM + fugeM) * sin,
+    hoeheM: (n * laengeM + (n - 1) * fugeM) * sin,
+    mindestPitchM: montage.aufstaenderung === 'sued' ? footprintM + 0.01 : Math.max(tischTiefeM + 0.01, footprintM) };
+}
+
 /** Geometrischer Mindestabstand identischer Reihen/Paare, keine Montagefreigabe. */
 export function flachdachMindestPitch(
   module: ModuleType,
-  montage: Pick<FlachdachMontage, 'aufstaenderung' | 'winkelDeg' | 'firstspaltM'>,
+  montage: Pick<FlachdachMontage, 'aufstaenderung' | 'winkelDeg' | 'firstspaltM' | 'modulAusrichtung' | 'moduleInNeigung'>,
+  fugeM = DEFAULT_FUGE_M,
 ): number {
-  const tiefe = module.widthMm / 1000 * Math.cos(montage.winkelDeg * Math.PI / 180);
-  return montage.aufstaenderung === 'sued'
-    ? tiefe + 0.01
-    : Math.max(tiefe + 0.01, 2 * tiefe + (montage.firstspaltM ?? 0.05));
+  return montageGeometrie(module, montage, fugeM).mindestPitchM;
+}
+
+/** Feld-Vorgabe überschreibt ausschließlich den freien Abstand; Alt-Pitch bleibt erhalten. */
+export function montageFuerFeld(input: Pick<FelderInput, 'module' | 'montage' | 'fugeM'>, feld: Pick<BelegungsFeldM, 'freieGasseM'>): FlachdachMontage | undefined {
+  if (!input.montage || feld.freieGasseM === undefined) return input.montage;
+  const g = montageGeometrie(input.module, input.montage, input.fugeM);
+  const frei = feld.freieGasseM;
+  // Ungültiger Import darf keine scheinbar gültige Belegung erzeugen.
+  const pitchM = Number.isFinite(frei) && frei >= 0 && frei <= 50 ? Math.max(g.footprintM + frei, g.mindestPitchM) : NaN;
+  return { ...input.montage, pitchM };
+}
+
+/** Zwei gegenüberliegende Punkte definieren ein Feld in beliebig gedrehten Achsen. */
+export function feldAusPunkten(a: PunktM, b: PunktM, drehungDeg = 0, quer = false): BelegungsFeldM {
+  const basis = { xM: 0, yM: 0, breiteM: 0, hoeheM: 0, drehungDeg };
+  const p = feldPunktLokal(basis, a), q = feldPunktLokal(basis, b);
+  const oben = feldPunkt(basis, [Math.min(p[0], q[0]), Math.min(p[1], q[1])]);
+  return { xM: oben[0], yM: oben[1], breiteM: Math.abs(q[0] - p[0]), hoeheM: Math.abs(q[1] - p[1]),
+    quer, ...(normalisiereFeldDrehung(drehungDeg) ? { drehungDeg: normalisiereFeldDrehung(drehungDeg) } : {}) };
+}
+
+/** Südvektor im metrischen Flächenplan → Winkel ab oben im Uhrzeigersinn. */
+export function suedWinkelAusPunkten(a: PunktM, b: PunktM): number | null {
+  if (![...a, ...b].every(Number.isFinite) || Math.hypot(b[0]-a[0], b[1]-a[1]) < 0.1) return null;
+  return normalisiereFeldDrehung(Math.atan2(b[0]-a[0], a[1]-b[1]) * 180 / Math.PI);
+}
+
+/** Umschließendes Raster in gedrehten Achsen; die normale Engine schneidet am echten Umriss. */
+export function vollFeldGedreht(input: FelderInput & { ausrichtung: 'hoch' | 'quer' }, drehungDeg: number): BelegungsFeldM {
+  if (normalisiereFeldDrehung(drehungDeg) === 0) return vollFeld(input);
+  const basis = { xM: 0, yM: 0, breiteM: 0, hoeheM: 0, drehungDeg };
+  const rand = input.randM ?? DEFAULT_RAND_M;
+  const ecken: PunktM[] = [[rand,rand],[input.breiteM-rand,rand],[input.breiteM-rand,input.hoeheM-rand],[rand,input.hoeheM-rand]];
+  const lokal = ecken.map(p => feldPunktLokal(basis,p));
+  const box = polygonRahmen(lokal);
+  const feld = vollFeld({ ...input, breiteM: box.breiteM, hoeheM: box.hoeheM, randM: 0 });
+  const ursprung = feldPunkt(basis,[box.xM+feld.xM,box.yM+feld.yM]);
+  return { ...feld, xM: ursprung[0], yM: ursprung[1], drehungDeg: normalisiereFeldDrehung(drehungDeg) };
 }
 
 /** Rahmenbedingungen der Fläche für die Feld-Belegung (ohne Ausrichtung/Optimierer). */
@@ -713,6 +784,8 @@ function feldZellen(
 ): FeldZelle[] {
   const EPS = 1e-9;
   const zellen: FeldZelle[] = [];
+  if (![feld.breiteM, feld.hoeheM, fugeM, module.widthMm, module.lengthMm].every(Number.isFinite)
+    || feld.breiteM <= 0 || feld.hoeheM <= 0 || fugeM < 0 || module.widthMm <= 0 || module.lengthMm <= 0) return zellen;
 
   if (!montage) {
     // Flache Belegung (Schrägdach/Fassade): Module dicht an dicht mit Klemmfuge.
@@ -728,77 +801,39 @@ function feldZellen(
     return zellen;
   }
 
-  // Flachdach: immer QUER liegende Module (PROFINESS Flat). Fußabdruck in
-  // Kipprichtung = Projektion widthMm·cos(winkel); der Pitch kommt vom Gestell.
-  const { w: laengsM, h: querM } = dimsVon(module, 'quer'); // 1,762 × 1,134
-  const tiefe = querM * Math.cos(montage.winkelDeg * GRAD);
-  const pitch = Math.max(montage.pitchM, flachdachMindestPitch(module, montage));
-  const richtungSued = montage.richtungSued ?? 'unten';
-  const kipptVertikal = richtungSued === 'unten' || richtungSued === 'oben';
-
-  if (montage.aufstaenderung === 'sued') {
-    // Reihen quer zur gewählten Südrichtung: erste Reihe braucht nur den
-    // Fußabdruck, jede weitere den vollen Gestell-Pitch.
-    if (kipptVertikal) {
-      const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (laengsM + fugeM)));
-      const rows = feld.hoeheM + EPS >= tiefe
-        ? 1 + Math.floor((feld.hoeheM - tiefe + EPS) / pitch)
-        : 0;
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          zellen.push({ row, col, xM: col * (laengsM + fugeM), yM: row * pitch, wM: laengsM, hM: tiefe, quer: true });
+  const g = montageGeometrie(module, montage, fugeM);
+  if (!g.gueltig || !Number.isFinite(montage.pitchM) || montage.pitchM <= 0) return zellen;
+  const pitch = Math.max(montage.pitchM, g.mindestPitchM);
+  const sued = montage.richtungSued ?? 'unten';
+  const suedVertikal = sued === 'unten' || sued === 'oben';
+  const ow = montage.aufstaenderung === 'ostwest';
+  const tiefeVertikal = ow ? !suedVertikal : suedVertikal;
+  const platzTiefe = tiefeVertikal ? feld.hoeheM : feld.breiteM;
+  const platzQuer = tiefeVertikal ? feld.breiteM : feld.hoeheM;
+  const tische = platzTiefe + EPS >= g.footprintM ? 1 + Math.floor((platzTiefe - g.footprintM + EPS) / pitch) : 0;
+  const nebeneinander = Math.max(0, Math.floor((platzQuer + fugeM + EPS) / (g.querM + fugeM)));
+  const seiten = ow ? 2 : 1;
+  const ersteSeite: 'ost' | 'west' = (tiefeVertikal ? sued === 'rechts' : sued === 'oben') ? 'ost' : 'west';
+  for (let tisch = 0; tisch < tische; tisch++) {
+    for (let quer = 0; quer < nebeneinander; quer++) {
+      for (let seite = 0; seite < seiten; seite++) {
+        for (let k = 0; k < g.n; k++) {
+          const index = tisch * seiten * g.n + seite * g.n + k;
+          const tief = tisch * pitch + seite * (g.tischTiefeM + g.spaltM) + k * g.schrittM;
+          const breit = quer * (g.querM + fugeM);
+          zellen.push({
+            row: tiefeVertikal ? index : quer, col: tiefeVertikal ? quer : index,
+            xM: tiefeVertikal ? breit : tief, yM: tiefeVertikal ? tief : breit,
+            wM: tiefeVertikal ? g.querM : g.modulTiefeM, hM: tiefeVertikal ? g.modulTiefeM : g.querM,
+            quer: tiefeVertikal ? montage.modulAusrichtung !== 'hoch' : montage.modulAusrichtung === 'hoch',
+            ...(ow ? { seite: seite === 0 ? ersteSeite : ersteSeite === 'ost' ? 'west' as const : 'ost' as const } : {}),
+          });
         }
-      }
-    } else {
-      const cols = feld.breiteM + EPS >= tiefe
-        ? 1 + Math.floor((feld.breiteM - tiefe + EPS) / pitch)
-        : 0;
-      const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (laengsM + fugeM)));
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          zellen.push({ row, col, xM: col * pitch, yM: row * (laengsM + fugeM), wM: tiefe, hM: laengsM, quer: false });
-        }
-      }
-    }
-    return zellen;
-  }
-
-  // Ost-West: Paare kippen in x-Richtung (Zeltfirst vertikal). Ein Paar = Ost- +
-  // West-Modul mit Firstspalt; Paar-Pitch 2,48 m (Paare stoßen bündig aneinander).
-  const spalt = montage.firstspaltM ?? 0.05;
-  const paarTiefe = 2 * tiefe + spalt;
-  const paarPitch = Math.max(pitch, paarTiefe);
-  if (kipptVertikal) {
-    const paare = feld.breiteM + EPS >= paarTiefe
-      ? 1 + Math.floor((feld.breiteM - paarTiefe + EPS) / paarPitch)
-      : 0;
-    const rows = Math.max(0, Math.floor((feld.hoeheM + fugeM + EPS) / (laengsM + fugeM)));
-    const links: 'ost' | 'west' = richtungSued === 'unten' ? 'west' : 'ost';
-    const rechts: 'ost' | 'west' = links === 'ost' ? 'west' : 'ost';
-    for (let row = 0; row < rows; row++) {
-      for (let paar = 0; paar < paare; paar++) {
-        const x0 = paar * paarPitch;
-        const yM = row * (laengsM + fugeM);
-        zellen.push({ row, col: paar * 2, xM: x0, yM, wM: tiefe, hM: laengsM, quer: false, seite: links });
-        zellen.push({ row, col: paar * 2 + 1, xM: x0 + tiefe + spalt, yM, wM: tiefe, hM: laengsM, quer: false, seite: rechts });
-      }
-    }
-  } else {
-    const paare = feld.hoeheM + EPS >= paarTiefe
-      ? 1 + Math.floor((feld.hoeheM - paarTiefe + EPS) / paarPitch)
-      : 0;
-    const cols = Math.max(0, Math.floor((feld.breiteM + fugeM + EPS) / (laengsM + fugeM)));
-    const oben: 'ost' | 'west' = richtungSued === 'rechts' ? 'ost' : 'west';
-    const unten: 'ost' | 'west' = oben === 'ost' ? 'west' : 'ost';
-    for (let paar = 0; paar < paare; paar++) {
-      const y0 = paar * paarPitch;
-      for (let col = 0; col < cols; col++) {
-        const xM = col * (laengsM + fugeM);
-        zellen.push({ row: paar * 2, col, xM, yM: y0, wM: laengsM, hM: tiefe, quer: true, seite: oben });
-        zellen.push({ row: paar * 2 + 1, col, xM, yM: y0 + tiefe + spalt, wM: laengsM, hM: tiefe, quer: true, seite: unten });
       }
     }
   }
+  // Stabile Reihenfolge erhält Altprojekte, automatische Auswahl und Leerstelle-Keys.
+  zellen.sort((a, b) => a.row - b.row || a.col - b.col);
   return zellen;
 }
 
@@ -812,27 +847,22 @@ function feldZellen(
 export function feldSchrittmasse(
   input: Pick<FelderInput, 'module' | 'fugeM' | 'montage'>,
   quer: boolean,
+  feld: Pick<BelegungsFeldM, 'freieGasseM'> = {},
 ): { pitchXM: number; pitchYM: number; colsJeSchrittX: number; rowsJeSchrittY: number } {
   const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
   if (!input.montage) {
     const { w, h } = dimsVon(input.module, quer ? 'quer' : 'hoch');
     return { pitchXM: w + fugeM, pitchYM: h + fugeM, colsJeSchrittX: 1, rowsJeSchrittY: 1 };
   }
-  const { w: laengsM, h: querM } = dimsVon(input.module, 'quer');
-  const tiefe = querM * Math.cos(input.montage.winkelDeg * GRAD);
-  const pitch = Math.max(input.montage.pitchM, flachdachMindestPitch(input.module, input.montage));
-  const kipptVertikal = (input.montage.richtungSued ?? 'unten') === 'unten' ||
-    (input.montage.richtungSued ?? 'unten') === 'oben';
-  if (input.montage.aufstaenderung === 'sued') {
-    return kipptVertikal
-      ? { pitchXM: laengsM + fugeM, pitchYM: pitch, colsJeSchrittX: 1, rowsJeSchrittY: 1 }
-      : { pitchXM: pitch, pitchYM: laengsM + fugeM, colsJeSchrittX: 1, rowsJeSchrittY: 1 };
-  }
-  const spalt = input.montage.firstspaltM ?? 0.05;
-  const paarTiefe = 2 * tiefe + spalt;
-  return kipptVertikal
-    ? { pitchXM: Math.max(pitch, paarTiefe), pitchYM: laengsM + fugeM, colsJeSchrittX: 2, rowsJeSchrittY: 1 }
-    : { pitchXM: laengsM + fugeM, pitchYM: Math.max(pitch, paarTiefe), colsJeSchrittX: 1, rowsJeSchrittY: 2 };
+  const m = montageFuerFeld(input, feld)!;
+  const g = montageGeometrie(input.module, m, fugeM);
+  const pitch = Math.max(m.pitchM, g.mindestPitchM);
+  const suedVertikal = (m.richtungSued ?? 'unten') === 'unten' || m.richtungSued === 'oben';
+  const tiefeVertikal = m.aufstaenderung === 'sued' ? suedVertikal : !suedVertikal;
+  const zellen = g.n * (m.aufstaenderung === 'ostwest' ? 2 : 1);
+  return tiefeVertikal
+    ? { pitchXM: g.querM + fugeM, pitchYM: pitch, colsJeSchrittX: 1, rowsJeSchrittY: zellen }
+    : { pitchXM: pitch, pitchYM: g.querM + fugeM, colsJeSchrittX: zellen, rowsJeSchrittY: 1 };
 }
 
 /**
@@ -899,7 +929,7 @@ export function berechneFelderRaster(
   felder.forEach((feld, fi) => {
     const gedreht = normalisiereFeldDrehung(feld.drehungDeg) !== 0;
     const leer = new Set(feld.leer ?? []);
-    for (const z of feldZellen(feld, input.module, fugeM, input.montage)) {
+    for (const z of feldZellen(feld, input.module, fugeM, montageFuerFeld(input, feld))) {
       if (leer.has(`${z.row}-${z.col}`)) continue;
       const eckenM = gedreht ? [
         feldPunkt(feld, [z.xM, z.yM]), feldPunkt(feld, [z.xM + z.wM, z.yM]),
@@ -993,8 +1023,7 @@ export function vollFeld(input: FelderInput & { ausrichtung: 'hoch' | 'quer' }):
   const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
   const nutzB = input.breiteM - 2 * randM;
   const nutzH = input.hoeheM - 2 * randM;
-  // Flachdach ist immer quer (PROFINESS Flat: ausschließlich querliegende Module)
-  const quer = input.montage ? true : input.ausrichtung === 'quer';
+  const quer = input.montage ? input.montage.modulAusrichtung !== 'hoch' : input.ausrichtung === 'quer';
   // Probe-Feld über die ganze Nutzfläche → die Zellen selbst sagen, wie groß das
   // exakt gefüllte Feld ist (eine Mathe-Quelle für alle Montagearten).
   const probe: BelegungsFeldM = {
@@ -1006,8 +1035,8 @@ export function vollFeld(input: FelderInput & { ausrichtung: 'hoch' | 'quer' }):
   };
   const zellen = feldZellen(probe, input.module, fugeM, input.montage);
   if (zellen.length === 0) return { xM: randM, yM: randM, breiteM: 0, hoeheM: 0, quer };
-  const belegtB = Math.max(...zellen.map((z) => z.xM + z.wM));
-  const belegtH = Math.max(...zellen.map((z) => z.yM + z.hM));
+  const belegtB = zellen.reduce((max, z) => Math.max(max, z.xM + z.wM), 0);
+  const belegtH = zellen.reduce((max, z) => Math.max(max, z.yM + z.hM), 0);
   return {
     xM: randM + (nutzB - belegtB) / 2,
     yM: randM + (nutzH - belegtH) / 2,
@@ -1015,4 +1044,56 @@ export function vollFeld(input: FelderInput & { ausrichtung: 'hoch' | 'quer' }):
     hoeheM: belegtH,
     quer,
   };
+}
+
+
+/**
+ * Initialer Vorschlag für eine freie Dachkontur, keine Nachoptimierung bestehender
+ * Felder. Nur die Lage des GANZEN ungedrehten Rasters darf sich ändern. 25 feste
+ * Kandidaten im freien Rahmen-Spielraum; bei Gleichstand bleibt die Ausgangslage.
+ * Aufständerungen und gedrehte Felder behalten die bisherige Vollfeld-Geometrie.
+ * Die feste Aufwandsschranke begrenzt die zusätzliche Suche, nicht die Dachgröße.
+ */
+export function vorschlagsFeld(
+  input: FelderInput & { ausrichtung: 'hoch' | 'quer' },
+  drehungDeg = 0,
+): BelegungsFeldM {
+  const basis = vollFeldGedreht(input, drehungDeg);
+  if (input.montage || normalisiereFeldDrehung(drehungDeg) !== 0
+    || !input.umrissM || input.umrissM.length < 3
+    || basis.breiteM <= 0 || basis.hoeheM <= 0) return basis;
+
+  const randM = input.randM ?? DEFAULT_RAND_M;
+  const fugeM = input.fugeM ?? DEFAULT_FUGE_M;
+  const { w, h } = dimsVon(input.module, input.ausrichtung);
+  const freiX = input.breiteM - 2 * randM - basis.breiteM;
+  const freiY = input.hoeheM - 2 * randM - basis.hoeheM;
+  if (![freiX, freiY, randM, fugeM, w, h].every(Number.isFinite)
+    || freiX < -1e-9 || freiY < -1e-9 || w <= 0 || h <= 0 || fugeM < 0) return basis;
+  const cols = Math.floor((basis.breiteM + fugeM + 1e-9) / (w + fugeM));
+  const rows = Math.floor((basis.hoeheM + fugeM + 1e-9) / (h + fugeM));
+  const zellen = cols * rows;
+  const kanten = input.umrissM.length + (input.hindernisseM ?? [])
+    .reduce((summe, hindernis) => summe + (hindernis.umrissM?.length ?? 4), 0);
+  if (zellen === 0 || zellen > 2000 || zellen * kanten > 20000) return basis;
+
+  let bestes = basis;
+  let anzahl = berechneFelderRaster(input, [basis]).positionen.length;
+  // Ein vollständig gültiges Raster kann durch bloßes Verschieben nicht gewinnen.
+  if (anzahl === zellen) return basis;
+  // Größere Vorschläge prüfen nur Mitte und beide Randlagen (maximal 9 statt 25).
+  const phasen = zellen > 500 ? [0.5, 0, 1] : [0.5, 0.25, 0.75, 0, 1];
+  const xs = freiX > 1e-9 ? phasen.map(phase => randM + freiX * phase) : [basis.xM];
+  const ys = freiY > 1e-9 ? phasen.map(phase => randM + freiY * phase) : [basis.yM];
+  for (const yM of ys) for (const xM of xs) {
+    if (Math.abs(xM - basis.xM) < 1e-9 && Math.abs(yM - basis.yM) < 1e-9) continue;
+    const kandidat = { ...basis, xM, yM };
+    const n = berechneFelderRaster(input, [kandidat]).positionen.length;
+    if (n > anzahl) {
+      bestes = kandidat;
+      anzahl = n;
+      if (anzahl === zellen) return bestes;
+    }
+  }
+  return bestes;
 }

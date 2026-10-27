@@ -1,13 +1,14 @@
 'use client';
 
 import { memo, useId } from 'react';
-import { homographie } from '../lib/foto-geometrie';
+import { homographie, projiziere } from '../lib/foto-geometrie';
 import {
   modulById,
   fotoZuordnungVon,
   perspektiveQuelle,
   rahmenBreiteVon,
   rasterFuer,
+  umrissVon,
   zonenVon,
   type ProjektFoto,
   type Projekt,
@@ -66,6 +67,10 @@ export function fotoFlaechenInhalt({
     const h = homographie(rahmenBreiteVon(f), f.hoeheM, z.eckenPx, perspektiveQuelle(f));
     if (!h) return null;
     const raster = rasterFuer(f, modul);
+    const umriss = umrissVon(f);
+    // Die vier Fotoecken können ein virtueller Bezugsrahmen außerhalb des Dachs
+    // sein. In der normalen Übersicht ausschließlich die echte Dachgrenze zeigen.
+    const kontur = umriss && umriss.length >= 3 ? umriss.map(p => projiziere(h, p)) : z.eckenPx;
     const mitte = z.eckenPx.reduce<[number, number]>(
       (a, p) => [a[0] + p[0] / 4, a[1] + p[1] / 4],
       [0, 0],
@@ -76,7 +81,7 @@ export function fotoFlaechenInhalt({
           <polygon
             data-testid="dachflaechen-rahmen"
             data-dachflaeche={f.id}
-            points={z.eckenPx.map(([x, y]) => `${x},${y}`).join(' ')}
+            points={kontur.map(([x, y]) => `${x},${y}`).join(' ')}
             fill="rgba(249,115,22,0.025)"
             stroke="#fb923c"
             strokeWidth={px(0.003)}
@@ -94,7 +99,7 @@ export function fotoFlaechenInhalt({
           clipIdPrefix: `${clipIdPrefix}-${f.id}`,
           darstellung: modulDarstellung,
         })}
-        {beschriftung && (
+        {beschriftung && !ausblendenId && (
           <g style={{ pointerEvents: 'none' }}>
             <circle
               cx={mitte[0]}

@@ -130,3 +130,27 @@ describe('Gaubenmaße als geschützter Entwurf', () => {
     expect(ui.weiter).toHaveBeenCalledOnce();
   });
 });
+
+describe('Gaubenwinkel und Sonderformen', () => {
+  it('übernimmt eigene Winkel mit Dezimalkomma ohne Bestätigung einer Schätzung', () => {
+    const ui = editor();
+    fireEvent.change(ui.getByLabelText(/^Neigung der Gaubenseite/), { target: { value: '22,5' } });
+    fireEvent.change(ui.getByLabelText(/^Ausrichtung der Gaubenseite/), { target: { value: '125' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    expect(ui.speichern.mock.calls[0]![2]).toEqual({ quelle: 'nachbardach', qualitaet: 'geschaetzt' });
+    expect(ui.speichern.mock.calls[0]![3]).toMatchObject({ neigungDeg: 22.5, azimutDeg: 125 });
+  });
+  it('sperrt Winkel außerhalb des Bereichs und erhält beim Abbrechen den Bestand', () => {
+    const ui = editor();
+    fireEvent.change(ui.getByLabelText(/^Neigung der Gaubenseite/), { target: { value: '90' } });
+    expect((ui.getByRole('button', { name: 'Maße übernehmen' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }));
+    expect(ui.speichern).not.toHaveBeenCalled();expect(ui.flaeche).toEqual(ui.vorher);
+  });
+  it('setzt die Dreiecksmaske innerhalb des Foto-Bezugsrahmens', () => {
+    const ui = editor();
+    fireEvent.change(ui.getByLabelText('Form der Gaubenseite'), { target: { value: 'dreieck' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    expect(ui.speichern.mock.calls[0]![3]).toMatchObject({ dachform: 'trapez', firstBreiteM: 0, fotoBezugsrahmen: true });
+  });
+});

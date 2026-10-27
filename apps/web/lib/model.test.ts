@@ -24,6 +24,7 @@ import {
   projektFreigabe,
   zonenLabel,
   type Flaeche,
+  type ReferenzMessung,
 } from './model';
 
 describe('Export-Geometrie und Modulausrichtung', () => {
@@ -440,5 +441,141 @@ describe('Mehrfoto-Sicherheit', () => {
     delete projekt.flaechen[0]!.grunddatenFertig;
     expect([0, 1, 2, 3].map(migriereWorkflowSchritt)).toEqual([0, 1, 1, 2]);
     expect(migriereProjekt(projekt).flaechen[0]!.grunddatenFertig).toBe(true);
+  });
+});
+
+
+describe('Dachspitzen benötigen eine echte Foto-Referenz', () => {
+  function dreiecksProjekt(bezugsrahmen: boolean) {
+    const projekt = neuesProjekt();
+    projekt.fotoModellVersion = 3;
+    projekt.fotos = [{
+      id: 'dreieck-foto', name: 'Walmdach', dataUrl: 'data:image/jpeg;base64,AA==',
+      breitePx: 1000, hoehePx: 600,
+    }];
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!, breiteM: 20, hoeheM: 8,
+      dachform: 'trapez', firstBreiteM: 0, massStatus: 'bestaetigt',
+      fotoBezugsrahmen: bezugsrahmen,
+      umrissM: [[10, 0], [20, 8], [0, 8]],
+      felder: [{ xM: 0, yM: 0, breiteM: 20, hoeheM: 8, quer: false }],
+      fotoZuordnungen: [{
+        fotoId: 'dreieck-foto', traufePx: null,
+        eckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]],
+        perspektiveBestaetigt: true, markierungFertig: true,
+      }],
+    };
+    return projekt;
+  }
+
+  it('erfindet für die Spitze keine 5-Prozent-Firstbreite', () => {
+    const projekt = dreiecksProjekt(false);
+    expect(perspektiveQuelle(projekt.flaechen[0]!)).toEqual([
+      [0, 8], [20, 8], [10, 0], [10, 0],
+    ]);
+    expect(fertigeFotoFlaechen(projekt, 'dreieck-foto')).toHaveLength(0);
+    expect(belegteFlaechenOhneFoto(projekt)).toHaveLength(1);
+  });
+
+  it('sperrt eine alte scheinbar bestätigte Dreiecksprojektion bei der Migration', () => {
+    const migriert = migriereProjekt(dreiecksProjekt(false));
+    expect(migriert.flaechen[0]!.firstBreiteM).toBe(0);
+    expect(migriert.flaechen[0]!.umrissM).toEqual([[10, 0], [20, 8], [0, 8]]);
+    expect(fotoZuordnungenVon(migriert.flaechen[0]!)[0]).toMatchObject({
+      perspektiveBestaetigt: false, markierungFertig: false,
+    });
+    expect(fertigeFotoFlaechen(migriert, 'dreieck-foto')).toHaveLength(0);
+  });
+
+  it('erhält ein wirklich kalibriertes Rechteck mit unabhängiger Dreiecksmaske', () => {
+    const projekt = dreiecksProjekt(true);
+    expect(perspektiveQuelle(projekt.flaechen[0]!)).toBeUndefined();
+    const migriert = migriereProjekt(projekt);
+    expect(migriert.flaechen[0]!.fotoBezugsrahmen).toBe(true);
+    expect(migriert.flaechen[0]!.umrissM).toEqual([[10, 0], [20, 8], [0, 8]]);
+    expect(fotoZuordnungenVon(migriert.flaechen[0]!)[0]).toMatchObject({
+      perspektiveBestaetigt: true, markierungFertig: true,
+    });
+    expect(fertigeFotoFlaechen(migriert, 'dreieck-foto')).toHaveLength(1);
+  });
+
+  it('behält einen echten schmalen First mit weniger als fünf Prozent der Traufe', () => {
+    const f = { ...dreiecksProjekt(false).flaechen[0]!, firstBreiteM: .2 };
+    const quelle = perspektiveQuelle(f)!;
+    expect(quelle[2][0] - quelle[3][0]).toBeCloseTo(.2, 10);
+  });
+});
+
+
+describe('Referenzaufmaß beim Laden und Importieren', () => {
+  const messung: ReferenzMessung = {
+    breiteM: 4, hoeheM: 3,
+    eckenPx: [[300, 600], [700, 600], [700, 300], [300, 300]],
+    umrissPx: [[500, 0], [1000, 600], [0, 600]],
+    rahmenBreiteM: 10, rahmenHoeheM: 6,
+    rahmenEckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]],
+  };
+  function projektMitMessung(roh: unknown) {
+    const projekt = neuesProjekt();
+    projekt.fotoModellVersion = 3;
+    projekt.fotos = [{ id: 'ref', name: 'Referenz', dataUrl: 'data:image/jpeg;base64,AA==', breitePx: 1000, hoehePx: 600 }];
+    projekt.flaechen[0] = {
+      ...projekt.flaechen[0]!, breiteM: 10, hoeheM: 6, fotoBezugsrahmen: true,
+      massStatus: 'bestaetigt', umrissM: [[5, 0], [10, 6], [0, 6]],
+      fotoZuordnungen: [{
+        fotoId: 'ref', traufePx: null,
+        eckenPx: [[0, 600], [1000, 600], [1000, 0], [0, 0]],
+        perspektiveBestaetigt: true, markierungFertig: true,
+        referenzMessung: roh as ReferenzMessung,
+      }],
+    };
+    return projekt;
+  }
+
+  it('erhält vollständige Referenzmetadaten über einen JSON-Roundtrip und die Migration', () => {
+    const original = projektMitMessung(messung);
+    const neu = migriereProjekt(JSON.parse(JSON.stringify(original)));
+    expect(fotoZuordnungenVon(neu.flaechen[0]!)[0]!.referenzMessung).toEqual(messung);
+    expect(neu.flaechen[0]!.umrissM).toEqual(original.flaechen[0]!.umrissM);
+    expect(fertigeFotoFlaechen(neu, 'ref')).toHaveLength(1);
+  });
+
+  it('hält Herkunftspunkte unabhängig von späteren Änderungen im Eingabeobjekt', () => {
+    const original = projektMitMessung(structuredClone(messung));
+    const neu = migriereProjekt(original);
+    original.flaechen[0]!.fotoZuordnungen![0]!.referenzMessung!.eckenPx[0][0] = 999;
+    expect(fotoZuordnungenVon(neu.flaechen[0]!)[0]!.referenzMessung!.eckenPx[0][0]).toBe(300);
+  });
+
+  it.each([
+    { name: 'fehlende Angaben', wert: {} },
+    { name: 'null', wert: null },
+    { name: 'Text', wert: '4 x 3' },
+    { name: 'Array', wert: [] },
+    { name: 'Breite als Text', wert: { ...messung, breiteM: '4' } },
+    { name: 'negative Tiefe', wert: { ...messung, hoeheM: -3 } },
+    { name: 'NaN-Rahmen', wert: { ...messung, rahmenBreiteM: NaN } },
+    { name: 'unendlicher Rahmen', wert: { ...messung, rahmenHoeheM: Infinity } },
+    { name: 'nur drei Referenzecken', wert: { ...messung, eckenPx: messung.eckenPx.slice(0, 3) } },
+    { name: 'fehlerhafter Referenzpunkt', wert: { ...messung, eckenPx: [null, ...messung.eckenPx.slice(1)] } },
+    { name: 'fehlender Umriss', wert: { ...messung, umrissPx: undefined } },
+    { name: 'nur zwei Umrisspunkte', wert: { ...messung, umrissPx: [[0, 0], [100, 100]] } },
+    { name: 'nicht endlicher Umriss', wert: { ...messung, umrissPx: [[0, 0], [100, 100], [NaN, 0]] } },
+    { name: 'ungültiger Rahmen', wert: { ...messung, rahmenEckenPx: [[0, 0], [0, 0], [0, 0], [0, 0]] } },
+  ])('verwirft nur beschädigte Herkunft ($name), ohne die Dachgeometrie umzudeuten', ({ wert }) => {
+    const original = projektMitMessung(wert);
+    const neu = migriereProjekt(original);
+    const zuordnung = fotoZuordnungenVon(neu.flaechen[0]!)[0]!;
+    expect(zuordnung).not.toHaveProperty('referenzMessung');
+    expect(zuordnung.eckenPx).toEqual(original.flaechen[0]!.fotoZuordnungen![0]!.eckenPx);
+    expect(zuordnung.markierungFertig).toBe(true);
+    expect(neu.flaechen[0]!.umrissM).toEqual(original.flaechen[0]!.umrissM);
+    expect(neu.flaechen[0]!.fotoBezugsrahmen).toBe(true);
+  });
+
+  it('erlaubt endliche virtuelle Rahmenecken außerhalb des Fotos', () => {
+    const roh = { ...messung, rahmenEckenPx: [[-200, 800], [1200, 800], [1200, -200], [-200, -200]] };
+    const neu = migriereProjekt(projektMitMessung(roh));
+    expect(fotoZuordnungenVon(neu.flaechen[0]!)[0]!.referenzMessung).toEqual(roh);
   });
 });

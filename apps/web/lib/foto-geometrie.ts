@@ -655,7 +655,7 @@ export function eckenPlausibel(e: Ecken): boolean {
 export interface BelegungsCheck {
   status: 'ungeprueft' | 'ok' | 'warnung' | 'fehler';
   meldungen: string[];
-  /** Maß-Vorschlag aus dem Foto (nur mit Ziegel-Maßstab), auf 0,1 m gerundet */
+  /** Legacy-Schnittstelle. Ein lokaler Zweipunkt-Maßstab liefert keinen Dachmaß-Vorschlag. */
   vorschlag: { breiteM: number; hoeheM: number } | null;
 }
 
@@ -665,9 +665,9 @@ export interface BelegungsCheck {
  */
 export function belegungsCheck(
   ecken: Ecken,
-  breiteM: number,
-  hoeheM: number,
-  neigungDeg: number,
+  _breiteM: number,
+  _hoeheM: number,
+  _neigungDeg: number,
   pxProM: number | undefined,
   /** Erwartetes First/Traufe-Verhältnis (Trapez: firstBreiteM/breiteM, sonst 1). */
   erwarteterFirstAnteil = 1,
@@ -687,50 +687,16 @@ export function belegungsCheck(
   const traufePx = laenge(ecken[0], ecken[1]);
   const firstPx = laenge(ecken[3], ecken[2]);
   const perspektive = firstPx / (traufePx || 1);
-  let status: BelegungsCheck['status'] = 'ok';
-  let vorschlag: BelegungsCheck['vorschlag'] = null;
-
-  if (pxProM !== undefined && Number.isFinite(pxProM) && pxProM > 0) {
-    const breiteFoto = traufePx / pxProM;
-    // Die Neigungskorrektur gilt nur für die verkürzte Draufsicht eines Dachs.
-    // Eine Fassade wird frontal in ihrer eigenen Ebene markiert; cos(90°) würde
-    // die Höhe sonst praktisch durch null teilen.
-    const cosN = flaechenArt === 'fassade'
-      ? 1
-      : Math.cos((neigungDeg * Math.PI) / 180) || 1;
-    const seitePx = (laenge(ecken[0], ecken[3]) + laenge(ecken[1], ecken[2])) / 2;
-    const hoeheFoto = seitePx / pxProM / cosN;
-    vorschlag = {
-      breiteM: Math.round(breiteFoto * 10) / 10,
-      hoeheM: Math.round(hoeheFoto * 10) / 10,
-    };
-    const abwB = Math.abs(breiteFoto - breiteM) / breiteM;
-    const abwH = Math.abs(hoeheFoto - hoeheM) / hoeheM;
-    if (abwB > 0.1) {
-      status = 'warnung';
-      meldungen.push(
-        `${flaechenArt === 'dach' ? 'Traufe' : 'Breite'} im Foto ≈ ${vorschlag.breiteM.toLocaleString('de-DE')} m, eingegeben ${breiteM.toLocaleString('de-DE')} m (${Math.round(abwB * 100)} % Abweichung).`,
-      );
-    }
-    if (abwH > 0.15) {
-      status = 'warnung';
-      meldungen.push(
-        `${flaechenArt === 'dach' ? 'Sparrenlänge' : flaechenArt === 'fassade' ? 'Höhe' : 'Tiefe'} laut Foto grob ≈ ${vorschlag.hoeheM.toLocaleString('de-DE')} m, eingegeben ${hoeheM.toLocaleString('de-DE')} m.`,
-      );
-    }
-    if (meldungen.length === 0) {
-      meldungen.push(
-        `Maße plausibel: ${flaechenArt === 'dach' ? 'Traufe' : 'Breite'} im Foto ≈ ${vorschlag.breiteM.toLocaleString('de-DE')} m ↔ eingegeben ${breiteM.toLocaleString('de-DE')} m.`,
-      );
-    }
-  } else {
-    status = 'ungeprueft';
-    meldungen.push(
-      flaechenArt === 'dach'
-        ? 'Kein Ziegel-Maßstab gesetzt — Maße können nicht gegen das Foto geprüft werden („Ziegel zählen“ liefert den Check).'
-        : 'Kein zusätzlicher Foto-Maßstab gesetzt — die eingegebenen Maße werden nicht gegen das Foto geprüft.',
-    );
-  }
+  // Ein Pixel/Meter-Wert aus zwei Punkten gilt nur lokal an dieser Strecke.
+  // Er enthält weder deren Lage noch die zweite Achse und kann daher keine
+  // ganze Ebene entzerren – selbst ein scheinbares Rechteck beweist keine
+  // maßhaltige Draufsicht. Die vier echten Referenzpunkte im separaten
+  // Kalibrierungsablauf bleiben die Quelle für metrische Fotogeometrie.
+  const status: BelegungsCheck['status'] = 'ungeprueft';
+  const vorschlag: BelegungsCheck['vorschlag'] = null;
+  meldungen.push(pxProM !== undefined && Number.isFinite(pxProM) && pxProM > 0
+    ? 'Der ältere Zweipunkt-Maßstab gilt nur an der gezählten Strecke. Daraus lassen sich keine verlässlichen Gesamtmaße der Fläche ableiten. Nutze ein Aufmaß oder das Ziegelfeld mit vier Messpunkten.'
+    : 'Ein unabhängiges Aufmaß fehlt – die eingegebenen Maße können nicht gegen das Foto geprüft werden.');
 
   // First/Traufe-Verhältnis: NUR ein informativer Schräg-Hinweis bei Rechteck-
   // Flächen. Aus dem Pixel-Verhältnis lässt sich KEIN Maßfehler ableiten (Genrih
@@ -745,7 +711,7 @@ export function belegungsCheck(
   ) {
     meldungen.push(
       `Foto ist schräg aufgenommen (First/Traufe im Bild ${Math.round(perspektive * 100)} %) — ` +
-        'die Platzierung ist perspektivisch korrekt, die Höhen-Schätzung aus dem Foto aber nur grob. Aufmaß geht vor.',
+        'die Bildlängen sind je nach Position unterschiedlich verkürzt. Aufmaß und sichtbare Fugenlinien prüfen.',
     );
   }
 
