@@ -271,7 +271,7 @@ describe('Belegungsbedienung', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it.each(['ebenenliste','auswahl'])('%s führt zusätzliche Dachflächen zuerst zum Foto und nach bewusster Fotoauswahl zu leeren Maßen', zugang => {
+  it.each(['ebenenliste','auswahl'])('%s beginnt mit der Fotoauswahl und öffnet danach direkt leere Dachmaße', zugang => {
     const start = projektMitFoto();
     function Editor() {
       const [projekt, setProjekt] = useState(start);
@@ -282,7 +282,9 @@ describe('Belegungsbedienung', () => {
     if(zugang==='auswahl')fireEvent.change(ui.getByRole('combobox',{name:'Aktive Dachfläche'}),{target:{value:''}});
     else fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
     expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
+    expect(ui.queryByLabelText(/^Breite unten/)).toBeNull();
     expect(ui.queryByRole('button', { name: 'Maße übernehmen' })).toBeNull();
+    expect(ui.queryByRole('img', { name: /im Foto markieren/ })).toBeNull();
     fireEvent.change(ui.getByLabelText('Vorhandenes Foto für Dachfläche 2 verwenden'), { target: { value: 'foto-1' } });
     expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
     expect((ui.getByLabelText(/^Länge auf dem Dach/) as HTMLInputElement).value).toBe('');
@@ -298,6 +300,102 @@ describe('Belegungsbedienung', () => {
     expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
     expect(ui.getByRole('button', { name: 'Foto hochladen' })).toBeTruthy();
     expect(ui.getByRole('button', { name: 'Maße übernehmen' })).toBeTruthy();
+  });
+
+  it('legt fünf eigenständige Dachseiten mit bekannten Maßen an und ändert später nur die gewählte Seite', () => {
+    const start = projektMitFoto();
+    let letzterStand = start;
+    function Editor() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={neu => { letzterStand = neu; setProjekt(neu); }} />;
+    }
+    const ui = render(<Editor />);
+    for (let nummer = 2; nummer <= 5; nummer += 1) {
+      fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+      fireEvent.click(ui.getByRole('button', { name: 'Maße sind bereits bekannt' }));
+      expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
+      expect(letzterStand.flaechen.at(-1)!.fotoZuordnungen ?? []).toHaveLength(0);
+      fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: String(10 + nummer) } });
+      fireEvent.change(ui.getByLabelText(/^Länge auf dem Dach/), { target: { value: String(4 + nummer) } });
+      fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+      expect(letzterStand.flaechen.at(-1)).toMatchObject({ breiteM: 10 + nummer, hoeheM: 4 + nummer, massStatus: 'bestaetigt', massEingabeOffen: false });
+    }
+    expect(letzterStand.flaechen).toHaveLength(5);
+    expect(letzterStand.flaechen[0]).toEqual(start.flaechen[0]);
+    const vorAenderung = letzterStand.flaechen;
+    fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: letzterStand.flaechen[2]!.id } });
+    fireEvent.click(ui.getByRole('button', { name: 'Dachmaße' }));
+    expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('13');
+    fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '23' } });
+    fireEvent.click(ui.getByRole('button', { name: 'Maße übernehmen' }));
+    expect(letzterStand.flaechen[2]!.breiteM).toBe(23);
+    for (const index of [0, 1, 3, 4]) expect(letzterStand.flaechen[index]).toEqual(vorAenderung[index]);
+  });
+
+  it('behält die Fotoauswahl für unvollständige neue Dachseiten und schützt Maßänderungen vor dem Flächenwechsel', () => {
+    const start = projektMitFoto();
+    let letzterStand = start;
+    function Editor() {
+      const [projekt, setProjekt] = useState(start);
+      return <EntwurfNavigationProvider><SchrittBelegung projekt={projekt} onChange={neu => { letzterStand = neu; setProjekt(neu); }} /></EntwurfNavigationProvider>;
+    }
+    const ui = render(<Editor />);
+    fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+    const neueId = letzterStand.flaechen[1]!.id;
+    fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[0]!.id } });
+    fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: neueId } });
+    expect(ui.queryByLabelText(/^Breite unten/)).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: 'Maße sind bereits bekannt' }));
+    expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('');
+    fireEvent.change(ui.getByLabelText(/^Breite unten/), { target: { value: '22' } });
+    fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[0]!.id } });
+    fireEvent.click(ui.getByRole('button', { name: 'Bleiben', hidden: true }));
+    expect((ui.getByLabelText(/^Breite unten/) as HTMLInputElement).value).toBe('22');
+    expect((ui.getByRole('combobox', { name: 'Aktive Dachfläche' }) as HTMLSelectElement).value).toBe(neueId);
+    fireEvent.change(ui.getByLabelText(/^Länge auf dem Dach/), { target: { value: '8' } });
+    fireEvent.change(ui.getByRole('combobox', { name: 'Aktive Dachfläche' }), { target: { value: start.flaechen[0]!.id } });
+    fireEvent.click(ui.getByRole('button', { name: 'Übernehmen', hidden: true }));
+    expect(letzterStand.flaechen[1]).toMatchObject({ breiteM: 22, hoeheM: 8, massStatus: 'bestaetigt' });
+    expect(letzterStand.flaechen[0]).toEqual(start.flaechen[0]);
+    expect((ui.getByRole('combobox', { name: 'Aktive Dachfläche' }) as HTMLSelectElement).value).toBe(start.flaechen[0]!.id);
+  });
+
+  it('bietet erzeugte Maßpläne anderer Dachseiten nicht als vorhandene Drohnenfotos an', () => {
+    const start = projektMitFoto();
+    start.fotos.push({ ...start.fotos[0]!, id: 'massplan-1', name: 'Maßplan Dachfläche 1', massplanFlaecheId: start.flaechen[0]!.id });
+    function Editor() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={setProjekt} />;
+    }
+    const ui = render(<Editor />);
+    fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+    const fotoWahl = ui.getByRole('combobox', { name: 'Vorhandenes Foto für Dachfläche 2 verwenden' });
+    expect(within(fotoWahl).queryByRole('option', { name: 'Maßplan Dachfläche 1' })).toBeNull();
+    expect(within(fotoWahl).getByRole('option', { name: 'Testfoto' })).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Fotos' }));
+    const panelWahl = ui.getByRole('combobox', { name: 'Vorhandenes Foto für Dachfläche 2 verwenden' });
+    expect(within(panelWahl).queryByRole('option', { name: 'Maßplan Dachfläche 1' })).toBeNull();
+  });
+
+  it('setzt nach der Fotoauswahl den Inspektor nach oben und zeigt die Maße vor optionalen Dachwerkzeugen', () => {
+    const start = projektMitFoto();
+    function Editor() {
+      const [projekt, setProjekt] = useState(start);
+      return <SchrittBelegung projekt={projekt} onChange={setProjekt} />;
+    }
+    const ui = render(<Editor />);
+    fireEvent.click(ui.getByRole('button', { name: '+ Dachfläche hinzufügen' }));
+    const inspektor = ui.container.querySelector<HTMLElement>('[data-inspektor-inhalt]')!;
+    inspektor.scrollTop = 400;
+    fireEvent.change(ui.getByLabelText('Vorhandenes Foto für Dachfläche 2 verwenden'), { target: { value: 'foto-1' } });
+    const massInspektor = ui.container.querySelector<HTMLElement>('[data-inspektor-inhalt]')!;
+    expect(massInspektor.scrollTop).toBe(0);
+    const breite = ui.getByLabelText(/^Breite unten/);
+    const optionalerDachrand = ui.getByRole('button', { name: 'Dachrand nachzeichnen' });
+    expect(breite.compareDocumentPosition(optionalerDachrand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    massInspektor.scrollTop = 150;
+    fireEvent.change(breite, { target: { value: '23' } });
+    expect(massInspektor.scrollTop).toBe(150);
   });
 
   it('bestätigt eine alte unbelegte Gaube, ohne Schätzungen zu Messungen umzubenennen', () => {

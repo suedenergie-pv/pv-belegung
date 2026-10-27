@@ -41,7 +41,7 @@ describe('Gauben-Serienworkflow', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Zum Export' }));
     fireEvent.click(ui.getByRole('button', { name: /^Übernehmen$/ }));
     expect(speichern).not.toHaveBeenCalled(); expect(weiter).not.toHaveBeenCalled();
-    fireEvent.click(ui.getByRole('button', { name: /^Abbrechen$/ }));
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen verwerfen' }));
     expect(ui.getByRole('button', { name: 'Maße & Neigung' }).getAttribute('aria-pressed')).toBe('true');
     expect((ui.getByLabelText(/^Breite/) as HTMLInputElement).value).toBe('3');
     fireEvent.change(ui.getByLabelText(/^Breite/), { target: { value: '4' } });
@@ -158,6 +158,7 @@ describe('Gauben-Serienworkflow', () => {
       />,
     );
     fireEvent.click(getByRole('button', { name: '+ Gaube' }));
+    fireEvent.click(getByRole('button', { name: 'Aus Nachbardach schätzen' }));
     fireEvent.click(getByRole('button', { name: 'Im Foto markieren →' }));
     const foto = getByRole('img', { name: 'Gaube im Dachfoto markieren' });
     fireEvent.keyDown(foto, { key: 'ArrowRight' });
@@ -204,11 +205,28 @@ describe('Gaube ohne Materialwissen anlegen', () => {
   });
   it.each(['', '-1', '76', 'abc'])('lässt eine ungültige Neigung %s nicht mit dem vorherigen Wert weiterlaufen', (eingabe) => {
     const ui = neu(); const feld = ui.getByLabelText(/^Dachneigung der Gaube/);
+    fireEvent.click(ui.getByRole('button', { name: 'Aufmaß vorhanden' }));
     fireEvent.change(feld, { target: { value: eingabe } });
     fireEvent.click(ui.getByRole('button', { name: 'Im Foto markieren →' }));
     expect(ui.queryByRole('img', { name: 'Gaube im Dachfoto markieren' })).toBeNull();
     expect(document.activeElement).toBe(feld);
     expect(ui.erstellen).not.toHaveBeenCalled();
+  });
+  it('verlangt eine bewusste Messquelle und setzt sie für die nächste neue Gaube zurück', () => {
+    const ui = neu();
+    const weiter = () => ui.getByRole('button', { name: 'Im Foto markieren →' }) as HTMLButtonElement;
+    expect(weiter().disabled).toBe(true);
+    expect(ui.getByRole('button', { name: 'Aus Nachbardach schätzen' }).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(weiter());
+    expect(ui.queryByRole('img', { name: 'Gaube im Dachfoto markieren' })).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: 'Aus Nachbardach schätzen' }));
+    expect(weiter().disabled).toBe(false);
+    fireEvent.click(weiter());
+    fotoMarkieren(ui);
+    fireEvent.click(ui.getByRole('button', { name: 'Gaube anlegen & fertig' }));
+    expect(ui.erstellen.mock.calls[0]![0].messung).toMatchObject({ quelle: 'nachbardach', qualitaet: 'geschaetzt' });
+    fireEvent.click(ui.getByRole('button', { name: '+ Gaube' }));
+    expect(weiter().disabled).toBe(true);
   });
   it('übernimmt eine freie Neigung für beide Sattelseiten und erhält deren verschiedene Richtungen', () => {
     const ui = neu();

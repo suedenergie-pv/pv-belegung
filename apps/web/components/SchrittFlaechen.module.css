@@ -1,7 +1,8 @@
 .zahlEingabe[data-fehler=true]{border-color:#b91c1c;background:#fef2f2}
 .zahlEingabe[data-fehler=true]:focus{border-color:#991b1b;box-shadow:0 0 0 2px rgb(185 28 28 / 20%)}
 
-.flaechenName{display:grid;gap:4px;margin-bottom:12px;font-size:14px;font-weight:600}.flaechenName input{width:100%}.nameHilfe{font-size:12px;font-weight:400;color:#52616b}
+.flaechenName{display:grid;gap:4px;margin-bottom:12px;font-size:14px;font-weight:600;flex-basis:100%;min-width:0}.flaechenName input{width:100%}.nameHilfe{font-size:12px;font-weight:400;color:#52616b}
+.hauptmasse{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:12px}
 .masse{flex-basis:100%;min-width:0}.massZeilen{display:grid;grid-template-columns:1fr;gap:10px}.massZeilen input{width:100%}.massZeilen label{display:block}.massZeilen label>span:first-child{font-size:14px}.gleichBreit{min-height:44px;padding:4px 0;color:#b83d1e;font-size:12px;text-decoration:underline;text-underline-offset:3px}.gleichBreit[aria-pressed=true]{color:#52616b;text-decoration:none}.gleichBreit[aria-pressed=true]::before{content:'✓ ';}
 .besondereKanten{margin-top:8px;font-size:13px;color:#52616b}.besondereKanten p{margin:8px 0;line-height:1.5}.besondereKanten input{max-width:140px}
 

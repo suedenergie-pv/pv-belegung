@@ -61,7 +61,12 @@ test('Statischer Release: Basepath, Assets, Foto-Belegung, PDF ohne Kundendaten 
     return canvas.toDataURL('image/png').split(',')[1]!;
   });
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Foto hinzufügen', exact: true }).click();
+  const fotoDirekt = page.getByRole('button', { name: 'Foto hinzufügen', exact: true });
+  if (await fotoDirekt.isVisible()) await fotoDirekt.click();
+  else {
+    await page.getByRole('button', { name: 'Fotos', exact: true }).click();
+    await page.getByRole('button', { name: /^(Foto hinzufügen|Weitere Perspektive)$/ }).click();
+  }
   await (await chooser).setFiles({ name: 'pages-smoke.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
   const photo = page.getByRole('img', { name: /im Foto markieren/ });
   await photo.scrollIntoViewIfNeeded();

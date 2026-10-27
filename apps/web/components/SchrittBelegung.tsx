@@ -305,6 +305,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   const [perspektivCursor, setPerspektivCursor] = useState<[number, number]>([0, 0]);
   const [perspektivGriff, setPerspektivGriff] = useState<number | null>(null);
   const [sitzung, patchSitzung] = useEditorSitzung();
+  const inspektorInhaltRef = useRef<HTMLDivElement>(null);
   const { ansichtJeFlaeche, modus, auswahl } = sitzung;
   const setAnsichtJeFlaeche = (aktion: SetStateAction<Record<string, string>>) => patchSitzung((alt) => ({ ansichtJeFlaeche: typeof aktion === 'function' ? aktion(alt.ansichtJeFlaeche) : aktion }));
   const setModus = (modus: { art: WerkzeugArt; flaecheId: string } | null) => patchSitzung({ modus, verschieben: false });
@@ -458,6 +459,10 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       ...aktuell,
       flaechen: [...aktuell.flaechen, neu],
     }));
+    verwerfeGeste();
+    setGeometrieVorschau(null);
+    setPerspektivEntwurf(null);
+    setGaubenBearbeitung(null);
     patchSitzung({ aktiveFlaecheId: neu.id, panel: aufFotoId ? 'details' : '', auswahl: null, modus: null, verschieben: false });
     window.setTimeout(() => {
       document.getElementById(`belegung-${neu.id}`)?.scrollIntoView({
@@ -589,6 +594,10 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
 
   /** Eine weitere Perspektive derselben Fläche anlegen. */
   const fuegeFotoZuordnungHinzu = (flaecheId: string, fotoId: string) => {
+    // Maßpläne gehören genau einer Fläche und sind keine gemeinsam nutzbaren
+    // Drohnenfotos. Sonst könnte Dach 2 versehentlich auf Dach 1s Plan entstehen.
+    const asset = projektRef.current.fotos.find(foto => foto.id === fotoId);
+    if (!asset || asset.massplanFlaecheId) return;
     setAuswahl(null);
     setDrag(null);
     setModus(null);
@@ -1422,6 +1431,12 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     return navigation.registriere('suedrichtung', { name: 'Südrichtung', gueltig: () => suedEntwurf.winkel !== null,
       uebernehmen: speichereSued, verwerfen: () => setSuedEntwurf(null) });
   });
+  const inspektorFotoId = f ? fotoZuordnungVon(f, ansichtJeFlaeche[f.id])?.fotoId : undefined;
+  useLayoutEffect(() => {
+    // Aufgaben- und Dachwechsel beginnen oben. Der Scrollstand der vorherigen
+    // Fläche darf frisch geöffnete Maße nicht unter dem Abschluss verstecken.
+    if (inspektorInhaltRef.current) inspektorInhaltRef.current.scrollTop = 0;
+  }, [f?.id, sitzung.panel, inspektorFotoId]);
   if (!f) return <button className={aktionKlasse} onClick={() => fuegeHauptflaecheHinzu()}>+ Dachfläche</button>;
   const fotoZuordnungen = fotoZuordnungenVon(f);
   const fotoZuordnung = fotoZuordnungVon(f, ansichtJeFlaeche[f.id]) ?? fotoZuordnungen[0];
@@ -1538,15 +1553,17 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     patchSitzung({ panel: '', verschieben: false });
     startePerspektivBearbeitung(frisch(f), fotoId!);
   });
+  const projektDrohnenfotos = projekt.fotos.filter(asset => !asset.massplanFlaecheId);
+  const weitereProjektFotos = projektDrohnenfotos.filter(asset => !fotoZuordnungen.some(zuordnung => zuordnung.fotoId === asset.id));
   const fotosPanel = <>
     <div className={styles.kontextAktionen}>
       <button type="button" className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>
         <IconFoto />{fotoZuordnungen.length ? 'Weitere Perspektive' : 'Foto hinzufügen'}
       </button>
-      {projekt.fotos.some((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id)) && <select aria-label={`Vorhandenes Foto für ${f.name} verwenden`} value="" className={aktionKlasse}
+      {weitereProjektFotos.length > 0 && <select aria-label={`Vorhandenes Foto für ${f.name} verwenden`} value="" className={aktionKlasse}
         onChange={(e) => { if (e.target.value) navigation.weiter(() => fuegeFotoZuordnungHinzu(f.id, e.target.value)); }}>
         <option value="">Vorhandenes Foto verwenden …</option>
-        {projekt.fotos.filter((x) => !fotoZuordnungen.some((z) => z.fotoId === x.id)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        {weitereProjektFotos.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
       </select>}
       {fotoId && <button type="button" className={aktionKlasse} onClick={() => navigation.weiter(() => loeseFotoZuordnung(f.id, fotoId))}>Perspektive entfernen</button>}
     </div>
@@ -1568,22 +1585,23 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       <p>{projekt.flaechen.filter((x) => fotoZuordnungVon(x, asset.id)).length} zugeordnete Flächen</p>
     </div>)}
   </>;
-  const vorhandeneFotoWahl = fotoFehlt && projekt.fotos.length > 0 ? <select aria-label={`Vorhandenes Foto für ${f.name} verwenden`} value="" className={styles.startFotoWahl}
+  const vorhandeneFotoWahl = fotoFehlt && projektDrohnenfotos.length > 0 ? <select aria-label={`Vorhandenes Foto für ${f.name} verwenden`} value="" className={styles.startFotoWahl}
             onChange={e => { const id = e.target.value; if (id) navigation.weiter(() => fuegeFotoZuordnungHinzu(f.id, id)); }}>
             <option value="">Vorhandenes Foto verwenden …</option>
-            {projekt.fotos.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+            {projektDrohnenfotos.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
           </select> : null;
   const detailsPanel = f.gaubenTyp ? <div className={styles.kontextAktionen}>
     <p>{f.name} · {fmtDe(f.breiteM, 2)} × {fmtDe(f.hoeheM, 2)} m</p>
     <button className={aktionKlasse} onClick={() => oeffneAktiveGaube('masse')}>Maße & Neigung</button>
     <button className={aktionKlasse} onClick={() => oeffneAktiveGaube('form')}>Umriss ändern</button>
     <button className={aktionKlasse} onClick={() => navigation.weiter(() => { if (f.elternFlaecheId) loescheGaube(f.elternFlaecheId, f.gaubenGruppeId ?? f.id); })}>Gaube löschen</button>
-  </div> : <>{fotoZuordnung?.referenzMessung && <div className={styles.referenzEinstieg}><button type="button" className={aktionKlasse} onClick={() => oeffnePanel(fotoZuordnung?.referenzMessung?.ziegel ? 'dachrand' : 'referenz')}>Referenz und Dachrand neu prüfen</button></div>}{fotoZuordnung?.referenzMessung && <p className={styles.hinweis}>Dachrand aus Foto · Referenz {fmtDe(fotoZuordnung.referenzMessung.breiteM, 2)} × {fmtDe(fotoZuordnung.referenzMessung.hoeheM, 2)} m. {Math.abs(f.breiteM - fotoZuordnung.referenzMessung.rahmenBreiteM) > .00001 || Math.abs(f.hoeheM - fotoZuordnung.referenzMessung.rahmenHoeheM) > .00001 || JSON.stringify(fotoZuordnung.eckenPx) !== JSON.stringify(fotoZuordnung.referenzMessung.rahmenEckenPx) ? 'Die Dachmaße oder Perspektive wurden danach korrigiert; die Referenz dokumentiert das ursprüngliche Aufmaß.' : 'Die Gesamtmaße wurden daraus berechnet.'}</p>}{vorhandeneFotoWahl && <div className="mb-4">{vorhandeneFotoWahl}</div>}{referenzMoeglich && !fotoZuordnung?.referenzMessung && artVon(f) === 'dach' && <div className={styles.referenzEinstieg}><button type="button" className={aktionKlasse} onClick={() => oeffnePanel('dachrand')}>Dachrand nachzeichnen</button><p>Spitze oder mehrere Ecken? Folge dem sichtbaren Dachrand. Danach bestimmst du den Maßstab mit den Ziegeln.</p></div>}<FlaechenInlineEditor key={f.id} projekt={projekt} flaeche={f} index={projekt.flaechen.indexOf(f)} kompakt initialOffen
+  </div> : <>{fotoZuordnung?.referenzMessung && <div className={styles.referenzEinstieg}><button type="button" className={aktionKlasse} onClick={() => oeffnePanel(fotoZuordnung?.referenzMessung?.ziegel ? 'dachrand' : 'referenz')}>Referenz und Dachrand neu prüfen</button></div>}{fotoZuordnung?.referenzMessung && <p className={styles.hinweis}>Dachrand aus Foto · Referenz {fmtDe(fotoZuordnung.referenzMessung.breiteM, 2)} × {fmtDe(fotoZuordnung.referenzMessung.hoeheM, 2)} m. {Math.abs(f.breiteM - fotoZuordnung.referenzMessung.rahmenBreiteM) > .00001 || Math.abs(f.hoeheM - fotoZuordnung.referenzMessung.rahmenHoeheM) > .00001 || JSON.stringify(fotoZuordnung.eckenPx) !== JSON.stringify(fotoZuordnung.referenzMessung.rahmenEckenPx) ? 'Die Dachmaße oder Perspektive wurden danach korrigiert; die Referenz dokumentiert das ursprüngliche Aufmaß.' : 'Die Gesamtmaße wurden daraus berechnet.'}</p>}{vorhandeneFotoWahl && <div className="mb-4">{vorhandeneFotoWahl}</div>}<FlaechenInlineEditor key={f.id} projekt={projekt} flaeche={f} index={projekt.flaechen.indexOf(f)} kompakt initialOffen
     massVorschlag={massVorschlag?.flaecheId === f.id ? massVorschlag.masse : undefined}
     onVorschau={setGeometrieVorschau} onSchliessen={panelSchliessen}
     onProjektChange={(neu) => { projektRef.current = neu; onChange(neu); setAuswahl(null); verwerfeGeste(); }}
     onPatch={(patch) => patchFlaeche(f.id, patch)} flaecheKwp={(aktiv * modul.pmaxW) / 1000} gesamtKwp={kwp}
     onLoeschen={projekt.flaechen.filter((x) => !x.gaubenTyp).length > 1 ? () => loescheHauptflaeche(f) : undefined} />
+    {referenzMoeglich && !fotoZuordnung?.referenzMessung && artVon(f) === 'dach' && <div className={styles.referenzEinstieg}><button type="button" className={aktionKlasse} onClick={() => oeffnePanel('dachrand')}>Dachrand nachzeichnen</button><p>Spitze oder mehrere Ecken? Folge dem sichtbaren Dachrand. Danach bestimmst du den Maßstab mit den Ziegeln.</p></div>}
     {referenzMoeglich && !fotoZuordnung?.referenzMessung && <details className="mt-4 border-t border-slate-200 pt-2 text-sm">
       <summary className="min-h-11 cursor-pointer py-3 font-medium">Erweiterte Fotoeinrichtung</summary>
       <div className={styles.referenzEinstieg}>
@@ -1741,7 +1759,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
           <span>{fokusAktiv ? hinweis ?? aufgabe.titel : aufgabe.titel}</span>
           <button type="button" aria-expanded={fokusAktiv} aria-controls={`foto-masse-${f.id}`} onClick={() => setBildFokus(fokusAktiv ? null : fokusKey)}>{fokusAktiv ? 'Eingaben anzeigen' : 'Bild vergrößern'}</button>
         </div>}
-        <div className={aufgabe && steuerung ? styles.anleitungNormal : undefined}>{sitzung.panel === 'fotos' ? 'Fotos verwalten. Zum Zeichnen ein Dachwerkzeug wählen.' : fotoStart ? 'Zuerst das Dachfoto auswählen.' : sitzung.panel === 'details' ? geometrieEntwurfAktiv ? 'Vorschau – Änderungen erst mit „Maße übernehmen“ speichern.' : foto && !fotoAsset?.massplanFlaecheId && artVon(f) === 'dach' ? 'Ziegel im Foto zählen oder bekannte Dachmaße eintragen.' : 'Bekannte Maße aus dem Aufmaß eintragen.' : referenzHier ? hinweis : !mass.belegen ? 'Dachmaße mit dem Foto bestimmen und bestätigen.' : hinweis ?? (zweiPunkte ? ersteFeldEcke ? 'Gegenüberliegende Ecke antippen.' : 'Erste Ecke des Modulfelds antippen.' : touchBedienung ? 'Ein Finger: Modulfeld aufziehen · Zwei Finger: Bild verschieben' : 'Im Dach klicken und ziehen: Modulfeld aufziehen')}</div></div>}
+        <div className={aufgabe && steuerung ? styles.anleitungNormal : undefined}>{sitzung.panel === 'fotos' ? 'Fotos verwalten. Zum Zeichnen ein Dachwerkzeug wählen.' : fotoStart ? 'Foto auswählen oder bekannte Dachmaße eingeben.' : sitzung.panel === 'details' ? geometrieEntwurfAktiv ? 'Vorschau – Änderungen erst mit „Maße übernehmen“ speichern.' : foto && !fotoAsset?.massplanFlaecheId && artVon(f) === 'dach' ? 'Ziegel im Foto zählen oder bekannte Dachmaße eintragen.' : 'Bekannte Maße aus dem Aufmaß eintragen.' : referenzHier ? hinweis : !mass.belegen ? 'Dachmaße mit dem Foto bestimmen und bestätigen.' : hinweis ?? (zweiPunkte ? ersteFeldEcke ? 'Gegenüberliegende Ecke antippen.' : 'Erste Ecke des Modulfelds antippen.' : touchBedienung ? 'Ein Finger: Modulfeld aufziehen · Zwei Finger: Bild verschieben' : 'Im Dach klicken und ziehen: Modulfeld aufziehen')}</div></div>}
       <div className={styles.canvas} id={`foto-masse-${f.id}`}>
         <EditorViewport ansicht={sitzung.ansichten[ansichtKey] ?? STANDARD_ANSICHT} bildSeitenverhaeltnis={bildSeitenverhaeltnis}
           punktSteuerung={(mass.belegen || referenzHier) && sitzung.panel !== 'details' && sitzung.panel !== 'fotos' ? punktSteuerung : undefined}
@@ -1765,7 +1783,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
       </div>
       </div>
       <aside className={styles.inspektor} aria-label="Dachflächen und Eigenschaften">
-        <div className={styles.inspektorInhalt} data-inspektor-inhalt>
+        <div ref={inspektorInhaltRef} className={styles.inspektorInhalt} data-inspektor-inhalt>
         <details className={styles.ebenen} open={!bedienPanel && !steuerung}>
           <summary><WorkbenchIcon symbol="flaeche" />Dachflächen <span>{projekt.flaechen.length}</span></summary>
           <div className={styles.ebenenListe} aria-label="Dachflächen im Projekt">
@@ -1781,7 +1799,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
           </div>
         </details>
         <div className={styles.kontext} data-gefuehrt={!!aufgabe && !bedienPanel} role="complementary" aria-label="Editor-Einstellungen">
-          <div className={styles.kontextKopf}>{aufgabe && !bedienPanel ? <EinrichtungsAufgabe {...aufgabe} /> : <div><span>{f.name}</span><h3>{bedienPanel ? panelTitel : fotoStart ? '1. Dachfoto auswählen' : steuerung ? sitzung.panel === 'gauben' ? 'Gauben' : markierungOffen ? 'Dach bearbeiten' : 'Fläche einrichten' : 'Eigenschaften'}</h3></div>}{(bedienPanel || steuerung) && sitzung.panel !== 'details' && (belegungZeigen || !!bedienPanel) && <button type="button" className={aktionKlasse} aria-label="Bereich schließen" onClick={() => { if (bedienPanel === auswahlPanel) setAuswahl(null); else if (feldNeuWerkzeug || modusArt(f) === 'zellen') setzeModus(f, null); else panelSchliessen(); }}>×</button>}</div>
+          <div className={styles.kontextKopf}>{aufgabe && !bedienPanel ? <EinrichtungsAufgabe {...aufgabe} /> : <div><span>{f.name}</span><h3>{bedienPanel ? panelTitel : fotoStart ? 'Dachfläche einrichten' : steuerung ? sitzung.panel === 'gauben' ? 'Gauben' : markierungOffen ? 'Dach bearbeiten' : 'Fläche einrichten' : 'Eigenschaften'}</h3></div>}{(bedienPanel || steuerung) && sitzung.panel !== 'details' && (belegungZeigen || !!bedienPanel) && <button type="button" className={aktionKlasse} aria-label="Bereich schließen" onClick={() => { if (bedienPanel === auswahlPanel) setAuswahl(null); else if (feldNeuWerkzeug || modusArt(f) === 'zellen') setzeModus(f, null); else panelSchliessen(); }}>×</button>}</div>
           <div className={styles.kontextInhalt}>{bedienPanel ?? steuerung ?? standardPanel}</div>
         </div>
         </div>
@@ -1825,15 +1843,15 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     <p className="sr-only" aria-live="polite">{gaubenStatus}</p>
     <div className={styles.kopf}>
       <label className="sr-only" htmlFor="aktive-dachflaeche">Aktive Dachfläche</label>
-      <select id="aktive-dachflaeche" className={aktionKlasse} value={f.id} onChange={(e) => e.target.value === 'auf-foto' ? navigation.weiter(() => fuegeHauptflaecheHinzu(fotoId)) : e.target.value ? wechsleFlaeche(e.target.value) : navigation.weiter(fuegeHauptflaecheHinzu)}>
+      <select id="aktive-dachflaeche" className={`${aktionKlasse} ${styles.flaechenWahl}`} value={f.id} onChange={(e) => e.target.value === 'auf-foto' ? navigation.weiter(() => fuegeHauptflaecheHinzu(fotoId)) : e.target.value ? wechsleFlaeche(e.target.value) : navigation.weiter(fuegeHauptflaecheHinzu)}>
         {belegungsReihenfolge.map((x) => <option key={x.id} value={x.id}>{x.gaubenTyp ? '↳ ' : ''}{x.name}{x.gaubenSeite ? ` · ${x.gaubenSeite}` : ''}</option>)}
         {fotoId && fotoAsset && !fotoAsset.massplanFlaecheId && <option value="auf-foto">+ Weitere Fläche auf diesem Foto</option>}
         <option value="">+ Neue Fläche hinzufügen</option>
       </select>
       <button className={aktionKlasse} aria-label={f.gaubenTyp ? 'Gaubenmaße & Neigung' : f.einsatzort === 'freiflaeche' ? 'Flächenmaße' : 'Dachmaße'} aria-expanded={sitzung.panel === (f.gaubenTyp ? 'gauben' : 'details')} onClick={() => f.gaubenTyp ? oeffneAktiveGaube('masse') : oeffnePanel('details')}><WorkbenchIcon symbol="details" /><span className={styles.langeBeschriftung}>{f.gaubenTyp ? 'Maße & Neigung' : f.einsatzort === 'freiflaeche' ? 'Flächenmaße' : 'Dachmaße'}</span><span className={styles.kurzeBeschriftung} aria-hidden="true">Maße</span></button>
-      {artVon(f) === 'flachdach' && belegungZeigen && <button type="button" className={aktionKlasse} aria-pressed={!!suedHier} onClick={() => navigation.weiter(starteSued)}>Süden {suedOffen ? 'festlegen' : 'ändern'}</button>}
+      {artVon(f) === 'flachdach' && belegungZeigen && <button type="button" className={aktionKlasse} aria-label={`Süden ${suedOffen ? 'festlegen' : 'ändern'}`} aria-pressed={!!suedHier} onClick={() => navigation.weiter(starteSued)}><span className={styles.langeBeschriftung}>Süden {suedOffen ? 'festlegen' : 'ändern'}</span><span className={styles.kurzeBeschriftung} aria-hidden="true">Süden</span></button>}
       <button className={aktionKlasse} aria-expanded={sitzung.panel === 'fotos'} onClick={() => oeffnePanel('fotos')}><WorkbenchIcon symbol="foto" />Fotos</button>
-      {(!foto || !!fotoAsset?.massplanFlaecheId) && belegungZeigen && <button className={aktionKlasse} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button>}
+      {(!foto || !!fotoAsset?.massplanFlaecheId) && belegungZeigen && <button className={`${aktionKlasse} ${styles.fotoDirekt}`} onClick={() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id })}>Foto hinzufügen</button>}
       {fotoZuordnungen.length > 1 && <select className={`${aktionKlasse} ${styles.perspektiven}`} aria-label={`Ansicht für ${f.name}`} value={fotoId} onChange={(e) => wechsleAnsicht(e.target.value)}>
         {fotoZuordnungen.map((z, i) => <option key={z.fotoId} value={z.fotoId}>Perspektive {i + 1} · {projekt.fotos.find((x) => x.id === z.fotoId)?.name}</option>)}
       </select>}
@@ -1900,7 +1918,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
           <strong>{fotoFehlt ? 'Mit Foto oder Maßen starten' : `Foto für ${f.name} hinzufügen`}</strong>
           <p>{fotoFehlt ? 'Foto hochladen oder bekannte Maße eingeben. Ohne Foto entsteht ein maßhaltiger Plan.' : 'Danach die Dachfläche im Bild markieren.'}</p>
           <button type="button" className="rounded-lg bg-akzent px-4 font-semibold text-white" onClick={() => navigation.weiter(() => waehleFotoDatei({ art: 'perspektive', flaecheId: f.id }))}>{fotoFehlt ? 'Foto hochladen' : 'Foto hinzufügen'}</button>
-          {sitzung.panel !== 'details' && vorhandeneFotoWahl}
+          {sitzung.panel !== 'details' && sitzung.panel !== 'fotos' && vorhandeneFotoWahl}
           {fotoStart && <button type="button" className={styles.startMassDirekt} onClick={() => oeffnePanel('details')}>Maße sind bereits bekannt</button>}
         </div>, bildSeitenverhaeltnis: 1.6 })}
     </div>

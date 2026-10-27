@@ -365,8 +365,6 @@ export function SchrittFlaechen({
             </div>
           )}
 
-          <label className={styles.flaechenName}><span>Name der Fläche</span><input className={kompaktInput} value={f.name} maxLength={80} aria-invalid={!f.name.trim()} placeholder="z. B. Hauptdach, Anbau oder Garage" onChange={e => setFlaeche(f.id,{name:e.target.value})} />
-            <span className={styles.nameHilfe}>z. B. Hauptdach, Anbau oder Garage</span></label>
           <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
             <label>
               <span className="mb-1 block text-sm font-medium text-slate-700">Art der Fläche</span>
@@ -392,14 +390,18 @@ export function SchrittFlaechen({
 
 
             <div className={styles.masse}>
-              {artVon(f) === 'dach' && <DachSkizze flaeche={f} aktiv={massFokus?.id === f.id ? massFokus.kante : undefined} />}
               <div className={styles.massZeilen}>
+                <div className={styles.hauptmasse}>
                 <KompaktZahl fehlerAnzeigen={fehlerAnzeigen} label={dachrandAusFoto(f) ? 'Gesamtbreite' : artVon(f) === 'dach' ? 'Breite unten (Traufe)' : 'Breite'} einheit="m" value={f.breiteM}
                   initialLeer={!!f.massEingabeOffen && !f.grunddatenFertig && !massFreigabe(f).belegen} min={1}
                   onFocus={() => setMassFokus({id:f.id,kante:'unten'})} onChange={breiteM => setFlaeche(f.id,{
                     breiteM,
                     ...(f.dachform === 'schief' && !dachrandAusFoto(f) ? { firstVersatzM: ausrichtungsVersatz(seitenAusrichtung(f), breiteM, f.firstBreiteM ?? f.breiteM, f.firstVersatzM) } : {}),
                   })} />
+                <KompaktZahl fehlerAnzeigen={fehlerAnzeigen} label={dachrandAusFoto(f) ? 'Tiefe auf dem Dach' : artVon(f) === 'dach' ? 'Länge auf dem Dach (Sparren)' : artVon(f) === 'fassade' ? 'Höhe' : 'Tiefe'} einheit="m" value={f.hoeheM}
+                  initialLeer={!!f.massEingabeOffen && !f.grunddatenFertig && !massFreigabe(f).belegen} min={1}
+                  onFocus={() => setMassFokus({id:f.id,kante:'laenge'})} onChange={hoeheM => setFlaeche(f.id,{hoeheM})} />
+                </div>
                 {artVon(f) !== 'flachdach' && !dachrandAusFoto(f) && <div>
                   <KompaktZahl key={`${f.id}-${oberesMassReset[f.id] ?? 0}`} entwurfErhalten fehlerAnzeigen={fehlerAnzeigen} label="Breite oben (First)" standardBeiLeer={(f.dachform ?? 'rechteck') === 'rechteck'} einheit="m" value={f.firstBreiteM ?? f.breiteM}
                     initialLeer={!!f.massEingabeOffen && !f.grunddatenFertig && !massFreigabe(f).belegen} min={0} max={f.breiteM}
@@ -412,10 +414,8 @@ export function SchrittFlaechen({
                   </div>
                   {f.firstBreiteM === 0 && <p className={styles.massHinweis}>Bei einer Dachspitze ist die Breite oben 0 m.</p>}
                 </div>}
-                <KompaktZahl fehlerAnzeigen={fehlerAnzeigen} label={dachrandAusFoto(f) ? 'Tiefe auf dem Dach' : artVon(f) === 'dach' ? 'Länge auf dem Dach (Sparren)' : artVon(f) === 'fassade' ? 'Höhe' : 'Tiefe'} einheit="m" value={f.hoeheM}
-                  initialLeer={!!f.massEingabeOffen && !f.grunddatenFertig && !massFreigabe(f).belegen} min={1}
-                  onFocus={() => setMassFokus({id:f.id,kante:'laenge'})} onChange={hoeheM => setFlaeche(f.id,{hoeheM})} />
               </div>
+              {artVon(f) === 'dach' && <DachSkizze flaeche={f} aktiv={massFokus?.id === f.id ? massFokus.kante : undefined} />}
               {dachrandAusFoto(f) && <p className={styles.massHinweis}>Der Dachrand wurde im Foto markiert. Die Maße gelten für seine gesamte Breite und Tiefe. Ecken änderst du mit „Dachrand bearbeiten“ im Foto.</p>}
               {artVon(f) !== 'flachdach' && !dachrandAusFoto(f) && <>
                 {((f.firstBreiteM ?? f.breiteM) < f.breiteM || seitenAusrichtung(f) === 'frei') && <fieldset className={styles.seitenWahl}>
@@ -442,6 +442,8 @@ export function SchrittFlaechen({
                 <p className={styles.massHinweis}>Weitere Ecken oder Einschnitte? Den tatsächlichen Dachrand zeichnest du im Foto. Jede anders geneigte Dachseite erhält eine eigene Fläche.</p>
               </>}
             </div>
+            <label className={styles.flaechenName}><span>Name der Fläche</span><input className={kompaktInput} value={f.name} maxLength={80} aria-invalid={!f.name.trim()} placeholder="z. B. Hauptdach, Anbau oder Garage" onChange={e => setFlaeche(f.id,{name:e.target.value})} />
+              <span className={styles.nameHilfe}>z. B. Hauptdach, Anbau oder Garage</span></label>
             {artVon(f) !== 'flachdach' && (
               <label>
                 <span className="mb-1 block text-sm font-medium text-slate-700">Ausrichtung</span>

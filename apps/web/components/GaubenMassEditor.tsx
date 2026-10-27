@@ -145,7 +145,7 @@ export function GaubenMassEditor({ flaeche, modul, onSpeichern, onAbbrechen }: {
     <EditorAktionen><div data-foto-abschluss data-gauben-mass-abschluss>
       <span data-fehler={!gueltigeEingaben}>{gueltigeEingaben ? rueckmeldung ?? 'Die neuen Maße werden erst beim Übernehmen gespeichert.' : 'Bitte die markierten Maße korrigieren.'}</span>
       <button type="button" disabled={!gueltigeEingaben} className="min-h-11 rounded-lg bg-akzent px-4 font-semibold text-white disabled:opacity-50" onClick={speichern}>Maße übernehmen</button>
-      <button type="button" data-sekundaer className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-medium text-slate-800" onClick={abbrechen}>Abbrechen</button>
+      <button type="button" data-sekundaer className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-medium text-slate-800" onClick={abbrechen}>Änderungen verwerfen</button>
     </div></EditorAktionen>
   </section>;
 }

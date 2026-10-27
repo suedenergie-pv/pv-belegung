@@ -86,7 +86,7 @@ describe('Gaubenmaße als geschützter Entwurf', () => {
   it('meldet vor explizitem Abbrechen den Entwurf ab und verändert keine bestehende Belegung', () => {
     const ui = editor();
     fireEvent.change(ui.getByLabelText(/^Breite/), { target: { value: '4' } });
-    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen verwerfen' }));
     expect(ui.abbrechen).toHaveBeenCalledOnce();
     expect(ui.speichern).not.toHaveBeenCalled();
     expect(ui.flaeche).toEqual(ui.vorher);
@@ -144,7 +144,7 @@ describe('Gaubenwinkel und Sonderformen', () => {
     const ui = editor();
     fireEvent.change(ui.getByLabelText(/^Neigung der Gaubenseite/), { target: { value: '90' } });
     expect((ui.getByRole('button', { name: 'Maße übernehmen' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Änderungen verwerfen' }));
     expect(ui.speichern).not.toHaveBeenCalled();expect(ui.flaeche).toEqual(ui.vorher);
   });
   it('setzt die Dreiecksmaske innerhalb des Foto-Bezugsrahmens', () => {

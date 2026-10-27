@@ -198,6 +198,7 @@ export function GaubenEditor({
   const [typ, setTyp] = useState<GaubenTyp>('flachdach');
   const [neigungDeg, setNeigungDeg] = useState(5);
   const [quelle, setQuelle] = useState<GaubenMessung['quelle']>('nachbardach');
+  const [quelleGewaehlt, setQuelleGewaehlt] = useState(false);
   const [breiteM, setBreiteM] = useState(3);
   const [hoeheM, setHoeheM] = useState(2.5);
   const [firstBreiteM, setFirstBreiteM] = useState(1.5);
@@ -485,6 +486,7 @@ export function GaubenEditor({
 
   const reset = () => {
     abmeldenMarkierung();
+    setQuelleGewaehlt(false);
     setModuleZeigen(true);
     setMassId(null); setAktiveSeiteId(null); setKopieVon(null); setSpeicherFehler(null); setSpeicherHinweis(null); setTouchStart(null);
     startPunkte.current = '[]';
@@ -509,6 +511,7 @@ export function GaubenEditor({
   };
 
   const starten = () => {
+    if (!quelleGewaehlt) return;
     const fehler = formularRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
     if (fehler) { fehler.focus(); return; }
     setMassId(null); setKopieVon(null); setSpeicherFehler(null); setTouchStart(null);
@@ -725,7 +728,6 @@ export function GaubenEditor({
   const waehleTyp = (neu: GaubenTyp) => {
     if (neu !== typ) setNeigungDeg(neu === 'flachdach' ? 5 : neu === 'schleppdach' ? 15 : 30);
     setTyp(neu);
-    if (neu === 'walmdach' || neu === 'spitzdach') setQuelle('aufmass');
   };
   const konturFlaeche = (bearbeiteId || kopieVon) ? gauben.find(f => (f.gaubenGruppeId ?? f.id) === (bearbeiteId ?? kopieVon)) :
     (typ === 'walmdach' || typ === 'spitzdach') ? { ...neueGaubenFlaeche(0, '', typ), breiteM, hoeheM,
@@ -844,7 +846,7 @@ export function GaubenEditor({
     </div></EditorAktionen>
   </>;
 
-  const steuerung = <section ref={formularRef} data-gauben-steuerung className={styles.editor}>
+  const steuerung = <section ref={formularRef} data-gauben-steuerung data-gauben-formular={!!massFlaeche || (offen && !markieren)} className={styles.editor}>
     {gruppe && <div className={styles.ausgewaehlteGaube}>
       <div className={styles.kurzKopf}><strong>{gaubenName}</strong><span>{GAUBEN_FORMEN[gruppe[1][0]!.gaubenTyp ?? 'flachdach'].titel}</span></div>
       {gruppe[1].length > 1 && <div className={styles.aufgaben} role="group" aria-label="Dachseite der Gaube">
@@ -884,16 +886,16 @@ export function GaubenEditor({
       {typ === 'walmdach' && <ZahlenEingabe label="Obere Breite der Dachseite" value={firstBreiteM} onChange={setFirstBreiteM} einheit="m" min={0} max={quelle === 'ziegel' ? ziegelQuer * deckbreiteCm / 100 : breiteM} />}
       <p>Wie kommen die Maße zustande?</p>
       <div className={styles.aufgaben} role="group" aria-label="Messquelle">
-        <ToggleButton aktiv={quelle === 'aufmass'} onClick={() => setQuelle('aufmass')}>Aufmaß vorhanden</ToggleButton>
-        <ToggleButton aktiv={quelle === 'ziegel'} onClick={() => setQuelle('ziegel')}>Ziegel zählen</ToggleButton>
-        <ToggleButton aktiv={quelle === 'nachbardach'} onClick={() => setQuelle('nachbardach')}>Aus Nachbardach schätzen</ToggleButton>
+        <ToggleButton aktiv={quelleGewaehlt && quelle === 'aufmass'} onClick={() => { setQuelle('aufmass'); setQuelleGewaehlt(true); }}>Aufmaß vorhanden</ToggleButton>
+        <ToggleButton aktiv={quelleGewaehlt && quelle === 'ziegel'} onClick={() => { setQuelle('ziegel'); setQuelleGewaehlt(true); }}>Ziegel zählen</ToggleButton>
+        <ToggleButton aktiv={quelleGewaehlt && quelle === 'nachbardach'} onClick={() => { setQuelle('nachbardach'); setQuelleGewaehlt(true); }}>Aus Nachbardach schätzen</ToggleButton>
       </div>
-      {quelle === 'aufmass' ? <div className={styles.zweiSpalten}><ZahlenEingabe label="Breite der belegbaren Fläche" value={breiteM} onChange={setBreiteM} einheit="m" /><ZahlenEingabe label="Tiefe auf dem Gaubendach" value={hoeheM} onChange={setHoeheM} einheit="m" /></div> : quelle === 'ziegel' ? <div className={styles.zweiSpalten}>
+      {!quelleGewaehlt ? <p className={styles.nebenhinweis}>Bitte auswählen, woher die Maße kommen. Eine Schätzung wird nur auf deine ausdrückliche Wahl verwendet.</p> : quelle === 'aufmass' ? <div className={styles.zweiSpalten}><ZahlenEingabe label="Breite der belegbaren Fläche" value={breiteM} onChange={setBreiteM} einheit="m" /><ZahlenEingabe label="Tiefe auf dem Gaubendach" value={hoeheM} onChange={setHoeheM} einheit="m" /></div> : quelle === 'ziegel' ? <div className={styles.zweiSpalten}>
         <ZahlenEingabe label="Ziegel quer" value={ziegelQuer} onChange={setZiegelQuer} einheit="Stk." min={1} /><ZahlenEingabe label="Deckbreite" value={deckbreiteCm} onChange={setDeckbreiteCm} einheit="cm" min={1} />
         <ZahlenEingabe label="Ziegelreihen" value={ziegelReihen} onChange={setZiegelReihen} einheit="Stk." min={1} /><ZahlenEingabe label="Reihenabstand" value={reihenabstandCm} onChange={setReihenabstandCm} einheit="cm" min={1} />
       </div> : <p className={styles.warnung}>Das Hauptdach liefert einen Schätzwert. Die Gaube liegt auf einer anderen Ebene; für genaue Maße später Aufmaß oder Ziegelwerte verwenden.</p>}
       {typ === 'satteldach' && quelle !== 'nachbardach' && <p className={styles.nebenhinweis}>Diese Maße gelten zunächst für beide Dachseiten. Unterschiede kannst du danach je Seite ändern.</p>}
-      <EditorAktionen><div data-gauben-abschluss><button type="button" onClick={starten}>Im Foto markieren →</button><button type="button" onClick={reset}>Abbrechen</button></div></EditorAktionen>
+      <EditorAktionen><div data-gauben-abschluss>{!quelleGewaehlt && <span>Bitte zuerst die Messquelle auswählen.</span>}<button type="button" disabled={!quelleGewaehlt} onClick={starten}>Im Foto markieren →</button><button type="button" onClick={reset}>Abbrechen</button></div></EditorAktionen>
     </> : <>
       <p>{gruppen.length ? `${gruppen.length} ${gruppen.length === 1 ? 'Gaube angelegt' : 'Gauben angelegt'}. Im Foto oder hier auswählen.` : 'Gaube im selben Foto anlegen. Die Aussparung im Hauptdach wird automatisch mitgeführt.'}</p>
       <div className={styles.gruppenListe}>{gruppen.map(([id, fs], index) => <div key={id} className={styles.gruppe} data-gaubengruppe={id}>

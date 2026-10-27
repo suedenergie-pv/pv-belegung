@@ -6,6 +6,15 @@
 
 ---
 
+## Fünf Dachseiten im Arbeitsablauf · 27.10.2026
+
+- Präzisierung durch den Nutzer: **Fotoauswahl bleibt zuerst.** Nach Upload oder bewusster Auswahl eines vorhandenen Fotos öffnet sich rechts direkt das Maßformular. Breite und Länge stehen vor Skizze, Benennung und optionalem Dachrand-Werkzeug im sichtbaren Formularbereich. „Maße sind bereits bekannt“ bleibt der freiwillige Einstieg ohne Foto.
+- Die Seitenleiste beginnt beim Wechsel von Dachfläche, Foto oder Aufgabe oben. Eingaben innerhalb derselben Aufgabe verändern die Scrollposition nicht. Auf schmalen Geräten erhalten Maßformulare mehr Platz; die Fotovergrößerung bleibt verfügbar.
+- Generierte Maßpläne einer Dachfläche werden anderen Flächen nicht als Drohnenfoto angeboten. Jede der fünf geprüften Dachseiten behält eigene Maße, Form, Ausrichtung und Belegung; offene Änderungen werden beim Wechsel geschützt.
+- Nach Neuladen bleibt die gewählte Dachfläche samt Fotoansicht innerhalb desselben Browser-Tabs und Projekts erhalten. Speicherung im bestehenden Marken-/Kontonamensraum; offene Werkzeuge, Gesten und ungespeicherte Entwürfe werden nicht wiederhergestellt.
+- Gauben: Messquelle beim Anlegen ausdrücklich auswählen, keine vorgewählte Schätzung. Das Maßformular erhält auf kleinen Geräten mehr Platz; der Knopf zum Verwerfen heißt entsprechend „Änderungen verwerfen“.
+- Lokale Browserprüfung: fünf über die Oberfläche angelegte Flächen mit Foto-zuerst-Ablauf und getrenntem Aufmaß-ohne-Foto-Ablauf; dazu echtes Foto mit fünf Dachseiten sowie Gaubenbearbeitung. Branding und PDF-Gestaltung bleiben unverändert.
+
 ## Zusätzliche Dachfläche führen · 19.10.2026
 
 - Korrektur 22.10.2026: Neu gezeichnete Belegungsfelder sind sofort mit dem ersten Zug im Inneren verschiebbar. Zeichnen und Verschieben dürfen keine native Browser-Textauswahl oder Text-/Bildziehgeste über den Beschriftungen anderer Dachflächen starten. SVG-Tastaturfokus, Größenänderung, Touch-/Ansichtsgesten und Historie bleiben erhalten.
