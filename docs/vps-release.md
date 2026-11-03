@@ -2,6 +2,19 @@
 
 Kanonische Live-Adresse: **https://belegung.suedenergie-pv.de/**. GitHub Pages ist eine separate Ausgabe und kein Nachweis für einen produktiven VPS-Deploy. Nutzerkorrektur und Deploy-Freigabe: 01.10.2026.
 
+## Dachflächen auf Touchgeräten entfernen · 03.11.2026
+
+- Ausdrücklicher Nutzerauftrag „deploy“. Aktiv: `/var/www/belegung/releases/20261103-ipad-entfernen`; Rückfallstand erhalten: `/var/www/belegung/releases/20261027-fuenf-dachseiten`. Produktcommit `e6aa1cb`.
+- Vor Veröffentlichung neueren VPS-Stand erkannt: Das erste lokale Paket auf 06ed2b6 wurde verworfen und nicht übertragen. Finaler isolierter Worktree `C:/Users/Genrih-PC/Desktop/Projekte/Worktrees/pv-belegung/ipad-entfernen-20261103`, Branch `codex/ipad-entfernen-20261103`, auf Basis `f93d733`. Ausschließlich Löschfix übernommen; neuere Dach-, Gauben-, Foto-, Engine- und PDF-Funktionen erhalten. Uncommittete Nutzeränderungen im alten Checkout nicht verändert.
+- Eigener Anwendungsdialog ersetzt die native Browser-Rückfrage für Dachflächen/Gauben. Unterdrückte Browserdialoge können das Löschen damit nicht mehr still abbrechen. Mobile Dachflächenliste bei Maßen/Werkzeugen erreichbar; Fotos, Entwurfsschutz, Gauben-/Stringbereinigung und Undo/Redo erhalten.
+- 1.474 Engine- und 1.340 Webtests, Typprüfung und isolierter VPS-Build bestanden. Auf exakt diesem Export: 18 iPad-Touchemulationsfälle, zehn Desktop-/Tablet-/Mobil-Löschregressionen und zwei Produktions-Smokes einschließlich PDF/Reload bestanden. Alte Testlocators an bereits live vorhandene Bezeichnungen angepasst; keine Assertion gelockert.
+- Unabhängiger finaler Code-/Sicht-/Artefaktreview PASS. 89 Quellen und 33 Export-/Archivdateien vollständig hashgleich. Desktop-, Tablet- und Mobile-Dialoge tatsächlich geöffnet. Native iPad-Praxisabnahme bleibt getrennt.
+- Archiv SHA-256 `779771b1baf9eddb7628f696f8976dcc9c79d84d19f23d98bc3a19ec11a7c9b7`; Index `ee0fcb1d7a3efe11670fad9e8d891cda23df4e0294b163591d78fc16567e3319`. Neue freie Zielpfade, unveränderten Vorgänger, Remotehashes und Shell-Syntax geprüft. Unverändertes LF-normalisiertes Aktivierungsskript atomar ausgeführt; serverseitige HTTPS-/Indexprüfung bestanden.
+- Direkte öffentliche Nachprüfung: 18/18 WebKit-Touch-Löschabläufe (normal, mit gesperrten Browserdialogen, nach Browser-Zurück; vorhandene und neue Flächen) sowie 2/2 Desktop-/Mobil-Smokes einschließlich PDF/Reload bestanden. Live-Dialog und mobile Belegungsansicht tatsächlich geöffnet.
+- Alle 33 Dateien der öffentlichen VPS-Domain stimmen mit dem finalen Manifest überein. Evidenz im genannten Worktree: `.release/ipad-entfernen-release-review.md`, `.release/ipad-entfernen-live-hashes.json`, `test-results/ipad-release-final`, `test-results/dach-release-final`, `test-results/ipad-release-smoke`, `.debug-shots/ipad-release-final`. GitHub Pages ist kein Nachweis dieses produktiven Deploys.
+
+- Kein Main-Push: Die automatische Freigabeprüfung lehnte den zusätzlich versuchten Default-Branch-Push wegen fehlender ausdrücklicher Freigabe und möglicher Pages-Auslösung ab. Der autorisierte VPS-Deploy ist abgeschlossen; Produkt und Nachweis sind lokal im genannten Release-Branch committet.
+
 ## Neues Modulfeld sofort innen verschieben · 22.10.2026
 
 - Aktiv: `/var/www/belegung/releases/20261022-feld-sofort-ziehen`; Rollback erhalten: `/var/www/belegung/releases/20261022-foto-zuerst`. Produktfix `1e5b24b`, Testkorrekturen `9d96429`/`64d6916`, QA/Review `a2a2663`. Bestehende Nutzerfreigabe für Deploy nach bestandener Prüfung gilt fort.

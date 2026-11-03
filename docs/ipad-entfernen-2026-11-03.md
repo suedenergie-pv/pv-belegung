@@ -48,3 +48,12 @@ Finale Basis ist `origin/main` / `f93d73372c3a8d0515aa1acb697cb9f4b1766322`. Der
 - Unabhängiger Code-/Artefaktabgleich: aktuelle Quellen, Stage, Export und Archiv vollständig hashgleich; keine privaten Fotos oder lokalen Konfigurationen enthalten.
 
 Finale Evidenz liegt im neuen Worktree: `test-results/ipad-release-final`, `test-results/dach-release-final`, `test-results/ipad-release-smoke`, `.debug-shots/ipad-release-final` und `.release/ipad-entfernen-release-review.md`.
+
+
+## Veröffentlichung
+
+Nach ausdrücklichem Nutzerauftrag produktiv als `20261103-ipad-entfernen` aktiviert. Produktcommit `e6aa1cb`. Alle 33 öffentlich ausgelieferten Dateien hashgleich zum endgültigen Paket; bisheriger Release `20261027-fuenf-dachseiten` bleibt als Rollback erhalten. Zehn finale Löschregressionen auf dem lokalen Produktionsbuild bestanden. Aktivierung mit dem unveränderten geprüften Skript einschließlich serverseitiger HTTPS-/Indexprüfung erfolgreich.
+
+Direkt auf der öffentlichen VPS-Domain: 18/18 Touch-Löschfälle und 2/2 Produktionssmokes bestanden. Live-Dialog und Mobilansicht geöffnet. Evidenz `test-results/ipad-live`, `test-results/ipad-live-smoke` und `.release/ipad-entfernen-live-hashes.json`. Keine native iPad-Praxisabnahme behauptet.
+
+Der zusätzliche Push auf main wurde durch die automatische Freigabeprüfung abgelehnt (VPS-Deploy autorisiert, Default-Branch-Push mit möglicher Pages-Auslösung nicht ausdrücklich freigegeben). Kein Push erfolgt. Fix und Nachweis lokal committet; produktiver VPS-Deploy abgeschlossen.
