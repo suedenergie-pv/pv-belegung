@@ -44,6 +44,7 @@ import { EditorAktionsRahmen, EditorAktionsZiel } from './EditorAktionen';
 import { FlaechenInlineEditor } from './FlaechenInlineEditor';
 import { FeldabstandEditor } from './FeldabstandEditor';
 import { SuedRichtungEditor, type SuedEntwurf } from './SuedRichtungEditor';
+import { FlaecheEntfernenDialog, type FlaechenLoeschauftrag } from './FlaecheEntfernenDialog';
 import { FlachdachFeldEditor } from './FlachdachFeldEditor';
 import { FotoHintergrund } from './FotoHintergrund';
 import { FotoReferenzEditor, type ReferenzDach } from './FotoReferenzEditor';
@@ -337,6 +338,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
   const [perspektivEntwurf, setPerspektivEntwurf] = useState<PerspektivEntwurf | null>(null);
   const [gaubenBearbeitung, setGaubenBearbeitung] = useState<{ elternId: string; gruppenId: string; flaecheId?: string; aufgabe: 'masse' | 'form' | 'position' } | null>(null);
   const [gaubenStatus, setGaubenStatus] = useState('');
+  const [loeschauftrag, setLoeschauftrag] = useState<FlaechenLoeschauftrag | null>(null);
   /**
    * Läuft gerade eine Geste? Als Ref, damit `onUpM` doppelt aufgerufen werden darf
    * (SVG-Handler + Sicherheitsnetz unten) und trotzdem genau EINMAL committet — ein
@@ -476,18 +478,22 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     const hauptflaechen = projektRef.current.flaechen.filter((f) => !f.gaubenTyp);
     if (hauptflaechen.length <= 1) return;
     const gaubenSeiten = projektRef.current.flaechen.filter((f) => f.elternFlaecheId === flaeche.id).length;
-    if (!window.confirm(`Dachfläche „${flaeche.name}“ mit ihrer Belegung${gaubenSeiten ? ` und ${gaubenSeiten} zugehörigen Gaubenflächen` : ''} entfernen? Zugehörige Stringzuordnungen werden entfernt. Fotos bleiben erhalten. Rückgängig ist danach möglich.`)) return;
-    aendereProjekt((p) => {
-      const ids = new Set(
-        p.flaechen
-          .filter((f) => f.id === flaeche.id || f.elternFlaecheId === flaeche.id)
-          .map((f) => f.id),
-      );
-      return {
-        ...p,
-        flaechen: p.flaechen.filter((f) => !ids.has(f.id)),
-        mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
-      };
+    setLoeschauftrag({
+      titel: 'Dachfläche entfernen?',
+      text: `Dachfläche „${flaeche.name}“ mit ihrer Belegung${gaubenSeiten ? ` und ${gaubenSeiten} zugehörigen Gaubenflächen` : ''} entfernen? Zugehörige Stringzuordnungen werden entfernt. Fotos bleiben erhalten. Rückgängig ist danach möglich.`,
+      entfernen: () => aendereProjekt((p) => {
+        if (p.flaechen.filter((f) => !f.gaubenTyp).length <= 1 || !p.flaechen.some((f) => f.id === flaeche.id)) return p;
+        const ids = new Set(
+          p.flaechen
+            .filter((f) => f.id === flaeche.id || f.elternFlaecheId === flaeche.id)
+            .map((f) => f.id),
+        );
+        return {
+          ...p,
+          flaechen: p.flaechen.filter((f) => !ids.has(f.id)),
+          mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
+        };
+      }),
     });
   };
 
@@ -837,32 +843,36 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     const text = satteldach
       ? `Satteldachgaube vollständig löschen? Beide Dachseiten, ${modulzahl} aktive Module, Belegungsfelder, die gekoppelte Aussparung im Hauptdach und ${stringzahl} Stringzuordnung${stringzahl === 1 ? '' : 'en'} werden entfernt. Das gemeinsame Foto bleibt erhalten. Rückgängig ist danach möglich.`
       : `Gaubendachseite vollständig löschen? ${modulzahl} aktive Module, Belegungsfelder, die gekoppelte Aussparung im Hauptdach und ${stringzahl} Stringzuordnung${stringzahl === 1 ? '' : 'en'} werden entfernt. Das gemeinsame Foto bleibt erhalten. Rückgängig ist danach möglich.`;
-    if (!window.confirm(text)) return;
-    aendereProjekt((p) => {
-      const ids = new Set(
-        p.flaechen
-          .filter((f) => (f.gaubenGruppeId ?? f.id) === gruppeId)
-          .map((f) => f.id),
-      );
-      return {
-        ...p,
-        flaechen: p.flaechen
-          .filter((f) => !ids.has(f.id))
-          .map((f) =>
-            f.id === elternId
-              ? {
-                  ...f,
-                  gaubenAussparungen: f.gaubenAussparungen?.filter(
-                    (a) => a.gaubenGruppeId !== gruppeId,
-                  ),
-                }
-              : f,
-          ),
-        mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
-      };
+    setLoeschauftrag({
+      titel: 'Gaube entfernen?', text,
+      entfernen: () => {
+        aendereProjekt((p) => {
+          const ids = new Set(
+            p.flaechen
+              .filter((f) => (f.gaubenGruppeId ?? f.id) === gruppeId)
+              .map((f) => f.id),
+          );
+          return {
+            ...p,
+            flaechen: p.flaechen
+              .filter((f) => !ids.has(f.id))
+              .map((f) =>
+                f.id === elternId
+                  ? {
+                      ...f,
+                      gaubenAussparungen: f.gaubenAussparungen?.filter(
+                        (a) => a.gaubenGruppeId !== gruppeId,
+                      ),
+                    }
+                  : f,
+              ),
+            mppts: p.mppts.map((strings) => strings.filter((s) => !ids.has(s.flaecheId))),
+          };
+        });
+        setGaubenBearbeitung(null);
+        setGaubenStatus('Gaube gelöscht. Rückgängig stellt die vollständige Gaubengruppe wieder her.');
+      },
     });
-    setGaubenBearbeitung(null);
-    setGaubenStatus('Gaube gelöscht. Rückgängig stellt die vollständige Gaubengruppe wieder her.');
   };
 
   const aendereGaubenMarkierung = (
@@ -1840,6 +1850,7 @@ function SchrittBelegungInhalt({ projekt, onChange, onExport }: { projekt: Proje
     fotoOverlay={fotoAsset ? (clipIdPrefix) => fotoFlaechenInhalt({ projekt, foto: fotoAsset, ausblendenId: f.id, assetId: `modul-${f.id}`, clipIdPrefix, modulDarstellung: ziehtHier ? 'kontur' : 'detail' }) : undefined} />;
 
   return <section id="belegung-start" className={styles.editor} aria-label="Gemeinsamer Fotoeditor">
+    {loeschauftrag && <FlaecheEntfernenDialog auftrag={loeschauftrag} onSchliessen={() => setLoeschauftrag(null)} />}
     <p className="sr-only" aria-live="polite">{gaubenStatus}</p>
     <div className={styles.kopf}>
       <label className="sr-only" htmlFor="aktive-dachflaeche">Aktive Dachfläche</label>
