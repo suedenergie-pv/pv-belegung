@@ -622,6 +622,8 @@ folgen vollständig paginiert im Anhang. Der neue Ausdruck ersetzt ausdrücklich
 bisherige Zwei-Fotos-Raster. Keine Ertrags- oder Wirtschaftlichkeitsversprechen.
 In der Workbench bietet die Dachflächenliste direkt eine Entfernen-Aktion. Bestehende
 Gauben-/Stringbereinigung, erhaltene Fotos, Entwurfsschutz und Rückgängig bleiben erhalten.
+Die Löschbestätigung für Dachflächen und Gauben erscheint innerhalb der Anwendung;
+unterdrückte native Browserdialoge dürfen das Entfernen nicht still abbrechen lassen.
 
 ---
 

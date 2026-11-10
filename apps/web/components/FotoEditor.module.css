@@ -106,10 +106,8 @@
 .anleitung{font-size:14px}.werkzeugZeile button{font-size:11px}
 @media(max-width:900px) and (min-height:501px){
  .arbeitsbereich[data-masse-offen=true]{grid-template-rows:minmax(0,1fr) minmax(0,68%)}
- .arbeitsbereich[data-masse-offen=true] .ebenen{display:none}
 }
 @media(max-height:500px) and (orientation:landscape){
- .arbeitsbereich[data-masse-offen=true] .ebenen{display:none}
  .kontextKopf{padding:0 10px}.anleitung{font-size:12px}
  .exportAbschluss{padding:4px 8px}
 }
@@ -165,7 +163,8 @@
 }
 @media(max-width:600px){.arbeitsbereich[data-masse-offen=true] .canvasLeer strong{font-size:15px}}
 
-@media(max-width:900px){.arbeitsbereich[data-kontext-offen=true] .ebenen:not([open]){display:none}}
+/* Auch bei offenen Maßen/Werkzeugen bleibt „Dachflächen“ aufklappbar,
+   damit Wechseln, Hinzufügen und Entfernen auf Touchgeräten erreichbar sind. */
 
 @media(max-width:900px) and (max-height:700px){
  .arbeitsbereich[data-masse-offen=true] .canvasLeer strong{display:none}

@@ -1,5 +1,5 @@
 import { oeffneStartprojekt } from './projekt-einstieg';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
@@ -32,15 +32,39 @@ async function stand(page: Page): Promise<Projekt> {
     return db.projekte.find((p: { id: string }) => p.id === db.aktivId).projekt;
   });
 }
+async function aktiviere(element: Locator) {
+  if (test.info().project.name === 'desktop') await element.click();
+  else await element.tap();
+}
 async function oeffneListe(page: Page) {
   const liste = page.locator('details').filter({ has: page.getByLabel('Dachflächen im Projekt') });
-  if (await liste.getAttribute('open') === null) await liste.locator('summary').click();
+  await expect(liste.locator('summary')).toBeVisible();
+  if (await liste.getAttribute('open') === null) await aktiviere(liste.locator('summary'));
+}
+async function unterdrueckeBrowserBestaetigung(page: Page) {
+  await page.addInitScript(() => {
+    Reflect.set(window, '__browserBestaetigungen', 0);
+    window.confirm = () => {
+      Reflect.set(window, '__browserBestaetigungen', Reflect.get(window, '__browserBestaetigungen') + 1);
+      return false;
+    };
+  });
+}
+function loeschDialog(page: Page) {
+  return page.getByRole('dialog', { name: /^(Dachfläche|Gaube) entfernen\?$/ });
+}
+async function bestaetigeEntfernen(page: Page) {
+  const dialog = loeschDialog(page);
+  await expect(dialog).toBeVisible();
+  await aktiviere(dialog.getByRole('button', { name: 'Entfernen', exact: true }));
+  await expect(dialog).not.toBeVisible();
 }
 
 test('Dach direkt entfernen: Abbruch, Gauben, Fotos, Strings und Rückgängig', async ({ page }, info) => {
   mkdirSync(shots, { recursive: true });
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
+  await unterdrueckeBrowserBestaetigung(page);
   const projekt = await fixture();
   const dach = projekt.flaechen[0]!;
   projekt.flaechen.push(neueFlaeche(2, 'B'));
@@ -56,12 +80,12 @@ test('Dach direkt entfernen: Abbruch, Gauben, Fotos, Strings und Rückgängig', 
   await expect.poll(async () => (await stand(page)).flaechen.length).toBe(4);
   const vorher = await stand(page);
   await oeffneListe(page);
-  page.once('dialog', d => d.accept());
-  await page.getByRole('button', { name: 'Gaube „Satteldachgaube links“ entfernen', exact: true }).click();
+  await aktiviere(page.getByRole('button', { name: 'Gaube „Satteldachgaube links“ entfernen', exact: true }));
+  await bestaetigeEntfernen(page);
   await expect.poll(async () => (await stand(page)).flaechen.length).toBe(2);
   expect((await stand(page)).flaechen[0]!.gaubenAussparungen).toEqual([]);
   expect((await stand(page)).fotos).toEqual(vorher.fotos);
-  await page.getByRole('button', { name: /Rückgängig/ }).click();
+  await aktiviere(page.getByRole('button', { name: /Rückgängig/ }));
   await expect.poll(async () => (await stand(page)).flaechen).toEqual(vorher.flaechen);
   await oeffneListe(page);
   const entfernen = page.getByRole('button', { name: 'Dachfläche „Dachfläche 1“ entfernen', exact: true });
@@ -69,35 +93,90 @@ test('Dach direkt entfernen: Abbruch, Gauben, Fotos, Strings und Rückgängig', 
   const b = (await entfernen.boundingBox())!;
   expect(b.width).toBeGreaterThanOrEqual(44); expect(b.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({ path: resolve(shots, `${info.project.name}-entfernen.png`) });
-  await page.getByRole('button', { name: 'Dachmaße', exact: true }).click();
+  await aktiviere(page.getByRole('button', { name: 'Dachmaße', exact: true }));
   await page.getByRole('spinbutton', { name: /^Traufe/ }).fill('19');
+  await page.screenshot({ path: resolve(shots, `${info.project.name}-massentwurf.png`) });
   await oeffneListe(page);
-  await entfernen.click();
+  await entfernen.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: resolve(shots, `${info.project.name}-entfernen-im-massentwurf.png`) });
+  await aktiviere(entfernen);
   const entwurf = page.getByRole('dialog', { name: 'Maßentwurf noch offen' });
   await expect(entwurf).toBeVisible();
-  await entwurf.getByRole('button', { name: 'Bleiben', exact: true }).click();
+  await aktiviere(entwurf.getByRole('button', { name: 'Bleiben', exact: true }));
   await expect(page.getByRole('spinbutton', { name: /^Traufe/ })).toHaveValue('19');
   expect((await stand(page)).flaechen).toEqual(vorher.flaechen);
-  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
-  await oeffneListe(page);
-  page.once('dialog', async d => { expect(d.message()).toContain('2 zugehörigen Gaubenflächen'); await d.dismiss(); });
-  await entfernen.click();
+  await aktiviere(entfernen);
+  await aktiviere(entwurf.getByRole('button', { name: 'Verwerfen', exact: true }));
+  await expect(loeschDialog(page)).toBeVisible();
+  await aktiviere(loeschDialog(page).getByRole('button', { name: 'Abbrechen', exact: true }));
   expect((await stand(page)).flaechen).toEqual(vorher.flaechen);
-  page.once('dialog', d => d.accept());
-  await entfernen.click();
+  const massAbbrechen = page.getByRole('button', { name: 'Abbrechen', exact: true });
+  if (await massAbbrechen.isVisible()) await aktiviere(massAbbrechen);
+  await oeffneListe(page);
+  await aktiviere(entfernen);
+  await expect(loeschDialog(page)).toContainText('2 zugehörigen Gaubenflächen');
+  await expect(loeschDialog(page).getByRole('button', { name: 'Abbrechen', exact: true })).toBeFocused();
+  await page.screenshot({ path: resolve(shots, `${info.project.name}-loeschbestaetigung.png`) });
+  await aktiviere(loeschDialog(page).getByRole('button', { name: 'Abbrechen', exact: true }));
+  expect((await stand(page)).flaechen).toEqual(vorher.flaechen);
+  if (info.project.name === 'desktop') {
+    await aktiviere(entfernen);
+    await page.keyboard.press('Escape');
+    await expect(loeschDialog(page)).not.toBeVisible();
+    await expect(entfernen).toBeFocused();
+    expect((await stand(page)).flaechen).toEqual(vorher.flaechen);
+  }
+  await aktiviere(entfernen);
+  await bestaetigeEntfernen(page);
   await expect.poll(async () => (await stand(page)).flaechen.map(f => f.id)).toEqual(['p2']);
   expect((await stand(page)).fotos).toEqual(vorher.fotos);
   expect((await stand(page)).mppts).toEqual([[{ id: 's3', flaecheId: 'p2', anzahl: 3 }]]);
   await expect(page.getByLabel('Aktive Dachfläche')).toHaveValue('p2');
   await oeffneListe(page);
   await expect(page.getByRole('button', { name: 'Dachfläche „Dachfläche 2“ entfernen' })).toBeDisabled();
-  await page.getByRole('button', { name: /Rückgängig/ }).click();
+  await aktiviere(page.getByRole('button', { name: /Rückgängig/ }));
   await expect.poll(async () => (await stand(page)).flaechen).toEqual(vorher.flaechen);
   expect((await stand(page)).mppts).toEqual(vorher.mppts);
   expect((await stand(page)).fotos).toEqual(vorher.fotos);
-  await page.getByRole('button', { name: /Wiederherstellen/ }).click();
+  await aktiviere(page.getByRole('button', { name: /Wiederherstellen/ }));
   await expect.poll(async () => (await stand(page)).flaechen.length).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  expect(await page.evaluate(() => Reflect.get(window, '__browserBestaetigungen'))).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('Dachflächen bleiben bei Werkzeugen und einer neuen Fläche erreichbar', async ({ page }, info) => {
+  mkdirSync(shots, { recursive: true });
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await unterdrueckeBrowserBestaetigung(page);
+  const projekt = await fixture();
+  await lade(page, projekt, 1);
+  await expect.poll(async () => (await stand(page)).flaechen.length).toBe(1);
+  const vorher = await stand(page);
+  const liste = page.locator('details').filter({ has: page.getByLabel('Dachflächen im Projekt') });
+  for (const name of ['Fotos', '+ Feld zeichnen', 'Module entfernen', 'Umriss']) {
+    await aktiviere(page.getByRole('button', { name, exact: true }));
+    await oeffneListe(page);
+    await expect(page.getByRole('button', { name: 'Dachfläche „Dachfläche 1“ entfernen' })).toBeDisabled();
+    await aktiviere(liste.locator('summary'));
+    await expect(liste.locator('summary')).toBeVisible();
+    await aktiviere(page.getByRole('button', { name: 'Auswählen', exact: true }));
+  }
+  await oeffneListe(page);
+  await aktiviere(page.getByRole('button', { name: '+ Dachfläche hinzufügen', exact: true }));
+  await expect(page.getByLabel('Aktive Dachfläche')).toHaveValue('p2');
+  await expect.poll(async () => (await stand(page)).flaechen.length).toBe(2);
+  await page.screenshot({ path: resolve(shots, `${info.project.name}-neue-flaeche.png`) });
+  await oeffneListe(page);
+  await aktiviere(page.getByRole('button', { name: 'Dachfläche „Dachfläche 2“ entfernen', exact: true }));
+  await bestaetigeEntfernen(page);
+  await expect.poll(async () => (await stand(page)).flaechen).toEqual(vorher.flaechen);
+  expect((await stand(page)).fotos).toEqual(vorher.fotos);
+  await expect(page.getByLabel('Aktive Dachfläche')).toHaveValue(projekt.flaechen[0]!.id);
+  await page.screenshot({ path: resolve(shots, `${info.project.name}-nach-entfernen.png`) });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  expect(await page.evaluate(() => Reflect.get(window, '__browserBestaetigungen'))).toBe(0);
   expect(errors).toEqual([]);
 });
 
