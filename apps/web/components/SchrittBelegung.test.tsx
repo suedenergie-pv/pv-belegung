@@ -29,6 +29,10 @@ beforeEach(() => {
     configurable: true,
     value: vi.fn(),
   });
+  Object.defineProperties(HTMLDialogElement.prototype, {
+    showModal: { configurable: true, value() { this.setAttribute('open', ''); } },
+    close: { configurable: true, value() { this.removeAttribute('open'); } },
+  });
 });
 
 afterEach(() => {
@@ -1004,14 +1008,16 @@ describe('Belegungsbedienung', () => {
     const loeschen = getByRole('button', { name: `Gaube „${start.flaechen[2]!.name}“ entfernen` });
     fireEvent.click(loeschen);
     expect(letzterStand.flaechen).toHaveLength(3);
-    expect(bestaetigen.mock.calls[0]![0]).toContain('Beide Dachseiten');
+    expect(getByRole('dialog', { name: 'Gaube entfernen?' }).textContent).toContain('Beide Dachseiten');
+    fireEvent.click(within(getByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
 
-    bestaetigen.mockReturnValue(true);
     fireEvent.click(loeschen);
+    fireEvent.click(within(getByRole('dialog')).getByRole('button', { name: 'Entfernen' }));
     await waitFor(() => expect(letzterStand.flaechen).toHaveLength(1));
     expect(letzterStand.flaechen[0]!.gaubenAussparungen).toEqual([]);
     expect(letzterStand.mppts).toEqual([[]]);
     expect(letzterStand.fotos).toEqual(start.fotos);
+    expect(bestaetigen).not.toHaveBeenCalled();
 
     fireEvent.click(getByRole('button', { name: /Rückgängig/ }));
     await waitFor(() => expect(letzterStand.flaechen).toHaveLength(3));

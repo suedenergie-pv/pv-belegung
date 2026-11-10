@@ -604,6 +604,8 @@ den Bildern. Einzelbilder und das letzte Bild bei ungerader Anzahl nutzen den fr
 Platz ihrer Seite. Bilder behalten ihr Seitenverhältnis und werden nicht beschnitten.
 In der Workbench bietet die Dachflächenliste direkt eine Entfernen-Aktion. Bestehende
 Gauben-/Stringbereinigung, erhaltene Fotos, Entwurfsschutz und Rückgängig bleiben erhalten.
+Die Löschbestätigung für Dachflächen und Gauben erscheint innerhalb der Anwendung;
+unterdrückte native Browserdialoge dürfen das Entfernen nicht still abbrechen lassen.
 
 ---
 

@@ -726,11 +726,11 @@ test('Hauptdach- und Gaubenperspektive bleiben gemeinsam bearbeitbar und löschb
 
   await page.getByRole('button', { name: '← Alle Gauben', exact: true }).click();
   const loeschen = page.locator(`[data-gaubengruppe="${rechteGaubenseite.gruppeId}"]`).getByRole('button', { name: 'Entfernen …', exact: true });
-  page.once('dialog', (dialog) => dialog.dismiss());
   await loeschen.click();
+  await page.getByRole('dialog', { name: 'Gaube entfernen?' }).getByRole('button', { name: 'Abbrechen', exact: true }).click();
   await expect(loeschen).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
   await loeschen.click();
+  await page.getByRole('dialog', { name: 'Gaube entfernen?' }).getByRole('button', { name: 'Entfernen', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option:not([value=""]):not([value="auf-foto"])')).toHaveCount(1);
   await page.getByRole('button', { name: /Rückgängig/ }).click();
   await expect(page.getByRole('combobox', { name: 'Aktive Dachfläche' }).locator('option:not([value=""]):not([value="auf-foto"])')).toHaveCount(3);
